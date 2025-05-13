@@ -5,7 +5,7 @@ import { SkeletonTheme } from "react-loading-skeleton";
 import NotFound from "@/components/ui/NotFound.tsx";
 import AuthPageLoading from "@/components/auth/_components/AuthPageLoading.tsx";
 
-// === Landing Page Components (Eagerly Loaded) ===
+// == Landing Page Components (Eagerly Loaded) ==
 import Layout from "@/components/landing/Layout";
 import Home from "@/components/landing/pages/Home";
 
