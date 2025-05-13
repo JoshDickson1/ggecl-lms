@@ -5,10 +5,7 @@ import {
   getAdminProfile,
   updateAdmin,
 } from "../controllers/admins/adminController.js";
-import {
-  adminAuth,
-  superAdminAuth,
-} from "../middlewares/adminMiddleware.js";
+import { adminAuth, superAdminAuth } from "../middlewares/adminMiddleware.js";
 
 const router = express.Router();
 
@@ -19,6 +16,5 @@ router.post("/login", loginAdmin);
 // Protected routes
 router.get("/profile", adminAuth, getAdminProfile);
 router.put("/profile", adminAuth, updateAdmin);
-
 
 export default router;

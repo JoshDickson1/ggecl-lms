@@ -33,7 +33,11 @@ const app = express();
 app.use(
   cors({
     credentials: true,
-    origin: ["http://localhost:5173", "https://ggecl-preview.vercel.app"],
+    origin: [
+      "http://localhost:5173",
+      "https://ggecl-preview.vercel.app",
+      "https://f179-102-89-32-162.ngrok-free.app",
+    ],
   })
 );
 app.use(compression());
