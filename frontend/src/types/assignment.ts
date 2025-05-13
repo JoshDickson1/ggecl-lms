@@ -1,0 +1,1 @@
+export type AssignmentFilterStatusType = "pending" | "graded" | "submitted" | undefined;

@@ -1,0 +1,644 @@
+    <div className="flex h-screen text-gray-600">
+      {/* Sidebar */}
+      <div
+        className={`fixed h-full w-64 border-r border-gray-50 bg-white p-4 shadow-md transition-transform duration-300 ease-in-out md:static md:w-1/3 dark:border-gray-950 dark:bg-gray-900 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`}
+      >
+        <h2 className="mb-4 flex items-center justify-between text-2xl font-bold">
+          Messages
+          <button
+            className="text-xl md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <FaTimes />
+          </button>
+        </h2>
+        <input
+          type="text"
+          placeholder="Search"
+          className="mb-4 w-full rounded-md border p-2"
+        />
+        <button
+          onClick={handleOpenCreateGroupModal}
+          className="mb-4 w-full rounded-md bg-blue-600 py-2 font-medium text-white hover:bg-blue-700"
+        >
+          + Create Group
+        </button>
+        <div className="h-96 space-y-2 overflow-y-auto">
+          {groupList.map((group, index) => (
+            <div
+              key={`${group.id}-${index}`}
+              onClick={() => {
+                setSelectedGroup(group);
+                setSidebarOpen(false);
+              }}
+              className={`flex cursor-pointer items-center rounded-md p-3 transition-all duration-200 hover:bg-blue-100 ${
+                selectedGroup.id === group.id ? "bg-blue-200" : ""
+              }`}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-800 font-semibold text-white">
+                {group.groupName
+                  ? group.groupName.substring(0, 2).toUpperCase()
+                  : "NA"}
+              </div>
+              <div className="ml-3">
+                <p className="font-semibold">{group.groupName}</p>
+                <p className="w-40 truncate text-sm text-gray-500">
+                  {(group.message ?? []).map((msg) => msg.text).join(", ") ||
+                    `Group was created by ${group.admin}`}
+                </p>
+              </div>
+              <span className="ml-auto text-sm text-gray-400">
+                {group.time}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Chat Area */}
+      <div className="flex flex-1 flex-col">
+        {/* Header */}
+        <div className="flex items-center border-b border-gray-200 p-4 shadow-md dark:border-gray-900">
+          <button
+            className="mr-3 text-xl md:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <FaBars />
+          </button>
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-800 font-semibold text-white">
+            {selectedGroup.groupName
+              ? selectedGroup.groupName.substring(0, 2).toUpperCase()
+              : "NA"}
+          </div>
+          <div className="ml-3">
+            <h2 className="text-lg font-semibold">{selectedGroup.groupName}</h2>
+            <p className="text-sm text-gray-400">
+              Instructors:{" "}
+              {(selectedGroup.instructors || []).join(", ") || "None"},
+              Students: {(selectedGroup.students || []).join(", ") || "None"}
+            </p>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 space-y-3 overflow-y-auto bg-gray-100 p-6 dark:bg-gray-800">
+          <div className="mb-4 flex justify-center">
+            <span className="rounded-full bg-white px-3 py-1 text-sm text-gray-500 dark:bg-gray-900">
+              Today
+            </span>
+          </div>
+          {messages.map((msg, index) => (
+            <div
+              key={`${msg.sender}-${index}`}
+              className={`flex flex-col ${msg.sender === "Admin" ? "items-end" : "items-start"}`}
+            >
+              <span
+                className={`text-sm text-gray-500 dark:text-gray-400 ${msg.sender === "Admin" ? "self-end" : "self-start"} mb-1`}
+              >
+                {msg.sender}
+              </span>
+              <div
+                className={`max-w-xs rounded-lg px-4 py-2 ${
+                  msg.sender === "Admin"
+                    ? "bg-blue-600 text-white"
+                    : "border border-gray-200 text-gray-600 dark:border-gray-950 dark:text-gray-400"
+                }`}
+              >
+                <p>{msg.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Input Area */}
+        <div className="flex border-t border-gray-200 p-4 shadow-md dark:border-gray-900">
+          <input
+            type="text"
+            placeholder="Type your message..."
+            className="flex-1 rounded-md border p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+          />
+          <button
+            onClick={() => {
+              console.log("Sending message:");
+            }}
+            className="ml-2 rounded-md bg-blue-600 p-3 text-white transition-all duration-200 hover:bg-blue-700"
+          >
+            <FaPaperPlane />
+          </button>
+        </div>
+      </div>
+
+      {/* Create Group Modal */}
+      {isCreateGroupModalOpen && (
+        <div className="bg-tranparent bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-2xl">
+          <div className="relative h-[90%] w-full max-w-md rounded-lg bg-white shadow dark:bg-gray-800">
+            <button
+              type="button"
+              className="absolute top-3 right-2.5 ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg bg-transparent text-sm text-gray-400 hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-600 dark:hover:text-white"
+              onClick={handleCloseCreateGroupModal}
+            >
+              <FaTimes className="h-5 w-5" />
+              <span className="sr-only">Close modal</span>
+            </button>
+            <div className="p-6 text-center">
+              <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-gray-400">
+                Create a New Group
+              </h3>
+              <div className="mb-4">
+                <input
+                  type="text"
+                  className="w-full rounded-md border p-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  placeholder="Group Name"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                />
+              </div>
+
+              <div className="mb-4 text-left">
+                <label className="mb-2 block text-sm font-medium text-gray-900 dark:text-white">
+                  Instructors
+                </label>
+                <ul className="h-28 overflow-y-auto rounded-md border dark:border-gray-600">
+                  {availableInstructors.map((instructor) => (
+                    <li
+                      key={instructor.id}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <label className="inline-flex items-center">
+                        <input
+                          type="checkbox"
+                          className="form-checkbox h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-offset-gray-800"
+                          value={instructor.id}
+                          checked={selectedInstructors.includes(instructor.id)}
+                          onChange={() => handleToggleInstructor(instructor.id)}
+                        />
+                        <span className="ml-2 text-gray-700 dark:text-gray-300">
+                          {instructor.name}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="mb-4 text-left">
+                <label className="mb-2 block text-sm font-medium text-gray-900 dark:text-white">
+                  Students
+                </label>
+                <ul className="h-32 overflow-y-scroll rounded-md border dark:border-gray-600">
+                  {availableStudents.map((student, index) => (
+                    <li
+                      key={`${student.id}-${index}`}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <label className="inline-flex items-center">
+                        <input
+                          type="checkbox"
+                          className="form-checkbox h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-offset-gray-800"
+                          value={student.id}
+                          checked={selectedStudents.includes(student.id)}
+                          onChange={() =>
+                            student?.id && handleToggleStudent(student.id)
+                          }
+                        />
+                        <span className="ml-2 text-gray-700 dark:text-gray-300">
+                          {student.name}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <button
+                onClick={handleCreateNewGroup}
+                className="w-full rounded-md bg-blue-600 py-2 font-medium text-white hover:bg-blue-700"
+              >
+                Create Group
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+
+
+
+
+
+    ------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+    ---------------------------------------------------------------------------------------------------------------------------
+    import { useState, useEffect } from "react";
+import { FaPaperPlane, FaBars, FaTimes } from "react-icons/fa";
+import socketService from "@/socket/socketService";
+
+interface Message {
+  groupId: string;
+  text: string;
+  sender: string;
+  senderId: string;
+  timestamp?: number;
+  image?: string | null;
+}
+
+interface Group {
+  groupId: string;
+  groupName: string;
+  adminId: string;
+  students: string[];
+  messages?: Message[];
+}
+
+const StudentChat = () => {
+  const currentUserId = "student2";
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [image, setImage] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Get the selected group from groups array
+  const selectedGroup =
+    groups.find((group) => group.groupId === selectedGroupId) || null;
+
+  // Initialize socket and load groups
+  useEffect(() => {
+    socketService.connect(currentUserId);
+
+    const loadInitialGroups = () => {
+      setIsLoading(true);
+      setError(null);
+
+      setTimeout(() => {
+        try {
+          const initialGroups = [
+            {
+              groupId: "group1",
+              groupName: "React Learners",
+              adminId: "admin1",
+              students: ["student1", "student2"],
+              messages: [
+                {
+                  groupId: "group1",
+                  text: "Welcome to the group!",
+                  sender: "Admin",
+                  senderId: "admin1",
+                  timestamp: Date.now() - 10000,
+                },
+                {
+                  groupId: "group1",
+                  text: "Thanks!",
+                  sender: "Student1",
+                  senderId: "student1",
+                  timestamp: Date.now() - 5000,
+                },
+              ],
+            },
+            {
+              groupId: "group2",
+              groupName: "Next.js Pros",
+              adminId: "admin1",
+              students: ["student1", "student2"],
+              messages: [
+                {
+                  groupId: "group2",
+                  text: "Any Next.js users here?",
+                  sender: "Admin",
+                  senderId: "admin1",
+                  timestamp: Date.now() - 3000,
+                },
+              ],
+            },
+          ];
+
+          setGroups(initialGroups);
+          // Auto-select first group if available
+          if (initialGroups.length > 0) {
+            setSelectedGroupId(initialGroups[0].groupId);
+          }
+        } catch (err) {
+          setError("Failed to load groups");
+          console.error("Error loading groups:", err);
+        } finally {
+          setIsLoading(false);
+        }
+      }, 500);
+    };
+
+    loadInitialGroups();
+
+    return () => {
+      socketService.disconnect();
+    };
+  }, [currentUserId]);
+
+  // Handle real-time updates
+  useEffect(() => {
+    const handleGroupCreated = (newGroup: Group) => {
+      setGroups((prev) => {
+        const updatedGroups = [
+          ...prev,
+          {
+            ...newGroup,
+            messages: newGroup.messages || [],
+          },
+        ];
+
+        // Auto-select the new group if it's for current user
+        if (newGroup.students.includes(currentUserId)) {
+          setSelectedGroupId(newGroup.groupId);
+        }
+
+        return updatedGroups;
+      });
+    };
+
+    const handleNewMessage = (data: Message) => {
+      setGroups((prev) =>
+        prev.map((group) =>
+          group.groupId === data.groupId
+            ? { ...group, messages: [...(group.messages || []), data] }
+            : group,
+        ),
+      );
+    };
+
+    socketService.on("groupCreated", handleGroupCreated);
+    socketService.on("newMessage", handleNewMessage);
+
+    return () => {
+      socketService.off("groupCreated", handleGroupCreated);
+      socketService.off("newMessage", handleNewMessage);
+    };
+  }, [currentUserId]);
+
+  const sendMessage = () => {
+    if (!selectedGroupId || !newMessage.trim()) return;
+
+    socketService.emit(
+      "sendMessage",
+      {
+        groupId: selectedGroupId,
+        senderId: currentUserId,
+        role: "student",
+        sender: "Student2",
+        text: newMessage.trim(),
+        image: image || null,
+      },
+      (response: { success: boolean; error?: string }) => {
+        if (!response.success) {
+          console.error("Send failed:", response.error);
+        } else {
+          setNewMessage("");
+        }
+      },
+    );
+  };
+
+  // Filter groups that current user is IN
+  const visibleGroups = groups.filter((group) =>
+    group.students.includes(currentUserId),
+  );
+
+  // Format time for messages
+  const formatTime = (timestamp?: number) => {
+    if (!timestamp) return "";
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100">
+      {/* Sidebar */}
+      <div
+        className={`fixed z-20 h-full w-64 border-r border-gray-200 bg-white p-4 shadow-lg transition-transform duration-300 ease-in-out md:static md:z-0 md:w-80 md:translate-x-0 dark:border-gray-700 dark:bg-gray-800 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold">Chat Groups</h2>
+          <button
+            className="text-xl text-gray-500 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <FaTimes />
+          </button>
+        </div>
+
+        <div className="mt-4">
+          {isLoading ? (
+            <div className="flex h-64 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+            </div>
+          ) : error ? (
+            <div className="p-4 text-center text-red-500">{error}</div>
+          ) : visibleGroups.length > 0 ? (
+            <div
+              className="mt-4 space-y-2 overflow-y-auto"
+              style={{ maxHeight: "calc(100vh - 180px)" }}
+            >
+              {visibleGroups.map((group) => (
+                <div
+                  key={group.groupId}
+                  onClick={() => {
+                    setSelectedGroupId(group.groupId);
+                    setSidebarOpen(false);
+                  }}
+                  className={`flex cursor-pointer items-center rounded-lg p-3 transition-colors duration-200 ${
+                    selectedGroupId === group.groupId
+                      ? "bg-blue-100 dark:bg-gray-700"
+                      : "hover:bg-gray-100 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
+                    {group.groupName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="ml-3 flex-1 overflow-hidden">
+                    <p className="truncate font-medium">{group.groupName}</p>
+                    <p className="truncate text-sm text-gray-500 dark:text-gray-400">
+                      {group.messages && group.messages.length > 0
+                        ? `${
+                            group.messages[group.messages.length - 1]
+                              .senderId === currentUserId
+                              ? "You"
+                              : group.messages[group.messages.length - 1].sender
+                          }: ${group.messages[group.messages.length - 1].text}`
+                        : "No messages yet"}
+                    </p>
+                  </div>
+                  {group.messages && group.messages.length > 0 && (
+                    <span className="ml-2 text-xs text-gray-400">
+                      {formatTime(
+                        group.messages[group.messages.length - 1].timestamp,
+                      )}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-64 items-center justify-center">
+              <p className="text-gray-500">You haven't joined any groups yet</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Chat Area */}
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        {/* Chat Header */}
+        <div className="flex items-center border-b border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <button
+            className="mr-3 text-xl text-gray-500 md:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <FaBars />
+          </button>
+          {selectedGroup ? (
+            <>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
+                {selectedGroup.groupName.charAt(0).toUpperCase()}
+              </div>
+              <div className="ml-3">
+                <h2 className="text-lg font-semibold">
+                  {selectedGroup.groupName}
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {selectedGroup.students.length} member
+                  {selectedGroup.students.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="ml-3">
+              <h2 className="text-lg font-semibold">No group selected</h2>
+            </div>
+          )}
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-4 dark:bg-gray-900">
+          {selectedGroup ? (
+            <>
+              <div className="mb-4 flex justify-center">
+                <span className="rounded-full bg-white px-3 py-1 text-sm text-gray-500 shadow dark:bg-gray-800 dark:text-gray-400">
+                  {new Date().toLocaleDateString([], {
+                    weekday: "long",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+              </div>
+              {selectedGroup.messages && selectedGroup.messages.length > 0 ? (
+                <div className="space-y-3">
+                  {selectedGroup.messages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex ${
+                        msg.senderId === currentUserId
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`flex max-w-xs flex-col rounded-xl px-4 py-2 ${
+                          msg.senderId === currentUserId
+                            ? "bg-blue-600 text-white"
+                            : "bg-white text-gray-800 shadow dark:bg-gray-700 dark:text-gray-200"
+                        }`}
+                      >
+                        <p className="text-xs font-semibold">
+                          {msg.senderId === currentUserId ? "You" : msg.sender}
+                        </p>
+                        <p className="py-1">{msg.text}</p>
+                        <span
+                          className={`text-xs ${
+                            msg.senderId === currentUserId
+                              ? "text-blue-100"
+                              : "text-gray-500 dark:text-gray-400"
+                          }`}
+                        >
+                          {formatTime(msg.timestamp)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-gray-500 dark:text-gray-400">
+                      No messages in this group yet
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      Send a message to start the conversation
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <p className="text-gray-500 dark:text-gray-400">
+                  Select a group to start chatting
+                </p>
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="mt-2 rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 md:hidden"
+                >
+                  Browse groups
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Message Input */}
+        <div className="border-t border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex rounded-md shadow-sm">
+            <input
+              type="text"
+              placeholder={
+                selectedGroup
+                  ? "Type your message..."
+                  : "Select a group to chat"
+              }
+              className="flex-1 rounded-l-md border border-gray-300 p-3 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+              disabled={!selectedGroup}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!selectedGroup || !newMessage.trim()}
+              className="rounded-r-md bg-blue-600 px-4 text-white hover:bg-blue-700 disabled:bg-gray-400 dark:bg-blue-700 dark:hover:bg-blue-800 dark:disabled:bg-gray-600"
+            >
+              <FaPaperPlane />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default StudentChat;
