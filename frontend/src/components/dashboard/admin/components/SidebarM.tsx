@@ -2,18 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Sidebar, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import GroupComp from "./GroupComp";
-import ClassComp from "./ClassComp";
+import ClassComp from './ClassComp';
 
 interface SidebarMProps {
   onTabChange: (value: string) => void;
+  activeChatId: number | null;
+  onSelectGroup: (id: number) => void;
+  setClassGroups: React.Dispatch<React.SetStateAction<any[]>>;
+  classGroups: {
+    id: number;
+    name: string;
+    createdAt: Date;
+    image: string;
+    instructor: string;
+    students: string[];
+  }[];
 }
 
-// Dummy components
-const ClassroomComp = () => <ClassComp />;
-const ClassGroupComp = () => <GroupComp />;
-
-const SidebarM: React.FC<SidebarMProps> = ({ onTabChange }) => {
+const SidebarM: React.FC<SidebarMProps> = ({ onTabChange, activeChatId, onSelectGroup, classGroups, setClassGroups }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('classroom');
@@ -22,7 +28,7 @@ const SidebarM: React.FC<SidebarMProps> = ({ onTabChange }) => {
     const savedTab = localStorage.getItem('activeTab') || 'classroom';
     setActiveTab(savedTab);
     onTabChange(savedTab);
-  }, []);
+  }, [onTabChange]);
 
   useEffect(() => {
     const checkIsMobile = () => {
@@ -47,12 +53,11 @@ const SidebarM: React.FC<SidebarMProps> = ({ onTabChange }) => {
   return (
     <div
       className={cn(
-        "md:w-72 w-0 border-r bg-gray-50 dark:bg-gradient-to-br from-gray-900 to-gray-800 dark:border-gray-700 px-2 py-6 flex flex-col ",
+        "md:w-72 w-0 border-r bg-gray-50 dark:bg-gradient-to-br from-gray-900 to-gray-800 dark:border-gray-700 px-2 py-6 flex flex-col",
         "transition-transform duration-300 ease-in-out",
-        isMobile ? (isMobileMenuOpen ? "translate-x-0 w-72" : "-translate-x-full w-0 -ml-2") : "translate-x-0"
+        isMobile ? (isMobileMenuOpen ? "translate-x-0 w-72 whitespace-nowrap" : "-translate-x-full w-0 -ml-2") : "translate-x-0"
       )}
     >
-      {/* Mobile Menu Toggle */}
       {isMobile && (
         <div className="absolute top-0 right-0 z-10">
           <button
@@ -73,7 +78,7 @@ const SidebarM: React.FC<SidebarMProps> = ({ onTabChange }) => {
             >
               Classroom
               <span className="absolute top-0 right-2 bg-red-500 text-white text-xs px-1 rounded-full">
-                3
+              {classGroups.length}
               </span>
             </TabsTrigger>
             <TabsTrigger
@@ -82,16 +87,25 @@ const SidebarM: React.FC<SidebarMProps> = ({ onTabChange }) => {
             >
               Class Groups
               <span className="absolute top-0 right-2 bg-blue-500 text-white text-xs px-1 rounded-full">
-                7
               </span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="classroom">
-            <ClassroomComp />
+            <ClassComp
+              classGroups={classGroups}
+              onSelectGroup={onSelectGroup}
+              activeChatId={activeChatId} // Pass activeChatId prop here
+              setClassGroups={setClassGroups}
+            />
           </TabsContent>
           <TabsContent value="class-groups">
-            <ClassGroupComp />
+            <ClassComp
+              classGroups={classGroups}
+              onSelectGroup={onSelectGroup}
+              activeChatId={activeChatId} // Pass activeChatId prop here too
+              setClassGroups={setClassGroups}
+            />
           </TabsContent>
         </Tabs>
       </div>
