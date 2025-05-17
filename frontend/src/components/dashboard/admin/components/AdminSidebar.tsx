@@ -67,6 +67,11 @@ const menuItems: MenuItem[] = [
     icon: Users,
   },
   {
+    title: "Assignments",
+    url: `${urlPrefix}/assignment-check`,
+    icon: BookOpen,
+  },
+  {
     title: "Settings",
     url: `${urlPrefix}/settings`,
     icon: Settings,

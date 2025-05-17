@@ -1,25 +1,27 @@
-interface ClassGroupsContentProps {
-  classGroups: {
-    id: number;
-    name: string;
-    createdAt: Date;
-    image: string;
-    instructor: string;
-    students: string[];
-  }[];
-}
+// components/ClassGroupsContent.tsx
+'use client';
 
-export const ClassGroupsContent: React.FC<ClassGroupsContentProps> = ({ classGroups }) => {
+type Group = {
+  id: string;
+  name: string;
+  classroomId: string;
+  students: string[];
+};
+
+type Props = {
+  group: Group | null;
+};
+
+const ClassGroupsContent = ({ group }: Props) => {
+  if (!group) return <div>Select a group to view details.</div>;
+
   return (
-    <div>
-      {classGroups.map((group) => (
-        <div key={group.id}>
-          <h3>{group.name}</h3>
-          <p>{group.instructor}</p>
-          <p>{group.students}</p>
-          {/* Render more details */}
-        </div>
-      ))}
+    <div className="p-4 space-y-2">
+      <h2 className="text-xl font-bold">{group.name}</h2>
+      <p><strong>Classroom ID:</strong> {group.classroomId}</p>
+      <p><strong>Students:</strong> {group.students.join(', ')}</p>
     </div>
   );
 };
+
+export default ClassGroupsContent;

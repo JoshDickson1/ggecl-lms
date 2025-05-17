@@ -44,7 +44,7 @@ const menuItems: MenuItem[] = [
     icon: ClipboardPaste,
   },
   {
-    title: "Schedule",
+    title: "Today's date",
     url: `${urlPrefix}/calendar`,
     icon: Calendar,
   },

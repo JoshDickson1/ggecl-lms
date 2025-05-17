@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import SidebarM from '../components/SidebarM';
 import ClassroomContent from '../components/ClassroomContent';
-import { ClassGroupsContent } from '../components/ClassGroupsContent'; // Update based on your export method
+// import { ClassGroupsContent } from '../components/ClassGroupsContent.tsx'; 
 
 const initialGroups = [
   {
@@ -31,6 +31,7 @@ export default function AdminChat() {
     setActiveTab(value as 'classroom' | 'class-groups');
   };
 
+
   return (
     <div className="flex h-[96%]">
       <SidebarM
@@ -47,25 +48,24 @@ export default function AdminChat() {
           </p>
         )}
 
-{activeTab === 'classroom' && activeChatId !== null && (
-  <ClassroomContent
-    group={classGroups.find((group) => group.id === activeChatId) || {
-      id: -1, // Invalid ID to indicate no valid group
-      name: 'Unknown',
-      instructor: 'N/A',
-      students: [],
-      image: '/default-image.jpg',
-      createdAt: new Date(),
-      groupDes: 'No description available',
-    }}
-  />
-)}
-
+        {activeTab === 'classroom' && activeChatId !== null && (
+          <ClassroomContent
+            group={classGroups.find((group) => group.id === activeChatId) || {
+              id: -1, // Invalid ID to indicate no valid group
+              name: 'Unknown',
+              instructor: 'N/A',
+              students: [],
+              image: '/default-image.jpg',
+              createdAt: new Date(),
+              groupDes: 'No description available',
+            }}
+          />
+        )}
 
         {activeTab === 'class-groups' && (
           <>
             <h2 className="text-xl font-semibold mb-4">Class Groups</h2>
-            <ClassGroupsContent classGroups={classGroups} />
+            {/* <ClassGroupsContent classGroups={classGroups} onCreateGroup={handleCreateGroup} /> */}
           </>
         )}
       </div>

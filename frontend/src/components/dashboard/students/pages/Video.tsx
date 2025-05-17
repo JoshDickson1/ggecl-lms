@@ -6,7 +6,6 @@ import {
   FaUsers,
   FaListAlt,
   FaDollarSign,
-  FaAward,
 } from "react-icons/fa";
 import {
   Accordion,
@@ -80,10 +79,10 @@ const VideoPage = () => {
         </Breadcrumb>
         {/* Video Player & Info */}
         <Card className="overflow-hidden">
-          <div className="aspect-video bg-black">
+          <div className="aspect-video bg-black px-2 md:px-2">
             <video
               controls
-              className="h-full w-full object-cover"
+              className="h-80 w-full object-contain"
               src={course.videoUrl}
             />
           </div>
@@ -114,14 +113,14 @@ const VideoPage = () => {
         </Card>
 
         {/* Tabs Section */}
-        <Card>
+        <Card className="w-full">
           <Tabs defaultValue="overview" onValueChange={setActiveTab}>
             <CardHeader>
               <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="curriculum">Curriculum</TabsTrigger>
-                <TabsTrigger value="reviews">Reviews</TabsTrigger>
-                <TabsTrigger value="stats">Stats</TabsTrigger>
+                <TabsTrigger value="overview" className="dark:text-gray-300">Overview</TabsTrigger>
+                <TabsTrigger value="curriculum" className="dark:text-gray-300">Curriculum</TabsTrigger>
+                <TabsTrigger value="reviews" className="dark:text-gray-300">Reviews</TabsTrigger>
+                <TabsTrigger value="stats" className="dark:text-gray-300">Stats</TabsTrigger>
               </TabsList>
             </CardHeader>
             <CardContent>
@@ -192,16 +191,16 @@ const VideoPage = () => {
                       <FaDollarSign className="h-6 w-6 text-green-500" />
                       <div>
                         <p className="text-sm text-gray-500">Price</p>
-                        <p className="text-lg font-semibold">
+                        <p className="text-md font-semibold">
                           ${course.price.toFixed(2)}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3 rounded-lg border p-4">
-                      <FaAward className="h-6 w-6 text-purple-500" />
+                      {/* <FaAward className="h-6 w-6 text-purple-500" /> */}
                       <div>
                         <p className="text-sm text-gray-500">Certification</p>
-                        <p className="text-lg font-semibold">
+                        <p className="text-sm font-semibold">
                           {course.certification}
                         </p>
                       </div>

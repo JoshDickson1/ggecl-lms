@@ -8,6 +8,7 @@ import AuthPageLoading from "@/components/auth/_components/AuthPageLoading.tsx";
 // == Landing Page Components (Eagerly Loaded) ==
 import Layout from "@/components/landing/Layout";
 import Home from "@/components/landing/pages/Home";
+import AssignmentAd from "./components/dashboard/admin/pages/AssignmentAd";
 
 const Cart = lazy(() => import("@/components/landing/pages/Cart"));
 const Login = lazy(() => import("@/components/auth/pages/Login"));
@@ -500,6 +501,14 @@ function App() {
             element={
               <Suspense fallback={<AuthPageLoading />}>
                 <AdminSettings />
+              </Suspense>
+            }
+          />
+          <Route
+            path="assignment-check"
+            element={
+              <Suspense fallback={<AuthPageLoading />}>
+                <AssignmentAd />
               </Suspense>
             }
           />

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import FileUploadModal from "../_components/FileUploadModal";
+import FileUploadModalAd from "../components/FileUploadModalAd";
 import {
   Select,
   SelectTrigger,
@@ -11,87 +11,50 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useState, useCallback } from "react";
-import { Assignment } from "@/utils/trpc";
-import { toast } from "sonner";
 
-import { useInstructor } from "@/hooks/useInstructor";
-import { useCreateAssignment } from "../hooks/useCreateAssignment";
-import { useGradeAssignment } from "../hooks/useGradeAssignment";
-import MarkAssignmentModal, {
-  Grade,
-} from "@/components/ui/MarkAssignmentModal";
-import GivenAssignment from "../_components/GivenAssignment";
-import SubmittedAssignment from "../_components/SubmittedAssignment";
-import AdminOwnAssignment from "../_components/AdminOwnAssignment";
+import MarkAssignmentModal, { Grade } from "@/components/ui/MarkAssignmentModal";
+import GivenAssignment from "../components/GivenAssignment";
+import SubmittedAssignment from "../components/SubmittedAssignment";
+import InstructorAssignment from "../components/InstructorAssignment";
 
-export default function AssignmentDashboard() {
-  const { instructor } = useInstructor();
-  const { createAssignment, isCreatingAssignment } = useCreateAssignment();
-  const { isGradingStudent, gradeStudent } = useGradeAssignment();
+export default function AssignmentAd() {
+  // Sample data
+  const courses = [
+    { _id: "course1", title: "Mathematics" },
+    { _id: "course2", title: "Physics" },
+  ];
 
-  const courses = instructor.courses as {
-    _id: string;
-    title: string;
-  }[];
-
-  // Modal state
-  const [selected, setSelected] = useState<Assignment | null>(null);
-  const closeModal = useCallback(() => setSelected(null), []);
-  const openModal = useCallback(
-    (assignment: Assignment) => setSelected(assignment),
-    [],
-  );
-
-  const handleGrade = (id: string, grade: Grade, remark: string) => {
-    gradeStudent({
-      assignmentId: id,
-      grade: grade!,
-      ...(remark && { remark }),
-    });
-    toast.success("Assignment graded successfully");
-    closeModal();
-  };
-
-  // New assignment state
   const [newTitle, setNewTitle] = useState<string>("");
-  const [newCourse, setNewCourse] = useState<string>(
-    instructor.courses[0]?._id.toString() || "",
-  );
+  const [newCourse, setNewCourse] = useState<string>(courses[0]?._id || "");
   const [newDueDate, setNewDueDate] = useState<string>("");
   const [newQuestion, setNewQuestion] = useState<string>("");
 
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
 
+  const [selected, setSelected] = useState<any>(null);
+  const closeModal = useCallback(() => setSelected(null), []);
+//   const openModal = useCallback((assignment: any) => setSelected(assignment), []);
 
   const handleCreate = () => {
-    if (!newTitle || !newCourse || !newDueDate || !newQuestion) {
-      toast.info("All fields are required");
-      return;
-    }
+    console.log("Assignment Data:", {
+      title: newTitle,
+      course: newCourse,
+      dueDate: newDueDate,
+      question: newQuestion,
+      uploadedFiles,
+    });
+    alert("Assignment created (mock)");
+    setNewTitle("");
+    setNewDueDate("");
+    setNewQuestion("");
+    setUploadedFiles([]);
+  };
 
-    // TODO: Upload files to backend or cloud storage here before creating assignment.
-    // For now, just log files and send the rest of the data.
-    console.log("Files to upload:", uploadedFiles);
-
-    createAssignment(
-      {
-        title: newTitle,
-        course: newCourse,
-        dueDate: new Date(newDueDate),
-        question: newQuestion,
-        // optionally send file info or URLs here after upload
-      },
-      {
-        onSuccess: () => {
-          toast.success("Assignment created");
-          setNewTitle("");
-          setNewDueDate("");
-          setNewQuestion("");
-          setUploadedFiles([]);
-        },
-      },
-    );
+  const handleGrade = (id: string, grade: Grade, remark: string) => {
+    console.log("Grading assignment:", { id, grade, remark });
+    alert("Assignment graded (mock)");
+    closeModal();
   };
 
   return (
@@ -105,8 +68,8 @@ export default function AssignmentDashboard() {
 
       <main className="space-y-20 py-7">
         <GivenAssignment />
-        <AdminOwnAssignment />
-        <SubmittedAssignment onOpenModal={openModal} />
+        <InstructorAssignment />
+        <SubmittedAssignment />
       </main>
 
       {/* Create Assignment */}
@@ -130,7 +93,7 @@ export default function AssignmentDashboard() {
               </SelectTrigger>
               <SelectContent>
                 {courses.map((c) => (
-                  <SelectItem key={c._id.toString()} value={c._id.toString()}>
+                  <SelectItem key={c._id} value={c._id}>
                     {c.title}
                   </SelectItem>
                 ))}
@@ -172,19 +135,14 @@ export default function AssignmentDashboard() {
             )}
           </div>
         </div>
-        <FileUploadModal
+        <FileUploadModalAd
           isOpen={showUploadModal}
           onClose={() => setShowUploadModal(false)}
           onFilesSelected={(files) => setUploadedFiles(files)}
         />
 
-        <Button
-          className="mt-4"
-          variant="secondary"
-          onClick={handleCreate}
-          disabled={isCreatingAssignment}
-        >
-          {isCreatingAssignment ? "Creating..." : "Create Assignment"}
+        <Button className="mt-4" variant="secondary" onClick={handleCreate}>
+          Create Assignment
         </Button>
       </div>
 
@@ -195,7 +153,7 @@ export default function AssignmentDashboard() {
           isOpen={Boolean(selected)}
           onClose={closeModal}
           onGradeSubmitted={handleGrade}
-          isGrading={isGradingStudent}
+          isGrading={false}
         />
       )}
     </div>
