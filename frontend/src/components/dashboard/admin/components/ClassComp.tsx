@@ -36,6 +36,7 @@ type ClassGroup = {
   image: string;
   instructor: string;
   students: string[];
+  description: string;
 };
 
 const instructors = ['Alice', 'Bob', 'Charlie'];
@@ -59,7 +60,7 @@ export default function ClassComp({
   const [editGroupId, setEditGroupId] = useState<number | null>(null);
 
   const [groupName, setGroupName] = useState('');
-  const [groupDes, setGroupDes] = useState('');
+  const [description, setDescription] = useState('');
   const [groupImage, setGroupImage] = useState('');
   const [selectedInstructor, setSelectedInstructor] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
@@ -86,6 +87,7 @@ export default function ClassComp({
       image: groupImage || '/default-group.png',
       instructor: selectedInstructor,
       students: selectedStudents,
+      description: description,
     };
 
     if (editGroupId) {
@@ -149,8 +151,8 @@ export default function ClassComp({
               <Label htmlFor="group-des">Group Description</Label>
               <Input
                 id="group-des"
-                value={groupDes}
-                onChange={(e) => setGroupDes(e.target.value)}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter class description"
               />
             </div>

@@ -13,7 +13,7 @@ type ClassroomContentProps = {
     students: string[];
     image: string;
     createdAt: Date;
-    groupDes?: string;
+    description: string;
   };
 };
 
@@ -27,9 +27,13 @@ const ClassroomContent = ({ group }: ClassroomContentProps) => {
     name: group.name,
     instructor: group.instructor,
     students: group.students,
-    otherDetails: group.groupDes || "No description available.",
+    descriptioncription: group.description || "No description available.",  // <-- this is required
     groupImage: group.image,
+    // You can keep or remove description or otherDetails if not required:
+    description: group.description,
+    otherDetails: group.description || "No description available.",
   };
+  
 
   const handleSendMessage = () => {
     if (message.trim() === "") return;

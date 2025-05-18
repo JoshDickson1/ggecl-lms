@@ -17,8 +17,9 @@ type GroupInfo = {
   groupImage: string;
   instructor: string;
   students: string[];
-  otherDetails: string;
+  description: string;
 };
+
 
 type Props = {
   message: string;
@@ -181,8 +182,9 @@ export default function ChatBottomSection({
               </ul>
             </div>
             <div>
-              <p className="font-medium">Other Details:</p>
-              <p>{groupChatInfo.otherDetails}</p>
+            <p className="font-medium">Group Description:</p>
+            <p>{groupChatInfo.description}</p>
+
             </div>
           </div>
 

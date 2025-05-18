@@ -11,6 +11,7 @@ const initialGroups = [
     image: 'https://i.pinimg.com/736x/32/60/dc/3260dc3b3034bd82b1caef506ae0b8e0.jpg',
     instructor: 'Alice',
     students: ['John', 'Jane'],
+    description: "",
   },
   {
     id: 2,
@@ -19,6 +20,7 @@ const initialGroups = [
     image: 'https://i.pinimg.com/736x/32/60/dc/3260dc3b3034bd82b1caef506ae0b8e0.jpg',
     instructor: 'Bob',
     students: ['Jim'],
+    description: "",
   },
 ];
 
@@ -50,15 +52,15 @@ export default function AdminChat() {
 
         {activeTab === 'classroom' && activeChatId !== null && (
           <ClassroomContent
-            group={classGroups.find((group) => group.id === activeChatId) || {
-              id: -1, // Invalid ID to indicate no valid group
-              name: 'Unknown',
-              instructor: 'N/A',
-              students: [],
-              image: '/default-image.jpg',
-              createdAt: new Date(),
-              groupDes: 'No description available',
-            }}
+          group={classGroups.find((group) => group.id === activeChatId) || {
+            id: -1,
+            name: 'Unknown',
+            instructor: 'N/A',
+            students: [],
+            image: '/default-image.jpg',
+            createdAt: new Date(),
+            description: 'No description available',
+          }}        
           />
         )}
 

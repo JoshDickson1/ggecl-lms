@@ -12,6 +12,7 @@ const initialGroups = [
     image: 'https://i.pinimg.com/736x/32/60/dc/3260dc3b3034bd82b1caef506ae0b8e0.jpg',
     instructor: 'Alice',
     students: ['John', 'Jane'],
+    description: '',  // <--- add this
   },
   {
     id: 2,
@@ -20,8 +21,10 @@ const initialGroups = [
     image: 'https://i.pinimg.com/736x/32/60/dc/3260dc3b3034bd82b1caef506ae0b8e0.jpg',
     instructor: 'Bob',
     students: ['Jim'],
+    description: 'This is Class 2 description.',  // <--- add this
   },
 ];
+
 
 export default function ClassroomWrapper() {
   const [classGroups, setClassGroups] = useState(initialGroups);
