@@ -3,7 +3,6 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { Button } from "@/components/ui/button";
 
 const IsCalendar = () => {
   const [events] = useState([
@@ -23,7 +22,6 @@ const IsCalendar = () => {
             Manage and schedule events.
           </p>
         </div>{" "}
-        <Button variant="outline">+ Add Event</Button>
       </div>
 
       <FullCalendar

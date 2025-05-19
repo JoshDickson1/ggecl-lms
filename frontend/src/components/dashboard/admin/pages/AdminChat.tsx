@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import SidebarM from '../components/SidebarM';
 import ClassroomContent from '../components/ClassroomContent';
+// import ClassGroupsContent from '../components/ClassGroupsContent';
+// import GroupComp from '../components/GroupComp';
 // import { ClassGroupsContent } from '../components/ClassGroupsContent.tsx'; 
 
 const initialGroups = [
@@ -67,7 +69,7 @@ export default function AdminChat() {
         {activeTab === 'class-groups' && (
           <>
             <h2 className="text-xl font-semibold mb-4">Class Groups</h2>
-            {/* <ClassGroupsContent classGroups={classGroups} onCreateGroup={handleCreateGroup} /> */}
+            {/* <GroupComp classGroups={classGroups} onCreateGroup={handleCreateGroup} /> */}
           </>
         )}
       </div>

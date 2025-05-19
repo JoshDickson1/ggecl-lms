@@ -22,7 +22,8 @@ import {
     Users,
     BarChart,
     BookOpen,
-    Video
+    Video,
+    BookCheck
   } from "lucide-react";
   import logoImg from "@/assets/images/LOGO.png";
   
@@ -51,7 +52,12 @@ import {
       icon: ClipboardPaste,
     },
     {
-      title: "Events",
+      title: "Student Grades",
+      url: `${urlPrefix}/student-grades`,
+      icon: BookCheck,
+    },
+    {
+      title: "Today's date",
       url: `${urlPrefix}/calendar`,
       icon: Calendar,
     },

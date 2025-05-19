@@ -13,7 +13,7 @@ const meetingDetailsSchema = z.object({
   start_time: z.string().min(1, "Start time is required"),
   type: z.number().min(1, "Type is required"),
   duration: z.number().min(1, "Duration is required"),
-  timezone: z.string().min(1, "Timezone is required"),
+  gurl: z.string().min(1, "Google meet url is required"),
   agenda: z.string().optional(),
 });
 
@@ -27,7 +27,7 @@ const VideoCall: React.FC = () => {
       start_time: "",
       type: 1,
       duration: 30,
-      timezone: "",
+      gurl: "",
       agenda: "",
     },
   });
@@ -98,13 +98,13 @@ const VideoCall: React.FC = () => {
             )}
           />
           <FormField
-            name="timezone"
+            name="gurl"
             control={form.control}
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Timezone</FormLabel>
+                <FormLabel>Google meet link</FormLabel>
                 <FormControl>
-                  <Input placeholder="Enter timezone" {...field} />
+                  <Input placeholder="Enter Google meet link" type="url" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

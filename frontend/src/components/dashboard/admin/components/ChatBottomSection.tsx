@@ -175,7 +175,7 @@ export default function ChatBottomSection({
             </div>
             <div>
               <p className="font-medium">Students:</p>
-              <ul className="list-disc pl-4">
+              <ul className="list-disc pl-4 max-h-15 overflow-y-auto">
                 {groupChatInfo.students.map((student, index) => (
                   <li key={index}>{student}</li>
                 ))}

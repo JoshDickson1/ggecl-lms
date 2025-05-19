@@ -25,6 +25,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { CourseMaterials } from "../_components/CourseMaterials";
 
 const VideoPage = () => {
   const { courseId } = useParams<{ courseId: string }>();
@@ -117,10 +118,18 @@ const VideoPage = () => {
           <Tabs defaultValue="overview" onValueChange={setActiveTab}>
             <CardHeader>
               <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="overview" className="dark:text-gray-300">Overview</TabsTrigger>
-                <TabsTrigger value="curriculum" className="dark:text-gray-300">Curriculum</TabsTrigger>
-                <TabsTrigger value="reviews" className="dark:text-gray-300">Reviews</TabsTrigger>
-                <TabsTrigger value="stats" className="dark:text-gray-300">Stats</TabsTrigger>
+                <TabsTrigger value="overview" className="dark:text-gray-300">
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="curriculum" className="dark:text-gray-300">
+                  Curriculum
+                </TabsTrigger>
+                <TabsTrigger value="reviews" className="dark:text-gray-300">
+                  Reviews
+                </TabsTrigger>
+                <TabsTrigger value="stats" className="dark:text-gray-300">
+                  Stats
+                </TabsTrigger>
               </TabsList>
             </CardHeader>
             <CardContent>
@@ -211,6 +220,56 @@ const VideoPage = () => {
             </CardContent>
           </Tabs>
         </Card>
+        <CourseMaterials
+  sections={[
+    {
+      title: "Week 1 Materials",
+      materials: [
+        {
+          id: "1",
+          name: "Intro.pdf",
+          type: "pdf",
+          url: "/materials/intro.pdf",
+          uploadedAt: "2025-05-19T08:30:00Z",
+        },
+        {
+          id: "2",
+          name: "design.png",
+          type: "image",
+          url: "https://i.pinimg.com/736x/57/5a/4d/575a4d10aca9c90cc706527c10f00cc8.jpg",
+          uploadedAt: "2025-05-18T15:12:00Z",
+        },
+      ],
+    },
+    {
+      title: "Week 2 Materials",
+      materials: [
+        {
+          id: "3",
+          name: "lecture.mp4",
+          type: "video",
+          url: "https://res.cloudinary.com/dtyrkuxep/video/upload/v1747484174/courses/68220b753b2c2a4d6891bc02/courses/68220b753b2c2a4d6891bc02/v-da906cec-f461-44e1-8270-22c301056f14.mp4",
+          uploadedAt: "2025-05-17T20:45:00Z",
+        },
+        {
+          id: "3",
+          name: "lecture.mp4",
+          type: "doc",
+          url: "/materials/lecture.mp4",
+          uploadedAt: "2025-05-17T20:45:00Z",
+        },
+        {
+          id: "3",
+          name: "lecture.mp4",
+          type: "image",
+          url: "/materials/lecture.mp4",
+          uploadedAt: "2025-05-17T20:45:00Z",
+        },
+      ],
+    },
+  ]}
+/>
+
       </div>
 
       <aside className="sticky top-20 space-y-4">
@@ -228,6 +287,7 @@ const VideoPage = () => {
           </Accordion>
         </Card>
       </aside>
+      
     </div>
   );
 };

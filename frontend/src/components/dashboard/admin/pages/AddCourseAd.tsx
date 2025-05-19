@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import CourseMaterialsCard from "../components/CourseMaterialsCard";
 import {
   Card,
   CardContent,
@@ -573,7 +574,7 @@ const AddCourseAd = () => {
               </Card>
             </div>
           </div>
-
+          <CourseMaterialsCard />
           {/* --- Submit Button --- */}
           <div className="flex justify-end pt-4 font-medium">
             <Button type="submit" disabled={isSubmitting} size="lg">

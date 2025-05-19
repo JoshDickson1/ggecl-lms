@@ -19,8 +19,10 @@ import {
   FileText,
   BarChart,
   BookOpen,
+  Award,
 } from "lucide-react";
 import logoImg from "@/assets/images/LOGO.png";
+import { FaMarkdown } from "react-icons/fa";
 
 interface MenuItem {
   title: string;
@@ -52,6 +54,16 @@ const menuItems: MenuItem[] = [
     icon: MessagesSquare,
   },
   {
+    title: "Assignments",
+    url: `${urlPrefix}/assignment-check`,
+    icon: BookOpen,
+  },
+  {
+    title: "Student Grades",
+    url: `${urlPrefix}/student-grades`,
+    icon: Award,
+  },
+  {
     title: "Student Management",
     url: `${urlPrefix}/students`,
     icon: Users,
@@ -67,9 +79,9 @@ const menuItems: MenuItem[] = [
     icon: Users,
   },
   {
-    title: "Assignments",
-    url: `${urlPrefix}/assignment-check`,
-    icon: BookOpen,
+    title: "Audit log",
+    url: `${urlPrefix}/audit-log`,
+    icon: FaMarkdown,
   },
   {
     title: "Settings",

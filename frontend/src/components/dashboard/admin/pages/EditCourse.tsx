@@ -41,6 +41,7 @@ import { useUploadToCloud } from "@/hooks/useUploadToCloud";
 import { useEditCourse } from "../hooks/useEditCourse";
 import { useParams } from "react-router";
 import { useCoursesById } from "@/hooks/useCourseById";
+import CourseMaterialsCard from "../components/CourseMaterialsCard";
 
 // --- Zod Schema Definition ---
 const formSchema = z.object({
@@ -484,7 +485,7 @@ const EditCourseForm = () => {
               </Card>
             </div>
           </div>
-
+          <CourseMaterialsCard />
           {/* --- Submit Button --- */}
           <div className="flex justify-end pt-4 font-medium">
             <Button type="submit" disabled={isSubmitting} size="lg">
