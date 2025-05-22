@@ -63,13 +63,34 @@ const ClassroomContent = ({ group }: ClassroomContentProps) => {
 
       {/* Input Section */}
       <ChatBottomSection
-        message={message}
-        setMessage={setMessage}
-        handleSendMessage={handleSendMessage}
-        groupChatInfo={groupChatInfo}
-        showChatInfo={showChatInfo}
-        setShowChatInfo={setShowChatInfo}
-      />
+  message={message}
+  setMessage={setMessage}
+  handleSendMessage={handleSendMessage}
+  groupChatInfo={groupChatInfo}
+  showChatInfo={showChatInfo}
+  setShowChatInfo={setShowChatInfo}
+  onSendFileMessage={(file, type) => {
+    console.log("Send file:", file.name, "Type:", type);
+    // Implement your file handling logic here
+  }}
+  onSendTextMessage={(text) => {
+    console.log("Send text:", text);
+    // Optionally reuse handleSendMessage or implement logic here
+  }}
+  onSendImageMessage={(file) => {
+    console.log("Send image:", file.name);
+  }}
+  onSendVideoMessage={(file) => {
+    console.log("Send video:", file.name);
+  }}
+  onSendPdfMessage={(file) => {
+    console.log("Send PDF:", file.name);
+  }}
+  onSendMsWordMessage={(file) => {
+    console.log("Send Word Doc:", file.name);
+  }}
+/>
+
     </div>
   );
 };

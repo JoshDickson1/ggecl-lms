@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import SidebarM from '../components/SidebarM';
 import ClassroomContent from '../components/ClassroomContent';
-// import ClassGroupsContent from '../components/ClassGroupsContent';
-// import GroupComp from '../components/GroupComp';
-// import { ClassGroupsContent } from '../components/ClassGroupsContent.tsx'; 
 
 const initialGroups = [
   {
@@ -13,7 +10,8 @@ const initialGroups = [
     image: 'https://i.pinimg.com/736x/32/60/dc/3260dc3b3034bd82b1caef506ae0b8e0.jpg',
     instructor: 'Alice',
     students: ['John', 'Jane'],
-    description: "",
+    description: '',
+    classroomId: 1, // ✅ Add this
   },
   {
     id: 2,
@@ -22,9 +20,11 @@ const initialGroups = [
     image: 'https://i.pinimg.com/736x/32/60/dc/3260dc3b3034bd82b1caef506ae0b8e0.jpg',
     instructor: 'Bob',
     students: ['Jim'],
-    description: "",
+    description: '',
+    classroomId: 2, // ✅ Add this
   },
 ];
+// import { Group } from '@/types/types';
 
 export default function AdminChat() {
   const [activeTab, setActiveTab] = useState<'classroom' | 'class-groups'>('classroom');

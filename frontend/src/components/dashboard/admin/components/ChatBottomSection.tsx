@@ -1,4 +1,5 @@
-// components/ChatBottomSection.tsx
+// components/ChatBottomSection.tsx .
+import { Message } from "@/types/types"; // adjust path based on your structure
 
 import { useState, useEffect } from "react";
 import {
@@ -20,7 +21,6 @@ type GroupInfo = {
   description: string;
 };
 
-
 type Props = {
   message: string;
   setMessage: (msg: string) => void;
@@ -28,6 +28,12 @@ type Props = {
   groupChatInfo: GroupInfo;
   showChatInfo: boolean;
   setShowChatInfo: (value: boolean) => void;
+  onSendFileMessage: (file: File, type: Message["type"]) => void;
+  onSendTextMessage: (text: string) => void;
+  onSendImageMessage: (file: File) => void;
+  onSendVideoMessage: (file: File) => void;
+  onSendPdfMessage: (file: File) => void;
+  onSendMsWordMessage: (file: File) => void;
 };
 
 export default function ChatBottomSection({
@@ -37,9 +43,13 @@ export default function ChatBottomSection({
   groupChatInfo,
   showChatInfo,
   setShowChatInfo,
+  onSendFileMessage,
 }: Props) {
+
   const [showFileOptions, setShowFileOptions] = useState(false);
-  const [activeFileType, setActiveFileType] = useState<"pdf" | "image" | "video" | "msword" | null>(null);
+  const [activeFileType, setActiveFileType] = useState<
+    "pdf" | "image" | "video" | "msword" | null
+  >(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Reset when modal closes
@@ -53,32 +63,38 @@ export default function ChatBottomSection({
   const FileUploadInput = ({ type }: { type: string }) => {
     return (
       <div className="space-y-2">
-        <label className="block text-sm font-medium">Upload {type.toUpperCase()} file</label>
+        <label className="block text-sm font-medium">
+          Upload {type.toUpperCase()} file
+        </label>
         <input
           type="file"
           accept={
             type === "pdf"
               ? "application/pdf"
               : type === "image"
-              ? "image/*"
-              : type === "video"
-              ? "video/*"
-              : type === "msword"
-              ? ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              : undefined
+                ? "image/*"
+                : type === "video"
+                  ? "video/*"
+                  : type === "msword"
+                    ? ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    : undefined
           }
           onChange={(e) => {
             if (e.target.files && e.target.files[0]) {
               setSelectedFile(e.target.files[0]);
             }
           }}
-          className="w-full border p-2 rounded"
+          className="w-full rounded border p-2"
         />
 
         {selectedFile && (
-          <div className="text-sm text-muted-foreground">
-            <p><strong>Selected:</strong> {selectedFile.name}</p>
-            <p><strong>Size:</strong> {(selectedFile.size / 1024).toFixed(2)} KB</p>
+          <div className="text-muted-foreground text-sm">
+            <p>
+              <strong>Selected:</strong> {selectedFile.name}
+            </p>
+            <p>
+              <strong>Size:</strong> {(selectedFile.size / 1024).toFixed(2)} KB
+            </p>
           </div>
         )}
       </div>
@@ -88,7 +104,11 @@ export default function ChatBottomSection({
   return (
     <div className="-mt-20 flex flex-col space-y-2">
       {/* File Upload Button */}
-      <Button onClick={() => setShowFileOptions(true)} variant="outline" className="w-max">
+      <Button
+        onClick={() => setShowFileOptions(true)}
+        variant="outline"
+        className="w-max"
+      >
         <Paperclip className="mr-2 h-4 w-4" />
         Attach Files
       </Button>
@@ -97,7 +117,9 @@ export default function ChatBottomSection({
       <Dialog open={showFileOptions} onOpenChange={setShowFileOptions}>
         <DialogContent className="w-[90vw] p-6 sm:w-[500px]">
           <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Attach a File</DialogTitle>
+            <DialogTitle className="text-lg font-semibold">
+              Attach a File
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -127,7 +149,9 @@ export default function ChatBottomSection({
             <Button
               disabled={!selectedFile}
               onClick={() => {
-                // Handle upload here if needed
+                if (selectedFile && activeFileType) {
+                  onSendFileMessage(selectedFile, activeFileType);
+                }
                 setShowFileOptions(false);
               }}
             >
@@ -139,12 +163,19 @@ export default function ChatBottomSection({
 
       {/* Message Input */}
       <div className="flex items-center gap-2">
-        <Input
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1"
-        />
+      <Input
+  value={message}
+  onChange={(e) => setMessage(e.target.value)}
+  onKeyDown={(e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  }}
+  placeholder="Type a message..."
+  className="flex-1"
+/>
+
         <Button onClick={handleSendMessage}>
           <Send className="h-4 w-4" />
         </Button>
@@ -154,7 +185,9 @@ export default function ChatBottomSection({
       <Dialog open={showChatInfo} onOpenChange={setShowChatInfo}>
         <DialogContent className="w-[90vw] p-6 sm:w-[500px]">
           <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Active Chat Info</DialogTitle>
+            <DialogTitle className="text-lg font-semibold">
+              Active Chat Info
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -175,16 +208,15 @@ export default function ChatBottomSection({
             </div>
             <div>
               <p className="font-medium">Students:</p>
-              <ul className="list-disc pl-4 max-h-15 overflow-y-auto">
+              <ul className="max-h-15 list-disc overflow-y-auto pl-4">
                 {groupChatInfo.students.map((student, index) => (
                   <li key={index}>{student}</li>
                 ))}
               </ul>
             </div>
             <div>
-            <p className="font-medium">Group Description:</p>
-            <p>{groupChatInfo.description}</p>
-
+              <p className="font-medium">Group Description:</p>
+              <p>{groupChatInfo.description}</p>
             </div>
           </div>
 

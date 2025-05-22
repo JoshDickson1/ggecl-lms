@@ -126,7 +126,7 @@ export default function ClassComp({
         }}
       >
         <DialogTrigger asChild>
-          <Button className="bg-blue-500 hover:bg-blue-700 text-white w-full justify-between">
+          <Button className="w-full justify-between">
             <span>{isEdit ? 'Edit Class' : 'Create Class'}</span>
             <Plus className="h-4 w-4" />
           </Button>

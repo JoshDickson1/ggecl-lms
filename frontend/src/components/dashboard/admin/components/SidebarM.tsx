@@ -17,9 +17,9 @@ interface SidebarMProps {
     image: string;
     instructor: string;
     students: string[];
-    description: string; // ✅ add this
+    description: string;
+    classroomId?: number;
   }[];
-  
 }
 
 const SidebarM: React.FC<SidebarMProps> = ({
@@ -122,7 +122,10 @@ const SidebarM: React.FC<SidebarMProps> = ({
 
           <TabsContent value="class-groups">
             <GroupComp
-              classGroups={classGroups}
+              classGroups={classGroups.map((group) => ({
+                ...group,
+                classroomId: group.classroomId?.toString() || "", // ✅ Convert to string
+              }))}
               setClassGroups={setClassGroups}
             />
           </TabsContent>
