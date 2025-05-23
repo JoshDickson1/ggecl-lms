@@ -1,6 +1,8 @@
 import { Server as IOServer, Socket } from "socket.io";
 import { Server as HttpServer } from "http";
 import { Group, Message } from "../models/messageSchema.js";
+import { ClassroomModel } from "../models/classroomModel.js";
+import { Types } from "mongoose";
 
 interface GroupData {
   admin: string;
@@ -50,6 +52,93 @@ export class SocketService {
       this.handleSendMessage(socket);
       this.handleReceiveMessage(socket);
       this.handleDisconnect(socket);
+
+      // NEW: Classroom discussions
+      // ====================
+      this.handleJoinClassroomGroup(socket);
+      this.handleClassroomMessage(socket);
+      this.handleTypingIndicator(socket);
+    });
+  }
+
+  //classroom discussions
+  private handleJoinClassroomGroup(socket: Socket) {
+    socket.on(
+      "joinClassroomGroup",
+      async ({ classroomId, groupName, userId, role }) => {
+        try {
+          const classroom = await ClassroomModel.findOne({
+            _id: new Types.ObjectId(classroomId),
+            "groups.name": groupName,
+            $or: [
+              { "groups.students": new Types.ObjectId(userId) }, // Student in group
+              { instructors: new Types.ObjectId(userId) }, // Instructor in classroom
+            ],
+          });
+
+          if (!classroom) {
+            socket.emit("classroomError", "Not authorized to join this group");
+            return;
+          }
+
+          const roomId = `classroom-${classroomId}-${groupName}`;
+          socket.join(roomId);
+          console.log(
+            `🏫 ${role} ${userId} joined classroom group ${groupName}`
+          );
+        } catch {
+          socket.emit("classroomError", "Failed to join group");
+        }
+      }
+    );
+  }
+
+  private handleClassroomMessage(socket: Socket) {
+    socket.on(
+      "sendClassroomMessage",
+      async ({ classroomId, groupName, senderId, role, text, files }) => {
+        try {
+          // 1. Verify user is in the classroom group
+          const classroom = await ClassroomModel.findOne({
+            _id: new Types.ObjectId(classroomId),
+            "groups.name": groupName,
+            $or: [
+              { "groups.students": new Types.ObjectId(senderId) },
+              { instructors: new Types.ObjectId(senderId) },
+            ],
+          });
+
+          if (!classroom) {
+            socket.emit("classroomError", "Not authorized");
+            return;
+          }
+
+          // 2. Save to database
+          const newMessage = new Message({
+            classroomId: new Types.ObjectId(classroomId),
+            groupName,
+            senderId,
+            sender: role === "instructor" ? "Instructor" : "Student",
+            role,
+            text,
+            files, // Array of { url, name, type }
+          });
+          await newMessage.save();
+
+          // 3. Broadcast to classroom group
+          const roomId = `classroom-${classroomId}-${groupName}`;
+          this.io.to(roomId).emit("newClassroomMessage", newMessage);
+        } catch {
+          socket.emit("classroomError", "Failed to send message");
+        }
+      }
+    );
+  }
+
+  private handleTypingIndicator(socket: Socket) {
+    socket.on("typingInClassroom", ({ classroomId, groupName, senderName }) => {
+      const roomId = `classroom-${classroomId}-${groupName}`;
+      socket.to(roomId).emit("classroomTyping", { senderName });
     });
   }
 

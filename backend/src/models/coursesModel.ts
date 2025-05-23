@@ -1,6 +1,18 @@
 import { Schema, model, Types } from "mongoose";
 import { type Review, ReviewSchema } from "./reviewSchema.js";
 
+export interface ICourseMaterial {
+  title: string;
+  description: string;
+  url: string;
+  publicId: string;
+  fileType: string;
+  fileName: string;
+  size: number;
+  uploadedBy: Types.ObjectId;
+  uploadedAt: Date;
+}
+
 export interface ICourse {
   _id: Types.ObjectId;
   title: string;
@@ -10,6 +22,7 @@ export interface ICourse {
   videoUrl: string;
   certification: string;
   syllabus: string[];
+  materials: ICourseMaterial[]; // Add materials array
   reviews: Review[];
   totalRating: number;
   totalStar: number;
@@ -20,6 +33,22 @@ export interface ICourse {
   img: string;
   badge?: string;
 }
+
+export const CourseMaterialSchema = new Schema<ICourseMaterial>({
+  title: { type: String, required: true },
+  description: { type: String, default: "" },
+  url: { type: String, required: true },
+  publicId: { type: String, required: true },
+  fileType: { type: String, required: true },
+  fileName: { type: String, required: true },
+  size: { type: Number, required: true },
+  uploadedBy: {
+    type: Schema.Types.ObjectId,
+    ref: "instructor",
+    required: true,
+  },
+  uploadedAt: { type: Date, default: Date.now },
+});
 
 export const CourseSchema = new Schema<ICourse>({
   title: { type: String, required: true, unique: true },
@@ -37,8 +66,9 @@ export const CourseSchema = new Schema<ICourse>({
     required: true,
   },
   description: { type: String, required: true },
-  certification: { type: String, defualt: "Normal" },
+  certification: { type: String, default: "Normal" },
   syllabus: { type: [String], default: [] },
+  materials: { type: [CourseMaterialSchema], default: [] }, // Add materials field
   reviews: { type: [ReviewSchema], default: [] },
   totalRating: { type: Number },
   totalStar: { type: Number },

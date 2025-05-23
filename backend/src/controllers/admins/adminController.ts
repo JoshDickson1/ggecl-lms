@@ -12,6 +12,7 @@ import {
 } from "../../utils/responseUtils.js";
 import { setRefreshTokenCookie } from "../../utils/cookieUtils.js";
 import { z } from "zod";
+import { AuthenticatedRequest } from "../../types/express.js";
 
 export const registerAdmin = async (req: Request, res: Response) => {
   try {
@@ -106,7 +107,10 @@ export const loginAdmin = async (req: Request, res: Response) => {
   }
 };
 
-export const getAdminProfile = async (req: Request, res: Response) => {
+export const getAdminProfile = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
   try {
     const admin = await adminService.findAdminById(req.user.id);
     if (!admin) {
@@ -128,7 +132,7 @@ export const getAdminProfile = async (req: Request, res: Response) => {
   }
 };
 
-export const updateAdmin = async (req: Request, res: Response) => {
+export const updateAdmin = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const validatedData = AdminUpdateSchema.parse(req.body);
     const admin = await adminService.updateAdmin(req.user.id, validatedData);

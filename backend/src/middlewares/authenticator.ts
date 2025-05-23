@@ -2,6 +2,7 @@ import { NextFunction, Response } from "express";
 import { envConfig } from "../config/envValidator.js";
 import jwt from "jsonwebtoken";
 import { AuthenticatedRequest } from "../types/express.js";
+import { UserRole } from "../utils/roleMappings.js";
 
 export function authenticator(
   req: AuthenticatedRequest,
@@ -20,7 +21,10 @@ export function authenticator(
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, envConfig.accessToken) as { id: string };
+    const decoded = jwt.verify(token, envConfig.accessToken) as {
+      id: string;
+      role: UserRole;
+    };
     if (!decoded?.id) {
       res.status(401).json({
         success: false,
@@ -29,7 +33,7 @@ export function authenticator(
 
       return;
     }
-    req.user = { id: decoded.id };
+    req.user = { id: decoded.id, role: decoded.role };
     next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
