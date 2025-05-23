@@ -4,6 +4,7 @@ import { Sidebar, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ClassComp from "./ClassComp";
 import GroupComp from "./GroupComp";
+import { ClassGroup } from "@/types/classGroupTypes";
 
 // interface classGroup {
 //   id: number;
@@ -29,26 +30,9 @@ interface SidebarMProps {
   onTabChange: (value: string) => void;
   activeChatId: number | null;
   onSelectGroup: (id: number) => void;
-  setClassGroups: React.Dispatch<React.SetStateAction<any[]>>;
+  setClassGroups: React.Dispatch<React.SetStateAction<ClassGroup[]>>;
   setActiveSubGroup: React.Dispatch<React.SetStateAction<string | null>>;
-  classGroups: {
-    id: number;
-    name: string;
-    createdAt: Date;
-    image: string;
-    instructor: string;
-    students: string[];
-    description: string;
-    subGroups: {
-      id: number;
-      name: string;
-      createdAt: Date;
-      image: string;
-      instructor: string;
-      students: string[];
-      description: string;
-    }[];
-  }[];
+  classGroups: ClassGroup[];
 }
 
 const SidebarM: React.FC<SidebarMProps> = ({
@@ -91,10 +75,6 @@ const SidebarM: React.FC<SidebarMProps> = ({
     localStorage.setItem("activeTab", value);
     onTabChange(value);
   };
-
-  function handleCreateGroup(): void {
-    throw new Error("Function not implemented.");
-  }
 
   return (
     <div
@@ -162,34 +142,42 @@ const SidebarM: React.FC<SidebarMProps> = ({
               <div key={group.id} className="mb-3 pb-2">
                 <div
                   className="relative mb-2 cursor-pointer rounded-lg bg-white p-3 shadow-sm transition hover:shadow-md dark:bg-gray-800"
-                  onClick={() =>
+                  onClick={() => {
                     setShowSubs((prev) =>
                       prev === group.id.toString() ? null : group.id.toString(),
-                    )
-                  }
+                    );
+                  }}
                 >
                   <GroupComp
                     classGroups={[group]}
-                    onCreateGroup={handleCreateGroup}
                     setClassGroups={setClassGroups}
                   />
                 </div>
 
-                {group.subGroups.map((subGroup) => (
-                  <div
-                    className="cursor-pointer border-l-8 border-gray-500"
-                    onClick={() => setActiveSubGroup(subGroup.id.toString())}
-                  >
-                    {showSubs?.includes(group.id.toString()) && (
-                      <GroupComp
-                        key={subGroup.id}
-                        classGroups={[subGroup]}
-                        onCreateGroup={handleCreateGroup}
-                        setClassGroups={setClassGroups}
-                      />
-                    )}
-                  </div>
-                ))}
+                {showSubs === group.id.toString() &&
+                  (group.subGroups?.length ?? 0) > 0 && (
+                    <div className="pl-4">
+                      {group.subGroups
+                        ?.filter(
+                          (subGroup) =>
+                            subGroup !== undefined && subGroup !== null,
+                        )
+                        .map((subGroup) => (
+                          <div
+                            key={subGroup.id}
+                            className="mt-1.5 cursor-pointer border-l-8 border-gray-500"
+                            onClick={() =>
+                              setActiveSubGroup(subGroup.id.toString())
+                            }
+                          >
+                            <GroupComp
+                              classGroups={[subGroup]}
+                              setClassGroups={setClassGroups}
+                            />
+                          </div>
+                        ))}
+                    </div>
+                  )}
               </div>
             ))}
           </TabsContent>
