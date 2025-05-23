@@ -5,11 +5,32 @@ import { cn } from "@/lib/utils";
 import ClassComp from "./ClassComp";
 import GroupComp from "./GroupComp";
 
+// interface classGroup {
+//   id: number;
+//   name: string;
+//   createdAt: Date;
+//   image: string;
+//   instructor: string;
+//   students: string[];
+//   description: string;
+//   subGroups: {
+//     id: number;
+//     name: string;
+//     createdAt: Date;
+//     image: string;
+//     instructor: string;
+//     students: string[];
+//     description: string;
+//   }[];
+// }
+// [];
+
 interface SidebarMProps {
   onTabChange: (value: string) => void;
   activeChatId: number | null;
   onSelectGroup: (id: number) => void;
   setClassGroups: React.Dispatch<React.SetStateAction<any[]>>;
+  setActiveSubGroup: React.Dispatch<React.SetStateAction<string | null>>;
   classGroups: {
     id: number;
     name: string;
@@ -17,9 +38,17 @@ interface SidebarMProps {
     image: string;
     instructor: string;
     students: string[];
-    description: string; // ✅ add this
+    description: string;
+    subGroups: {
+      id: number;
+      name: string;
+      createdAt: Date;
+      image: string;
+      instructor: string;
+      students: string[];
+      description: string;
+    }[];
   }[];
-  
 }
 
 const SidebarM: React.FC<SidebarMProps> = ({
@@ -28,10 +57,14 @@ const SidebarM: React.FC<SidebarMProps> = ({
   onSelectGroup,
   classGroups,
   setClassGroups,
+  setActiveSubGroup,
 }) => {
+  console.log("classGroups", classGroups);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("classroom");
+  const [showSubs, setShowSubs] = useState<string | null>(null);
 
   useEffect(() => {
     const savedTab = localStorage.getItem("activeTab") || "classroom";
@@ -58,6 +91,10 @@ const SidebarM: React.FC<SidebarMProps> = ({
     localStorage.setItem("activeTab", value);
     onTabChange(value);
   };
+
+  function handleCreateGroup(): void {
+    throw new Error("Function not implemented.");
+  }
 
   return (
     <div
@@ -121,10 +158,40 @@ const SidebarM: React.FC<SidebarMProps> = ({
           </TabsContent>
 
           <TabsContent value="class-groups">
-            <GroupComp
-              classGroups={classGroups}
-              setClassGroups={setClassGroups}
-            />
+            {classGroups.map((group) => (
+              <div key={group.id} className="mb-3 pb-2">
+                <div
+                  className="relative mb-2 cursor-pointer rounded-lg bg-white p-3 shadow-sm transition hover:shadow-md dark:bg-gray-800"
+                  onClick={() =>
+                    setShowSubs((prev) =>
+                      prev === group.id.toString() ? null : group.id.toString(),
+                    )
+                  }
+                >
+                  <GroupComp
+                    classGroups={[group]}
+                    onCreateGroup={handleCreateGroup}
+                    setClassGroups={setClassGroups}
+                  />
+                </div>
+
+                {group.subGroups.map((subGroup) => (
+                  <div
+                    className="cursor-pointer border-l-8 border-gray-500"
+                    onClick={() => setActiveSubGroup(subGroup.id.toString())}
+                  >
+                    {showSubs?.includes(group.id.toString()) && (
+                      <GroupComp
+                        key={subGroup.id}
+                        classGroups={[subGroup]}
+                        onCreateGroup={handleCreateGroup}
+                        setClassGroups={setClassGroups}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
           </TabsContent>
         </Tabs>
       </div>
