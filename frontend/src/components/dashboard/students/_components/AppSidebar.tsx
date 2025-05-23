@@ -44,7 +44,11 @@ const menuItems: MenuItem[] = [
     icon: ClipboardPaste,
   },
   {
+<<<<<<< HEAD
     title: "Schedule",
+=======
+    title: "Today's date",
+>>>>>>> a4957a46c4262faa31a5c0da3d6672bb1ac4e991
     url: `${urlPrefix}/calendar`,
     icon: Calendar,
   },

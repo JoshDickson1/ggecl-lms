@@ -196,7 +196,6 @@ export const courseRouter = router({
         const skip = (page - 1) * limit;
         const sortOrder = order === "asc" ? 1 : -1;
 
-        // Only query courses that are in the student's enrolledCourses
         const searchQuery: FilterQuery<ICourse> = {
           _id: { $in: student.enrolledCourses },
         };

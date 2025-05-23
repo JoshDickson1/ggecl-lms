@@ -3,7 +3,10 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+<<<<<<< HEAD
 import { Button } from "@/components/ui/button";
+=======
+>>>>>>> a4957a46c4262faa31a5c0da3d6672bb1ac4e991
 
 const StudentCalendar = () => {
   const [events] = useState([
@@ -18,7 +21,10 @@ const StudentCalendar = () => {
     <div className="p-6 bg-white dark:bg-gray-900 min-h-screen">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white">Calendar</h2>
+<<<<<<< HEAD
         <Button variant="outline">+ Add Event</Button>
+=======
+>>>>>>> a4957a46c4262faa31a5c0da3d6672bb1ac4e991
       </div>
       
       <FullCalendar

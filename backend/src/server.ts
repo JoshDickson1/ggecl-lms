@@ -13,6 +13,9 @@ import sessionRoute from "./routes/sessionRoute.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import logoutRoute from "./routes/logoutRoute.js";
 import chatRouter from "./routes/chatRoute.js";
+import classrRoomRouter from "./routes/classroomRoutes.js";
+import auditRouter from "./routes/auditRoute.js";
+import courseMaterialRouter from "./routes/courseRoutes.js";
 
 // Configs & Middlewares
 import { errorHandler } from "./middlewares/errorHandler.js";
@@ -36,7 +39,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://ggecl-preview.vercel.app",
-      "https://f179-102-89-32-162.ngrok-free.app",
+      "https://ggecl-lms.vercel.app/",
     ],
   })
 );
@@ -54,7 +57,9 @@ app.use(`${ROUTE_PREFIX}/refresh`, refresh);
 app.use(ROUTE_PREFIX, sessionRoute);
 app.use(`${ROUTE_PREFIX}`, logoutRoute);
 app.use(`${ROUTE_PREFIX}/chat`, chatRouter);
-
+app.use(`${ROUTE_PREFIX}/classroom`, classrRoomRouter);
+app.use(`${ROUTE_PREFIX}/audit`, auditRouter);
+app.use(`${ROUTE_PREFIX}/course-material`, courseMaterialRouter);
 app.use(
   `${ROUTE_PREFIX}/trpc`,
   trpcExpress.createExpressMiddleware({

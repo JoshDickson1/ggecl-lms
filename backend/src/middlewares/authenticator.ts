@@ -25,6 +25,7 @@ export function authenticator(
       id: string;
       role: UserRole;
     };
+
     if (!decoded?.id) {
       res.status(401).json({
         success: false,

@@ -101,6 +101,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 
     // Add login bonus progress
     await ProgressService.addLoginProgress(student._id);
+
     const { accessToken, refreshToken } = studentAuthService.generateAuthTokens(
       student._id.toString()
     );

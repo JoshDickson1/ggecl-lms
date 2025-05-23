@@ -1,4 +1,3 @@
-// src/routers/assignmentRouter.ts
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../trpc.js";
@@ -42,6 +41,7 @@ const GradeAssignmentSchema = z.object({
   grade: z.enum(["A", "B", "C", "D", "E", "F"]),
   remark: z.string().optional(),
 });
+
 const GetAssignmentsZodSchema = z.object({
   page: z.number().default(1),
   limit: z.number().default(10),
@@ -51,6 +51,7 @@ const GetAssignmentsZodSchema = z.object({
     .default("dueDate"),
   order: z.enum(["asc", "desc"]).default("asc"),
   status: z.enum(["draft", "published", "submitted", "graded"]).optional(),
+
   dueDate: z.date().optional(),
 });
 
@@ -198,6 +199,7 @@ export const assignmentRouter = router({
                 "classroom.students": new Types.ObjectId(ctx.user.id),
               },
             ],
+
             ...(status && { status }),
           };
 
@@ -214,6 +216,7 @@ export const assignmentRouter = router({
               ...(query.$or || []),
               { title: pattern },
               { description: pattern },
+
               { "course.title": pattern },
             ];
           }
@@ -224,6 +227,7 @@ export const assignmentRouter = router({
               .populate("course")
               .populate("classroomId")
               .populate("instructorId")
+
               .sort({ [sortBy]: sortOrder })
               .skip(skip)
               .limit(limit)
@@ -244,6 +248,7 @@ export const assignmentRouter = router({
       } catch (error) {
         console.error("Error fetching student assignments:", error);
         if (error instanceof TRPCError) throw error;
+
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch student assignments",
@@ -478,6 +483,7 @@ export const assignmentRouter = router({
       } catch (error) {
         console.error("Error fetching submitted assignments:", error);
         if (error instanceof TRPCError) throw error;
+
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch submitted assignments",

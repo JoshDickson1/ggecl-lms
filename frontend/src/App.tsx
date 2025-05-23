@@ -5,9 +5,11 @@ import { SkeletonTheme } from "react-loading-skeleton";
 import NotFound from "@/components/ui/NotFound.tsx";
 import AuthPageLoading from "@/components/auth/_components/AuthPageLoading.tsx";
 
-// === Landing Page Components (Eagerly Loaded) ===
+// == Landing Page Components (Eagerly Loaded) ==
 import Layout from "@/components/landing/Layout";
 import Home from "@/components/landing/pages/Home";
+import AssignmentAd from "./components/dashboard/admin/pages/AssignmentAd";
+import Grades from "./components/dashboard/admin/pages/Grades";
 
 const Cart = lazy(() => import("@/components/landing/pages/Cart"));
 const Login = lazy(() => import("@/components/auth/pages/Login"));
@@ -78,6 +80,10 @@ const InstructorSettings = lazy(
   () =>
     import("@/components/dashboard/instructor/pages/InstructorSettings.tsx"),
 );
+const GradesIns = lazy(
+  () =>
+    import("@/components/dashboard/instructor/pages/GradesIns.tsx"),
+);
 const StudentList = lazy(
   () => import("@/components/dashboard/instructor/pages/StudentList.tsx"),
 );
@@ -125,6 +131,9 @@ const AdminHome = lazy(
 
 const AdminSettings = lazy(
   () => import("@/components/dashboard/admin/pages/AdminSettings.tsx"),
+);
+const Audit = lazy(
+  () => import("@/components/dashboard/admin/pages/Audit.tsx"),
 );
 
 const AdminEditCourse = lazy(
@@ -428,6 +437,14 @@ function App() {
             }
           />
           <Route
+            path="student-grades"
+            element={
+              <Suspense fallback={<AuthPageLoading />}>
+                <GradesIns />
+              </Suspense>
+            }
+          />
+          <Route
             path="students"
             element={
               <Suspense fallback={<AuthPageLoading />}>
@@ -500,6 +517,30 @@ function App() {
             element={
               <Suspense fallback={<AuthPageLoading />}>
                 <AdminSettings />
+              </Suspense>
+            }
+          />
+          <Route
+            path="audit-log"
+            element={
+              <Suspense fallback={<AuthPageLoading />}>
+                <Audit />
+              </Suspense>
+            }
+          />
+          <Route
+            path="student-grades"
+            element={
+              <Suspense fallback={<AuthPageLoading />}>
+                <Grades />
+              </Suspense>
+            }
+          />
+          <Route
+            path="assignment-check"
+            element={
+              <Suspense fallback={<AuthPageLoading />}>
+                <AssignmentAd />
               </Suspense>
             }
           />
