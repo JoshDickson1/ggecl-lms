@@ -171,17 +171,20 @@ export const courseRouter = router({
     .input(GetCoursesZodSchema)
     .query(async ({ input, ctx }) => {
       const studentId = ctx.user.id;
-      const cacheKey = getCacheKey(input);
+
+      // Include studentId in cache key to prevent mixing student data
+      const cacheKey = `student-courses-${studentId}-${JSON.stringify(input)}`;
 
       const cachedData = CACHE.get<ICourseListResponse>(cacheKey);
-      if (cachedData) {
-        console.log("Cache hit for:", cacheKey);
-        return cachedData;
-      }
-      console.log("Cache miss for:" + cacheKey);
+      if (cachedData) return cachedData;
 
       try {
-        const student = await studentModel.findById(studentId).lean();
+        // First get the student's enrolled courses
+        const student = await studentModel
+          .findById(studentId)
+          .select("enrolledCourses")
+          .lean();
+
         if (!student) {
           throw new TRPCError({
             code: "NOT_FOUND",
@@ -235,15 +238,13 @@ export const courseRouter = router({
         };
 
         CACHE.set(cacheKey, response);
-        console.log("Cache set for:", cacheKey);
-
         return response;
       } catch (error) {
-        console.error("Error fetching courses:", error);
+        console.error("Error fetching student courses:", error);
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch courses",
+          message: "Failed to fetch student courses",
         });
       }
     }),

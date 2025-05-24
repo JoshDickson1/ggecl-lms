@@ -15,6 +15,7 @@ import {
   handleZodError,
 } from "../../utils/responseUtils.js";
 import { emailService } from "../../services/emailService.js";
+import { ProgressService } from "../../services/progressService.js";
 
 // Reusable Auth Service
 
@@ -82,7 +83,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     const student = await studentAuthService.findStudentByEmail(
       validatedData.email
     );
-    
+
     if (!student) {
       createErrorResponse(res, 401, "Incorrect email or password");
       return;
@@ -97,6 +98,9 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
       createErrorResponse(res, 401, "Incorrect email or password");
       return;
     }
+
+    // Add login bonus progress
+    await ProgressService.addLoginProgress(student._id);
 
     const { accessToken, refreshToken } = studentAuthService.generateAuthTokens(
       student._id.toString()

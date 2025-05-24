@@ -4,22 +4,35 @@ import { Sidebar, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ClassComp from "./ClassComp";
 import GroupComp from "./GroupComp";
+import { ClassGroup } from "@/types/classGroupTypes";
+
+// interface classGroup {
+//   id: number;
+//   name: string;
+//   createdAt: Date;
+//   image: string;
+//   instructor: string;
+//   students: string[];
+//   description: string;
+//   subGroups: {
+//     id: number;
+//     name: string;
+//     createdAt: Date;
+//     image: string;
+//     instructor: string;
+//     students: string[];
+//     description: string;
+//   }[];
+// }
+// [];
 
 interface SidebarMProps {
   onTabChange: (value: string) => void;
   activeChatId: number | null;
   onSelectGroup: (id: number) => void;
   setClassGroups: React.Dispatch<React.SetStateAction<any[]>>;
-  classGroups: {
-    id: number;
-    name: string;
-    createdAt: Date;
-    image: string;
-    instructor: string;
-    students: string[];
-    description: string;
-    classroomId?: number;
-  }[];
+  setActiveSubGroup: React.Dispatch<React.SetStateAction<string | null>>;
+  classGroups: ClassGroup[];
 }
 
 const SidebarM: React.FC<SidebarMProps> = ({
@@ -28,10 +41,14 @@ const SidebarM: React.FC<SidebarMProps> = ({
   onSelectGroup,
   classGroups,
   setClassGroups,
+  setActiveSubGroup,
 }) => {
+  // console.log("classGroups", classGroups);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("classroom");
+  const [showSubs, setShowSubs] = useState<string | null>(null);
 
   useEffect(() => {
     const savedTab = localStorage.getItem("activeTab") || "classroom";
@@ -121,13 +138,48 @@ const SidebarM: React.FC<SidebarMProps> = ({
           </TabsContent>
 
           <TabsContent value="class-groups">
-            <GroupComp
-              classGroups={classGroups.map((group) => ({
-                ...group,
-                classroomId: group.classroomId?.toString() || "", // ✅ Convert to string
-              }))}
-              setClassGroups={setClassGroups}
-            />
+            {classGroups.map((group) => (
+              <div key={group.id} className="mb-3 pb-2">
+                <div
+                  className="relative mb-2 cursor-pointer rounded-lg bg-white p-3 shadow-sm transition hover:shadow-md dark:bg-gray-800"
+                  onClick={() => {
+                    setShowSubs((prev) =>
+                      prev === group.id.toString() ? null : group.id.toString(),
+                    );
+                  }}
+                >
+                  <GroupComp
+                    classGroups={[group]}
+                    setClassGroups={setClassGroups}
+                  />
+                </div>
+
+                {showSubs === group.id.toString() &&
+                  (group.subGroups?.length ?? 0) > 0 && (
+                    <div className="pl-4">
+                      {group.subGroups
+                        ?.filter(
+                          (subGroup) =>
+                            subGroup !== undefined && subGroup !== null,
+                        )
+                        .map((subGroup) => (
+                          <div
+                            key={subGroup.id}
+                            className="mt-1.5 cursor-pointer border-l-8 border-gray-500"
+                            onClick={() =>
+                              setActiveSubGroup(subGroup.id.toString())
+                            }
+                          >
+                            <GroupComp
+                              classGroups={[subGroup]}
+                              setClassGroups={setClassGroups}
+                            />
+                          </div>
+                        ))}
+                    </div>
+                  )}
+              </div>
+            ))}
           </TabsContent>
         </Tabs>
       </div>

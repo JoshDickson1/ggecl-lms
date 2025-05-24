@@ -1,7 +1,4 @@
-// components/ChatBottomSection.tsx .
-import { Message } from "@/types/types"; // adjust path based on your structure
-
-import { useState, useEffect } from "react";
+import { Paperclip, Send, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +8,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Paperclip, Send } from "lucide-react";
 
 type GroupInfo = {
   name: string;
@@ -28,12 +24,11 @@ type Props = {
   groupChatInfo: GroupInfo;
   showChatInfo: boolean;
   setShowChatInfo: (value: boolean) => void;
-  onSendFileMessage: (file: File, type: Message["type"]) => void;
-  onSendTextMessage: (text: string) => void;
-  onSendImageMessage: (file: File) => void;
-  onSendVideoMessage: (file: File) => void;
-  onSendPdfMessage: (file: File) => void;
-  onSendMsWordMessage: (file: File) => void;
+  filePreview: string | null;
+  setFilePreview: (value: string | null) => void;
+  triggerFileInput: () => void;
+  selectedFile: File | null;
+  setSelectedFile: (file: File | null) => void;
 };
 
 export default function ChatBottomSection({
@@ -43,140 +38,91 @@ export default function ChatBottomSection({
   groupChatInfo,
   showChatInfo,
   setShowChatInfo,
-  onSendFileMessage,
+  filePreview,
+  setFilePreview,
+  triggerFileInput,
+  selectedFile,
+  setSelectedFile,
 }: Props) {
-
-  const [showFileOptions, setShowFileOptions] = useState(false);
-  const [activeFileType, setActiveFileType] = useState<
-    "pdf" | "image" | "video" | "msword" | null
-  >(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
-  // Reset when modal closes
-  useEffect(() => {
-    if (!showFileOptions) {
-      setActiveFileType(null);
-      setSelectedFile(null);
-    }
-  }, [showFileOptions]);
-
-  const FileUploadInput = ({ type }: { type: string }) => {
-    return (
-      <div className="space-y-2">
-        <label className="block text-sm font-medium">
-          Upload {type.toUpperCase()} file
-        </label>
-        <input
-          type="file"
-          accept={
-            type === "pdf"
-              ? "application/pdf"
-              : type === "image"
-                ? "image/*"
-                : type === "video"
-                  ? "video/*"
-                  : type === "msword"
-                    ? ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    : undefined
-          }
-          onChange={(e) => {
-            if (e.target.files && e.target.files[0]) {
-              setSelectedFile(e.target.files[0]);
-            }
-          }}
-          className="w-full rounded border p-2"
-        />
-
-        {selectedFile && (
-          <div className="text-muted-foreground text-sm">
-            <p>
-              <strong>Selected:</strong> {selectedFile.name}
-            </p>
-            <p>
-              <strong>Size:</strong> {(selectedFile.size / 1024).toFixed(2)} KB
-            </p>
-          </div>
-        )}
-      </div>
-    );
+  const clearFilePreview = () => {
+    setFilePreview(null);
+    setSelectedFile(null);
   };
 
-  return (
-    <div className="-mt-20 flex flex-col space-y-2">
-      {/* File Upload Button */}
-      <Button
-        onClick={() => setShowFileOptions(true)}
-        variant="outline"
-        className="w-max"
-      >
-        <Paperclip className="mr-2 h-4 w-4" />
-        Attach Files
-      </Button>
-
-      {/* File Upload Dialog */}
-      <Dialog open={showFileOptions} onOpenChange={setShowFileOptions}>
-        <DialogContent className="w-[90vw] p-6 sm:w-[500px]">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">
-              Attach a File
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              {["pdf", "image", "video", "msword"].map((type) => (
-                <Button
-                  key={type}
-                  variant={activeFileType === type ? "default" : "outline"}
-                  onClick={() => {
-                    setActiveFileType(type as any);
-                    setSelectedFile(null); // reset file when changing type
-                  }}
-                >
-                  <Paperclip className="mr-1 h-4 w-4" />
-                  {type.toUpperCase()}
-                </Button>
-              ))}
-            </div>
-
-            {activeFileType && <FileUploadInput type={activeFileType} />}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFileOptions(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!selectedFile}
-              onClick={() => {
-                if (selectedFile && activeFileType) {
-                  onSendFileMessage(selectedFile, activeFileType);
-                }
-                setShowFileOptions(false);
-              }}
-            >
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Message Input */}
-      <div className="flex items-center gap-2">
-      <Input
-  value={message}
-  onChange={(e) => setMessage(e.target.value)}
-  onKeyDown={(e) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
-  }}
-  placeholder="Type a message..."
-  className="flex-1"
-/>
+  };
 
-        <Button onClick={handleSendMessage}>
+  const getFileTypeIcon = () => {
+    if (!selectedFile) return <Paperclip className="h-4 w-4" />;
+
+    if (selectedFile.type.startsWith("image/")) return "🖼️";
+    if (selectedFile.type.startsWith("video/")) return "🎬";
+    if (selectedFile.type === "application/pdf") return "📄";
+    if (
+      selectedFile.type === "application/msword" ||
+      selectedFile.type ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+      return "📝";
+
+    return "📎";
+  };
+
+  return (
+    <div className="-mt-20 flex flex-col space-y-2">
+      {/* File Preview */}
+      {filePreview && (
+        <div className="relative rounded-lg border p-2">
+          {filePreview.startsWith("data:image") ? (
+            <img
+              src={filePreview}
+              alt="Preview"
+              className="h-32 w-32 object-contain"
+            />
+          ) : (
+            <div className="flex items-center gap-2 p-2">
+              <span className="text-lg">{getFileTypeIcon()}</span>
+              <div>
+                <p className="text-sm font-medium">{selectedFile?.name}</p>
+                <p className="text-muted-foreground text-xs">
+                  {(selectedFile?.size || 0 / 1024).toFixed(2)} KB
+                </p>
+              </div>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-1 right-1 h-6 w-6"
+            onClick={clearFilePreview}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Input Area */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-10 w-10"
+          onClick={triggerFileInput}
+        >
+          {selectedFile ? getFileTypeIcon() : <Paperclip className="h-4 w-4" />}
+        </Button>
+        <Input
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message..."
+          className="flex-1"
+        />
+        <Button onClick={handleSendMessage} disabled={!message && !filePreview}>
           <Send className="h-4 w-4" />
         </Button>
       </div>
@@ -200,6 +146,7 @@ export default function ChatBottomSection({
               <img
                 src={groupChatInfo.groupImage}
                 className="h-24 w-24 rounded-lg object-cover"
+                alt="Group"
               />
             </div>
             <div>

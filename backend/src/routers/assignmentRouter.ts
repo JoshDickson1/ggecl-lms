@@ -1,116 +1,189 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { randomUUID } from "crypto";
-
-import { cloudinary } from "../cloudinary.js";
-import { envConfig } from "../config/envValidator.js";
 import { protectedProcedure, router } from "../trpc.js";
-import studentModel from "../models/studentModel.js";
-import AssignmentModel, {
-  IStudentAssignment,
-} from "../models/assignmentModel.js";
-import { wildcardDeleteCache } from "../utils/nodeCache.js";
-import { isValidObjectId } from "mongoose";
-import coursesModel, { ICourse } from "../models/coursesModel.js";
-import { FilterQuery } from "mongoose";
+import { assignmentService } from "../services/assignmentService.js";
+import { FilterQuery, isValidObjectId } from "mongoose";
+import { Types } from "mongoose";
+import { uploadMiddleware } from "../modules/upload/upload.middleware.js";
 import { getCacheOrFetch } from "../utils/getCacheOrFetch.js";
+import assignmentModel, { IAssignment } from "../models/assignmentModel.js";
+import { UploadCategory } from "../modules/upload/upload.types.js";
 
-type TSubmissionData = Partial<
-  Omit<IStudentAssignment, "title" | "lesson" | "dueDate" | "question">
->;
-
-export type IStudentAssignmentPopulated = Omit<IStudentAssignment, "course"> & {
-  course: ICourse;
-};
-
-// -- Validation Schemas --------------------------------------------------
-const SubmissionCompleteZodSchema = z.object({
-  assignmentId: z
-    .string()
-    .refine(isValidObjectId, { message: "Invalid assignment ID" }),
-  publicId: z.string(),
-  fileName: z.string(),
-  fileSize: z.number(),
-  fileType: z.string(),
-  fileUrl: z.string().url(),
-});
-
-const MarkAssignmentSchema = z.object({
-  assignmentId: z
-    .string()
-    .refine(isValidObjectId, { message: "Invalid assignment ID" }),
-  grade: z.enum(["A", "B", "C", "D", "E", "F"]),
-  remark: z.string().optional(),
-});
+const AssignmentIdSchema = z
+  .string()
+  .refine((val) => Types.ObjectId.isValid(val), {
+    message: "Invalid Assignment ID",
+  });
 
 const CreateAssignmentSchema = z.object({
-  title: z.string().min(2, { message: "Title must be at least 2 characters" }),
-  course: z.string().refine(isValidObjectId, { message: "Invalid course ID" }),
-  question: z.string(),
-  dueDate: z.date(),
+  title: z.string().min(3, "Title must be at least 3 characters"),
+  description: z.string().optional(),
+  courseId: z
+    .string()
+    .refine(isValidObjectId, { message: "Invalid Course ID" }),
+  classroomId: z
+    .string()
+    .refine(isValidObjectId, { message: "Invalid Classroom ID" })
+    .optional(),
+  groupId: z
+    .string()
+    .refine(isValidObjectId, { message: "Invalid Group ID" })
+    .optional(),
+  dueDate: z.string().datetime("Invalid date format"),
+});
+
+const SubmitAssignmentSchema = z.object({
+  assignmentId: AssignmentIdSchema,
+});
+
+const GradeAssignmentSchema = z.object({
+  assignmentId: AssignmentIdSchema,
+  grade: z.enum(["A", "B", "C", "D", "E", "F"]),
+  remark: z.string().optional(),
 });
 
 const GetAssignmentsZodSchema = z.object({
   page: z.number().default(1),
   limit: z.number().default(10),
   search: z.string().optional(),
-  sortBy: z.enum(["title", "status", "dueDate"]).default("title"),
+  sortBy: z
+    .enum(["title", "status", "dueDate", "createdAt"])
+    .default("dueDate"),
   order: z.enum(["asc", "desc"]).default("asc"),
-  status: z.enum(["pending", "graded", "submitted"]).optional(),
+  status: z.enum(["draft", "published", "submitted", "graded"]).optional(),
+
   dueDate: z.date().optional(),
 });
 
 type TGetAssignmentsInput = z.infer<typeof GetAssignmentsZodSchema>;
 
 const getCacheKey = (prefix: string, input: TGetAssignmentsInput) => {
-  const { page, limit, search, sortBy, order, status, dueDate } = input || {};
-  return `${prefix}-${page}-${limit}-${search}-${sortBy}-${order}-${status}-${dueDate}`;
+  const { page, limit, search, sortBy, order, status, dueDate } = input;
+  return `${prefix}-${page}-${limit}-${search}-${sortBy}-${order}-${status}-${dueDate?.toISOString()}`;
 };
 
 export const assignmentRouter = router({
   create: protectedProcedure
     .input(CreateAssignmentSchema)
+    .use(uploadMiddleware(UploadCategory.ASSIGNMENT))
     .mutation(async ({ ctx, input }) => {
-      const instructorId = ctx.user.id;
+      if (ctx.user.role !== "admin" && ctx.user.role !== "instructor") {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only admins and instructors can create assignments",
+        });
+      }
 
       try {
-        const course = await coursesModel.findById(input.course);
-        if (!course) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: `Course with id ${input.course} not found`,
-          });
-        }
-
-        const assignment = await AssignmentModel.create({
-          ...input,
-          instructorId,
-          course: course._id,
-          status: "pending",
+        const files = ctx.req.files as Express.Multer.File[];
+        const assignment = await assignmentService.createAssignment({
+          title: input.title,
+          description: input.description,
+          course: new Types.ObjectId(input.courseId),
+          classroomId: input.classroomId
+            ? new Types.ObjectId(input.classroomId)
+            : undefined,
+          groupId: input.groupId
+            ? new Types.ObjectId(input.groupId)
+            : undefined,
+          dueDate: new Date(input.dueDate),
+          createdBy: {
+            id: new Types.ObjectId(ctx.user.id),
+            model: ctx.user.role === "admin" ? "Admin" : "Instructor",
+          },
+          files,
         });
 
-        await studentModel.updateMany(
-          { enrolledCourses: course._id },
-          { $addToSet: { assignments: assignment._id } }
-        );
+        return { success: true, assignment };
+      } catch (error) {
+        console.error("Failed to create assignment:", error);
+        throw error;
+      }
+    }),
 
-        wildcardDeleteCache(`assignments-`);
+  submit: protectedProcedure
+    .input(SubmitAssignmentSchema)
+    .use(uploadMiddleware(UploadCategory.SUBMISSION))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "student") {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only students can submit assignments",
+        });
+      }
+
+      try {
+        const files = ctx.req.files as Express.Multer.File[];
+        const assignment = await assignmentService.submitAssignment({
+          assignmentId: new Types.ObjectId(input.assignmentId),
+          studentId: new Types.ObjectId(ctx.user.id),
+          files,
+        });
+
+        return { success: true, assignment };
+      } catch (error) {
+        console.error("Error submitting assignment:", error);
+        throw error;
+      }
+    }),
+
+  grade: protectedProcedure
+    .input(GradeAssignmentSchema)
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin" && ctx.user.role !== "instructor") {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only admins and instructors can grade assignments",
+        });
+      }
+
+      try {
+        const assignment = await assignmentService.gradeAssignment({
+          assignmentId: new Types.ObjectId(input.assignmentId),
+          grade: input.grade,
+          remark: input.remark,
+          gradedBy: {
+            id: new Types.ObjectId(ctx.user.id),
+            model: ctx.user.role === "admin" ? "Admin" : "Instructor",
+          },
+        });
+
+        return { success: true, assignment };
+      } catch (error) {
+        console.error("Error grading assignment:", error);
+        throw error;
+      }
+    }),
+
+  getById: protectedProcedure
+    .input(z.object({ id: AssignmentIdSchema }))
+    .query(async ({ input }) => {
+      try {
+        const assignment = await assignmentService.getAssignmentById(
+          new Types.ObjectId(input.id)
+        );
         return assignment;
-      } catch (err) {
-        console.error("Failed to create assignment:", err);
+      } catch (error) {
+        console.error("Error getting assignment:", error);
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Could not create assignment",
+          message: "Failed to get assignment",
         });
       }
     }),
 
-  // Get all assignments for a student
   getAllForStudent: protectedProcedure
     .input(GetAssignmentsZodSchema)
     .query(async ({ ctx, input }) => {
-      const studentId = ctx.user.id;
-      const cacheKey = `assignments-student-${studentId}`;
+      if (ctx.user.role !== "student") {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only students can view their assignments",
+        });
+      }
+
+      const cacheKey = getCacheKey(`assignments-student-${ctx.user.id}`, input);
 
       try {
         return await getCacheOrFetch(cacheKey, async () => {
@@ -118,14 +191,15 @@ export const assignmentRouter = router({
           const skip = (page - 1) * limit;
           const sortOrder = order === "asc" ? 1 : -1;
 
-          const student = await studentModel
-            .findById(studentId, { assignments: 1 })
-            .lean();
+          const query: FilterQuery<IAssignment> = {
+            $or: [
+              { studentId: new Types.ObjectId(ctx.user.id) },
+              {
+                classroomId: { $exists: true },
+                "classroom.students": new Types.ObjectId(ctx.user.id),
+              },
+            ],
 
-          if (!student) throw new TRPCError({ code: "NOT_FOUND" });
-
-          const searchQuery: FilterQuery<IStudentAssignment> = {
-            _id: { $in: student.assignments },
             ...(status && { status }),
           };
 
@@ -133,27 +207,32 @@ export const assignmentRouter = router({
             const start = new Date(dueDate);
             const end = new Date(dueDate);
             end.setDate(end.getDate() + 1);
-            searchQuery.dueDate = { $gte: start, $lt: end };
+            query.dueDate = { $gte: start, $lt: end };
           }
 
           if (search) {
             const pattern = new RegExp(search, "i");
-            searchQuery.$or = [
+            query.$or = [
+              ...(query.$or || []),
               { title: pattern },
-              { question: pattern },
+              { description: pattern },
+
               { "course.title": pattern },
             ];
           }
 
           const [assignments, total] = await Promise.all([
-            AssignmentModel.find(searchQuery)
-              .populate<{ course: ICourse }>("course")
-              .select("-syllabus -reviews -description")
+            assignmentModel
+              .find(query)
+              .populate("course")
+              .populate("classroomId")
+              .populate("instructorId")
+
               .sort({ [sortBy]: sortOrder })
               .skip(skip)
               .limit(limit)
               .lean(),
-            AssignmentModel.countDocuments(searchQuery),
+            assignmentModel.countDocuments(query),
           ]);
 
           return {
@@ -166,9 +245,10 @@ export const assignmentRouter = router({
             },
           };
         });
-      } catch (err) {
-        console.error("Error fetching student assignments:", err);
-        if (err instanceof TRPCError) throw err;
+      } catch (error) {
+        console.error("Error fetching student assignments:", error);
+        if (error instanceof TRPCError) throw error;
+
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch student assignments",
@@ -179,10 +259,15 @@ export const assignmentRouter = router({
   getAllForInstructor: protectedProcedure
     .input(GetAssignmentsZodSchema)
     .query(async ({ ctx, input }) => {
-      const instructorId = ctx.user.id;
+      if (ctx.user.role !== "instructor") {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only instructors can view these assignments",
+        });
+      }
 
       const cacheKey = getCacheKey(
-        `assignments-instructor-${instructorId}`,
+        `assignments-instructor-${ctx.user.id}`,
         input
       );
 
@@ -192,8 +277,8 @@ export const assignmentRouter = router({
           const skip = (page - 1) * limit;
           const sortOrder = order === "asc" ? 1 : -1;
 
-          const searchQuery: FilterQuery<IStudentAssignment> = {
-            instructorId,
+          const query: FilterQuery<IAssignment> = {
+            instructorId: new Types.ObjectId(ctx.user.id),
             ...(status && { status }),
           };
 
@@ -201,106 +286,30 @@ export const assignmentRouter = router({
             const start = new Date(dueDate);
             const end = new Date(dueDate);
             end.setDate(end.getDate() + 1);
-            searchQuery.dueDate = { $gte: start, $lt: end };
+            query.dueDate = { $gte: start, $lt: end };
           }
 
           if (search) {
             const pattern = new RegExp(search, "i");
-            searchQuery.$or = [
+            query.$or = [
               { title: pattern },
-              { question: pattern },
-              { "course.title": pattern },
-            ];
-          }
-
-          const [assignments, total] = await Promise.all([
-            AssignmentModel.find(searchQuery)
-              .select("-studentId")
-              .populate<{ course: ICourse }>("course")
-              .select("-syllabus -reviews -description")
-              .sort({ [sortBy]: sortOrder })
-              .skip(skip)
-              .limit(limit)
-              .lean(),
-            AssignmentModel.countDocuments(searchQuery),
-          ]);
-
-          return {
-            assignments,
-            meta: {
-              total,
-              page,
-              limit,
-              totalPages: Math.ceil(total / limit),
-            },
-          };
-        });
-      } catch (err) {
-        console.error("Error fetching instructors assignments:", err);
-        if (err instanceof TRPCError) throw err;
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch instructors assignments",
-        });
-      }
-    }),
-
-  getAllSubmitted: protectedProcedure
-    .input(GetAssignmentsZodSchema)
-    .query(async ({ ctx, input }) => {
-      const { id: instructorId, role } = ctx.user;
-      const cacheKey = getCacheKey(
-        `assignments-instructor-submitted-${instructorId}`,
-        input
-      );
-
-      if (role !== "instructor") {
-        throw new TRPCError({
-          code: "UNAUTHORIZED",
-          message: "You don't have access to this resource",
-        });
-      }
-
-      try {
-        return await getCacheOrFetch(cacheKey, async () => {
-          const { page, limit, search, sortBy, order, dueDate } = input;
-          const skip = (page - 1) * limit;
-          const sortOrder = order === "asc" ? 1 : -1;
-
-          const searchQuery: FilterQuery<IStudentAssignment> = {
-            instructorId,
-            status: "submitted",
-          };
-
-          if (dueDate) {
-            const start = new Date(dueDate);
-            const end = new Date(dueDate);
-            end.setDate(end.getDate() + 1);
-            searchQuery.dueDate = { $gte: start, $lt: end };
-          }
-
-          if (search) {
-            const pattern = new RegExp(search, "i");
-            searchQuery.$or = [
-              { title: pattern },
-              { question: pattern },
+              { description: pattern },
               { "course.title": pattern },
               { "student.fullName": pattern },
             ];
           }
 
           const [assignments, total] = await Promise.all([
-            AssignmentModel.find(searchQuery)
-              .populate<{ studentId: { _id: string; fullName: string } }>(
-                "studentId"
-              )
-              .populate<{ course: ICourse }>("course")
-              .select("-syllabus -reviews -description")
+            assignmentModel
+              .find(query)
+              .populate("course")
+              .populate("classroomId")
+              .populate("studentId")
               .sort({ [sortBy]: sortOrder })
               .skip(skip)
               .limit(limit)
               .lean(),
-            AssignmentModel.countDocuments(searchQuery),
+            assignmentModel.countDocuments(query),
           ]);
 
           return {
@@ -313,190 +322,172 @@ export const assignmentRouter = router({
             },
           };
         });
-      } catch (err) {
-        console.error("Error fetching assignments:", err);
-        if (err instanceof TRPCError) throw err;
+      } catch (error) {
+        console.error("Error fetching instructor assignments:", error);
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch submitted assignments",
+          message: "Failed to fetch instructor assignments",
         });
       }
     }),
 
-  createCloudinarySignature: protectedProcedure
+  getAllForAdmin: protectedProcedure
+    .input(GetAssignmentsZodSchema)
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Only admins can view all assignments",
+        });
+      }
+
+      const cacheKey = getCacheKey("assignments-admin", input);
+
+      try {
+        return await getCacheOrFetch(cacheKey, async () => {
+          const { page, limit, search, sortBy, order, status, dueDate } = input;
+          const skip = (page - 1) * limit;
+          const sortOrder = order === "asc" ? 1 : -1;
+
+          const query: FilterQuery<IAssignment> = {
+            ...(status && { status }),
+          };
+
+          if (dueDate) {
+            const start = new Date(dueDate);
+            const end = new Date(dueDate);
+            end.setDate(end.getDate() + 1);
+            query.dueDate = { $gte: start, $lt: end };
+          }
+
+          if (search) {
+            const pattern = new RegExp(search, "i");
+            query.$or = [
+              { title: pattern },
+              { description: pattern },
+              { "course.title": pattern },
+              { "student.fullName": pattern },
+              { "instructor.fullName": pattern },
+            ];
+          }
+
+          const [assignments, total] = await Promise.all([
+            assignmentModel
+              .find(query)
+              .populate("course")
+              .populate("classroomId")
+              .populate("studentId")
+              .populate("instructorId")
+              .sort({ [sortBy]: sortOrder })
+              .skip(skip)
+              .limit(limit)
+              .lean(),
+            assignmentModel.countDocuments(query),
+          ]);
+
+          return {
+            assignments,
+            meta: {
+              total,
+              page,
+              limit,
+              totalPages: Math.ceil(total / limit),
+            },
+          };
+        });
+      } catch (error) {
+        console.error("Error fetching admin assignments:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch all assignments",
+        });
+      }
+    }),
+
+  getSubmitted: protectedProcedure
     .input(
-      z.object({
-        assignmentId: z.string(),
-        originalFileName: z.string().optional(),
+      GetAssignmentsZodSchema.extend({
+        classroomId: z.string().refine(isValidObjectId).optional(),
+        groupId: z.string().refine(isValidObjectId).optional(),
       })
     )
-    .mutation(({ ctx, input }) => {
-      const { assignmentId, originalFileName } = input;
-      const userId = ctx.user.id;
-      const timestamp = Math.round(new Date().getTime() / 1000);
-
-      const folder = `assignments/${assignmentId}/${userId}`;
-      const uniqueSuffix = randomUUID();
-      const baseFileName = originalFileName
-        ? originalFileName.split(".").slice(0, -1).join(".")
-        : "submission";
-      const public_id = `${folder}/${baseFileName}-${uniqueSuffix}`;
-
-      const paramsToSign = {
-        folder,
-        public_id,
-        timestamp,
-      };
-
-      try {
-        const signature = cloudinary.utils.api_sign_request(
-          paramsToSign,
-          envConfig.CLOUDINARY_API_SECRET!
-        );
-
-        return {
-          signature,
-          timestamp,
-          apiKey: envConfig.CLOUDINARY_API_KEY!,
-          cloudName: envConfig.CLOUDINARY_CLOUD_NAME!,
-          folder,
-          publicId: public_id,
-        };
-      } catch (error) {
-        console.error("Error signing Cloudinary request:", error);
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin" && ctx.user.role !== "instructor") {
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create upload signature.",
+          code: "UNAUTHORIZED",
+          message: "Only admins and instructors can view submitted assignments",
         });
       }
-    }),
 
-  markSubmissionComplete: protectedProcedure
-    .input(SubmissionCompleteZodSchema)
-    .mutation(async ({ ctx, input }) => {
-      const { assignmentId, publicId, fileName, fileSize, fileType, fileUrl } =
-        input;
-
-      const userId = ctx.user.id;
+      const cacheKey = getCacheKey(
+        `assignments-submitted-${ctx.user.id}-${input.classroomId || "all"}-${
+          input.groupId || "all"
+        }`,
+        input
+      );
 
       try {
-        const student = await studentModel
-          .findOne({
-            _id: userId,
-            assignments: assignmentId,
-          })
-          .lean();
+        return await getCacheOrFetch(cacheKey, async () => {
+          const { page, limit, search, sortBy, order, classroomId, groupId } =
+            input;
+          const skip = (page - 1) * limit;
+          const sortOrder = order === "asc" ? 1 : -1;
 
-        if (!student) {
-          console.error(
-            `Assignment ${assignmentId} not associated with student ${userId}. Attempting rollback.`
-          );
-          try {
-            await cloudinary.uploader.destroy(publicId, {
-              resource_type: "raw",
-            });
-            console.log(`Orphaned Cloudinary file ${publicId} deleted.`);
-          } catch (destroyError) {
-            console.error(
-              `Failed to delete orphaned Cloudinary file ${publicId}:`,
-              destroyError
-            );
+          const query: FilterQuery<IAssignment> = {
+            status: "submitted",
+            ...(classroomId && {
+              classroomId: new Types.ObjectId(classroomId),
+            }),
+            ...(groupId && { groupId: new Types.ObjectId(groupId) }),
+          };
+
+          if (ctx.user.role === "instructor") {
+            query.instructorId = new Types.ObjectId(ctx.user.id);
           }
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "You are not assigned to this assignment.",
-          });
-        }
 
-        // 2. Prepare submission data for update
-        const submissionData: TSubmissionData = {
-          studentId: student._id,
-          status: "submitted",
-          submissionDate: new Date(),
-          submissionFileUrl: fileUrl,
-          submissionPublicId: publicId,
-          submissionFileName: fileName,
-          submissionFileSize: fileSize,
-          submissionFileType: fileType,
-        };
-
-        // 3. Update the Assignment document
-        const updatedAssignment = await AssignmentModel.findOneAndUpdate(
-          { _id: assignmentId },
-          { $set: submissionData },
-          { new: true, runValidators: true }
-        );
-
-        if (!updatedAssignment) {
-          console.error(
-            `Assignment not found for update: ${assignmentId}. Attempting rollback.`
-          );
-          try {
-            await cloudinary.uploader.destroy(publicId, {
-              resource_type: "raw",
-            });
-            console.log(
-              `Cloudinary file ${publicId} deleted due to failed DB update.`
-            );
-          } catch (destroyError) {
-            console.error(
-              `Failed to delete Cloudinary file ${publicId} after DB error:`,
-              destroyError
-            );
+          if (search) {
+            const pattern = new RegExp(search, "i");
+            query.$or = [
+              { title: pattern },
+              { description: pattern },
+              { "course.title": pattern },
+              { "student.fullName": pattern },
+            ];
           }
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Assignment could not be updated.",
-          });
-        }
 
-        wildcardDeleteCache("assignments-");
+          const [assignments, total] = await Promise.all([
+            assignmentModel
+              .find(query)
+              .populate("course")
+              .populate("classroomId")
+              .populate("studentId")
+              .sort({ [sortBy]: sortOrder })
+              .skip(skip)
+              .limit(limit)
+              .lean(),
+            assignmentModel.countDocuments(query),
+          ]);
 
-        return { success: true, assignment: updatedAssignment };
+          return {
+            assignments,
+            meta: {
+              total,
+              page,
+              limit,
+              totalPages: Math.ceil(total / limit),
+            },
+          };
+        });
       } catch (error) {
-        console.error("Error marking submission complete:", error);
-
+        console.error("Error fetching submitted assignments:", error);
         if (error instanceof TRPCError) throw error;
 
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to update assignment submission.",
-          cause: error,
+          message: "Failed to fetch submitted assignments",
         });
-      }
-    }),
-
-  // Grade assignment
-  mark: protectedProcedure
-    .input(MarkAssignmentSchema)
-    .mutation(async ({ ctx, input }) => {
-      const { role } = ctx.user;
-      if (!["admin", "instructor"].includes(role)) {
-        throw new TRPCError({
-          code: "UNAUTHORIZED",
-          message: "Insufficient permissions",
-        });
-      }
-
-      try {
-        const updated = await AssignmentModel.findByIdAndUpdate(
-          input.assignmentId,
-          { grade: input.grade, status: "graded", remark: input.remark },
-          { new: true, runValidators: true }
-        );
-
-        if (!updated) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Assignment not found",
-          });
-        }
-
-        wildcardDeleteCache(`assignments-`);
-        return updated;
-      } catch (err) {
-        console.error("Grading error:", err);
-        if (err instanceof TRPCError) throw err;
       }
     }),
 });

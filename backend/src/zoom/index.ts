@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import dotenv from "dotenv";
 import axios, { AxiosError } from "axios";
 import jwt from "jsonwebtoken";

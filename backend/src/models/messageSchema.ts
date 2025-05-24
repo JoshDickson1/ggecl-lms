@@ -1,4 +1,4 @@
-import mongoose, { Document } from "mongoose";
+import mongoose, { Document, Types } from "mongoose";
 
 interface IGroup extends Document {
   groupId: string;
@@ -18,6 +18,15 @@ interface IMessage extends Document {
   image?: string;
   createdAt: Date;
   updatedAt: Date;
+
+  // New fields (for classroom discussions)
+  classroomId?: Types.ObjectId; // Link to classroom
+  groupName?: string; // Discussion group name (e.g., "Group A")
+  files?: Array<{
+    url: string;
+    name: string;
+    type: "pdf" | "doc" | "video" | "image" | "audio" | "other";
+  }>;
 }
 
 const groupSchema = new mongoose.Schema(
@@ -36,6 +45,8 @@ const groupSchema = new mongoose.Schema(
 const messageSchema = new mongoose.Schema(
   {
     group: { type: String, required: true },
+    classroomId: { type: Types.ObjectId, ref: "Classroom" },
+    groupName: String,
     sender: { type: String, required: true },
     senderId: { type: String, required: true },
     role: {
@@ -45,6 +56,13 @@ const messageSchema = new mongoose.Schema(
     },
     text: String,
     image: String,
+    files: [
+      {
+        url: String,
+        name: String,
+        type: String,
+      },
+    ],
   },
   {
     timestamps: true,

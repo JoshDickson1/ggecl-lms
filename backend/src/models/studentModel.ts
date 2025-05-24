@@ -2,7 +2,6 @@ import { Schema, model, Types, Document } from "mongoose";
 import { INotification, NotificationSchema } from "./NotificationSchema.js";
 import { CartSchema, ICart } from "./cartModel.js";
 
-
 export interface IStudent extends Document {
   _id: Types.ObjectId;
   role: "student";
@@ -21,6 +20,12 @@ export interface IStudent extends Document {
   emailVerificationExpires?: Date;
   passwordUpdateToken?: string;
   passwordUpdateTokenExpiry?: Date;
+
+  //Progress tracking
+  progressScore: number;
+  lastDailyProgress: Date;
+  lastLoginProgress: Date;
+
   cartItems: ICart[];
   assignments: Types.ObjectId[];
   enrolledCourses: Types.ObjectId[];
@@ -65,6 +70,11 @@ const StudentSchema = new Schema<IStudent>(
       default: [],
     },
     refreshToken: { type: String, select: false },
+
+    //Progress tracking
+    progressScore: { type: Number, default: 0, min: 0, max: 100 },
+    lastDailyProgress: { type: Date },
+    lastLoginProgress: { type: Date },
   },
   { timestamps: true }
 );

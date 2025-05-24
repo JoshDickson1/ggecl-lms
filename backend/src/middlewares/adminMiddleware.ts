@@ -4,21 +4,20 @@ import Admin from "../models/adminModel.js";
 import { createErrorResponse } from "../utils/responseUtils.js";
 import { verifyToken } from "../utils/tokenUtils.js";
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: string;
-        email: string;
-        role: "admin" | "superadmin";
-        permissions: string[];
-      };
-    }
-  }
+// ✅ Locally scoped admin-specific type
+interface AdminUser {
+  id: string;
+  email: string;
+  role: "admin" | "superadmin";
+  permissions: string[];
+}
+
+interface AdminRequest extends Request {
+  user?: AdminUser;
 }
 
 export const adminAuth = async (
-  req: Request,
+  req: AdminRequest,
   res: Response,
   next: NextFunction
 ) => {
@@ -89,7 +88,7 @@ export const adminAuth = async (
 };
 
 export const superAdminAuth = async (
-  req: Request,
+  req: AdminRequest,
   res: Response,
   next: NextFunction
 ) => {
@@ -125,7 +124,7 @@ export const superAdminAuth = async (
 };
 
 export const checkPermission = (requiredPermission: string) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: AdminRequest, res: Response, next: NextFunction) => {
     try {
       if (!req.user) {
         return createErrorResponse(res, 403, "Authentication required", [

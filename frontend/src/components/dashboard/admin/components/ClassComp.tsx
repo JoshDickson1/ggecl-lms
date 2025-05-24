@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Plus, MoreVertical, Trash2, Pencil } from 'lucide-react';
-import { format } from 'date-fns';
-import { Button } from '@/components/ui/button';
+import { useState } from "react";
+import { Plus, MoreVertical, Trash2, Pencil } from "lucide-react";
+import { format } from "date-fns";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogTrigger,
@@ -11,42 +11,33 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
-import { MultiSelect } from './multiselect.tsx'; // Ensure this exists or replace with another multiselect
+} from "@/components/ui/select";
+import { MultiSelect } from "./multiselect.tsx"; // Ensure this exists or replace with another multiselect
+import { ClassGroup } from "@/types/classGroupTypes.ts";
 
-type ClassGroup = {
-  id: number;
-  name: string;
-  createdAt: Date;
-  image: string;
-  instructor: string;
-  students: string[];
-  description: string;
-};
-
-const instructors = ['Alice', 'Bob', 'Charlie'];
-const students = ['John', 'Jane', 'Jim', 'Julia'];
+const instructors = ["Alice", "Bob", "Charlie"];
+const students = ["John", "Jane", "Jim", "Julia"];
 
 type Props = {
-  classGroups: ClassGroup[];  // Add classGroups prop
-  setClassGroups: React.Dispatch<React.SetStateAction<ClassGroup[]>>;  // Add setClassGroups prop
-  activeChatId: number | null;  // Add activeChatId prop
-  onSelectGroup: (id: number) => void;  // Add onSelectGroup prop
+  classGroups: ClassGroup[]; // Add classGroups prop
+  setClassGroups: React.Dispatch<React.SetStateAction<ClassGroup[]>>; // Add setClassGroups prop
+  activeChatId: number | null; // Add activeChatId prop
+  onSelectGroup: (id: number) => void; // Add onSelectGroup prop
 };
 
 export default function ClassComp({
@@ -59,16 +50,16 @@ export default function ClassComp({
   const [isEdit, setIsEdit] = useState(false);
   const [editGroupId, setEditGroupId] = useState<number | null>(null);
 
-  const [groupName, setGroupName] = useState('');
-  const [description, setDescription] = useState('');
-  const [groupImage, setGroupImage] = useState('');
-  const [selectedInstructor, setSelectedInstructor] = useState('');
+  const [groupName, setGroupName] = useState("");
+  const [description, setDescription] = useState("");
+  const [groupImage, setGroupImage] = useState("");
+  const [selectedInstructor, setSelectedInstructor] = useState("");
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
 
   const resetForm = () => {
-    setGroupName('');
-    setGroupImage('');
-    setSelectedInstructor('');
+    setGroupName("");
+    setGroupImage("");
+    setSelectedInstructor("");
     setSelectedStudents([]);
     setEditGroupId(null);
     setIsEdit(false);
@@ -84,7 +75,7 @@ export default function ClassComp({
         editGroupId && classGroups.find((g) => g.id === editGroupId)?.createdAt
           ? classGroups.find((g) => g.id === editGroupId)!.createdAt
           : new Date(),
-      image: groupImage || '/default-group.png',
+      image: groupImage || "/default-group.png",
       instructor: selectedInstructor,
       students: selectedStudents,
       description: description,
@@ -92,7 +83,7 @@ export default function ClassComp({
 
     if (editGroupId) {
       setClassGroups((prev) =>
-        prev.map((group) => (group.id === editGroupId ? newGroup : group))
+        prev.map((group) => (group.id === editGroupId ? newGroup : group)),
       );
     } else {
       setClassGroups((prev) => [newGroup, ...prev]);
@@ -126,15 +117,17 @@ export default function ClassComp({
         }}
       >
         <DialogTrigger asChild>
-          <Button className="w-full justify-between">
-            <span>{isEdit ? 'Edit Class' : 'Create Class'}</span>
+          <Button className="w-full justify-between bg-blue-500 text-white hover:bg-blue-700">
+            <span>{isEdit ? "Edit Class" : "Create Class"}</span>
             <Plus className="h-4 w-4" />
           </Button>
         </DialogTrigger>
 
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{isEdit ? 'Edit Class' : 'Create New Class'}</DialogTitle>
+            <DialogTitle>
+              {isEdit ? "Edit Class" : "Create New Class"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
@@ -198,15 +191,15 @@ export default function ClassComp({
           </div>
 
           <DialogFooter>
-            <Button onClick={handleSaveGroup} className="w-full mt-4">
-              {isEdit ? 'Save Changes' : 'Create'}
+            <Button onClick={handleSaveGroup} className="mt-4 w-full">
+              {isEdit ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <div className="overflow-y-auto max-h-90 loi">
-        <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+      <div className="loi max-h-90 overflow-y-auto">
+        <p className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
           Created Classes
         </p>
 
@@ -215,15 +208,13 @@ export default function ClassComp({
             <div
               key={group.id}
               onClick={() => onSelectGroup(group.id)}
-              className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer 
-                ${activeChatId === group.id ? 'bg-blue-100 dark:bg-blue-900' : 'bg-white dark:bg-gray-800'} 
-                shadow-sm hover:shadow-md transition relative`}
+              className={`flex cursor-pointer items-center gap-3 rounded-lg p-3 ${activeChatId === group.id ? "bg-blue-100 dark:bg-blue-900" : "bg-white dark:bg-gray-800"} relative shadow-sm transition hover:shadow-md`}
             >
-              <div className="w-10 h-10 rounded-full overflow-hidden border">
+              <div className="h-10 w-10 overflow-hidden rounded-full border">
                 <img
                   src={group.image}
                   alt={group.name}
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
                 />
               </div>
 
@@ -232,25 +223,29 @@ export default function ClassComp({
                   {group.name}
                 </p>
                 <p className="text-xs text-gray-500 lowercase">
-                  {format(group.createdAt, 'MMMM dd, yyyy')}
+                  {format(group.createdAt, "MMMM dd, yyyy")}
                 </p>
               </div>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
-                    <MoreVertical className="w-4 h-4" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                   <DropdownMenuItem onClick={() => handleEditGroup(group)}>
-                    <Pencil className="w-4 h-4 mr-2" /> Edit
+                    <Pencil className="mr-2 h-4 w-4" /> Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => handleDeleteGroup(group.id)}
                     className="text-red-500"
                   >
-                    <Trash2 className="w-4 h-4 mr-2" /> Delete
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
