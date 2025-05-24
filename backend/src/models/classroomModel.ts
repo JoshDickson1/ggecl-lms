@@ -1,4 +1,3 @@
-// models/classroomModel.ts
 import { Schema, model, Document, Types } from "mongoose";
 
 interface IClassroomActivity {
