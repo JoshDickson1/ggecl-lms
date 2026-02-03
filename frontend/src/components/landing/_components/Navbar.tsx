@@ -25,7 +25,7 @@ const Navbar = ({ showNav }: { showNav?: boolean }) => {
           {/* Logo */}
           <Link
             to="/"
-            className="text-xl font-bold text-gray-900 dark:text-white"
+            className="text-xl bg-white rounded-full font-bold text-gray-900 dark:text-white"
           >
             <img src={logoSrc} alt="Logo" width={55} />
           </Link>
@@ -131,3 +131,4 @@ const Navbar = ({ showNav }: { showNav?: boolean }) => {
 };
 
 export default Navbar;
+
