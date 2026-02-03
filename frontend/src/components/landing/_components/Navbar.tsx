@@ -16,7 +16,7 @@ const Navbar = ({ showNav }: { showNav?: boolean }) => {
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const { userId } = useAuth();
 
-  const logoSrc = darkMode ? lightImg : darkImg;
+  const logoSrc = darkMode ? darkImg : darkImg;
 
   return (
     <nav className="sticky top-0 left-0 z-50 w-full bg-white py-3 shadow-sm transition-all duration-300 ease-in-out dark:bg-gray-900">
@@ -131,4 +131,5 @@ const Navbar = ({ showNav }: { showNav?: boolean }) => {
 };
 
 export default Navbar;
+
 
