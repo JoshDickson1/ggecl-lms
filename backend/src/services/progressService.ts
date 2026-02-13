@@ -39,13 +39,22 @@ export class ProgressService {
             { lastLoginProgress: { $exists: false } },
           ],
         },
-        {
-          $inc: { progressScore: 0.1 },
-          $set: { lastLoginProgress: new Date() },
-          $max: { progressScore: 100 },
-        },
+        [
+          {
+            $set: {
+              lastLoginProgress: new Date(),
+              progressScore: {
+                $min: [
+                  100,
+                  { $add: ["$progressScore", 0.1] }
+                ]
+              }
+            }
+          }
+        ],
         { new: true }
       );
+      
 
       return updatedStudent?.progressScore || 0;
     } catch (error) {

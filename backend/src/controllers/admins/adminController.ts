@@ -16,6 +16,7 @@ import { AuthenticatedRequest } from "../../types/express.js";
 
 export const registerAdmin = async (req: Request, res: Response) => {
   try {
+
     const validatedData = AdminRegistrationSchema.parse(req.body);
 
     // Check if admin already exists
@@ -60,6 +61,9 @@ export const registerAdmin = async (req: Request, res: Response) => {
 
 export const loginAdmin = async (req: Request, res: Response) => {
   try {
+
+    console.log("BODY:", req.body);
+
     const { email, password } = AdminLoginSchema.parse(req.body);
 
     const admin = await adminService.findAdminByEmail(email);

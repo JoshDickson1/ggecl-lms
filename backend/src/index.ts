@@ -7,7 +7,7 @@ import { NotificationService } from "./services/notificationService.js";
 import cron from "node-cron";
 import { ProgressService } from "./services/progressService.js";
 
-const PORT = Number(envConfig.port) || 3000;
+const PORT = Number(envConfig.port) || 4000;
 
 async function startServer(): Promise<void> {
   try {

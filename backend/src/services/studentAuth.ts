@@ -14,7 +14,7 @@ export const studentAuthService = {
     return StudentModel.findOne({ email });
   },
 
-  createStudent: async (data: StudentRegisterType): Promise<IStudent> => {
+   createStudent: async (data: StudentRegisterType): Promise<IStudent> => {
     const password = data?.password
       ? await bcrypt.hash(data.password, SALT_ROUNDS)
       : undefined;

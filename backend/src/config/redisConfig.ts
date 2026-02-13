@@ -1,12 +1,8 @@
 import { createClient } from "redis";
+import { envConfig } from "./envValidator.js";
 
 export const redis = createClient({
-  username: "default",
-  password: "gKPdxuIOJuv9laBQt8YOmKYRWWFS0t2t",
-  socket: {
-    host: "redis-18432.c98.us-east-1-4.ec2.redns.redis-cloud.com",
-    port: 18432,
-  },
+  url: envConfig.redisUrl
 });
 
 redis.on("error", (err) => {
