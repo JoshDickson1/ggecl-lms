@@ -111,10 +111,12 @@ const classroomSchema = new Schema<IClassroom>(
 
 const ClassroomModel = model<IClassroom>("Classroom", classroomSchema);
 
-export {
-  ClassroomModel,
+export { ClassroomModel };
+
+export type {
   IClassroom,
   IClassroomActivity,
   IClassroomGroup,
   IClassroomAttendance,
 };
+

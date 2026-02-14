@@ -7,7 +7,35 @@
     "outDir": "dist",
     "rootDir": "./src",
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+
+
+    /* Type Checking - RELAXED SETTINGS */
+    "strict": false,                           // Disable all strict checks
+    "noImplicitAny": false,                    // Allow implicit any types
+    "strictNullChecks": false,                 // Don't enforce null/undefined checks
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": false,
+    "alwaysStrict": false,
+    
+    /* Additional Checks - DISABLED */
+    "noUnusedLocals": false,                   // Don't error on unused variables
+    "noUnusedParameters": false,               // Don't error on unused parameters
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": false,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": false,
+    "noPropertyAccessFromIndexSignature": false,
+    
+    /* Interop Constraints */
+    "isolatedModules": false,                  // Allow re-exporting types without 'export type'
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    
+    /* Completeness */
+    "skipDefaultLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

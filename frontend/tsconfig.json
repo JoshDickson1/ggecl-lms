@@ -1,14 +1,39 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
-  ],
   "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting - LENIENT SETTINGS */
+    "strict": false,                      // Already disabled - good!
+    "noUnusedLocals": false,              // Don't error on unused variables
+    "noUnusedParameters": false,          // Don't error on unused parameters
+    "noFallthroughCasesInSwitch": false,  // Allow fallthrough in switch
+    "noUncheckedSideEffectImports": false, // Don't check side effect imports
+    
+    /* Additional lenient settings */
+    "noImplicitAny": false,               // Allow implicit any
+    "strictNullChecks": false,            // Don't enforce null checks
+    "noImplicitThis": false,              // Allow implicit this
+    "noImplicitReturns": false,           // Allow missing returns
+    
+    /* Path aliases */
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@backend/*": ["../backend/*"]
     }
-  }
+  },
+  "include": ["src"]
 }

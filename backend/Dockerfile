@@ -1,5 +1,8 @@
 FROM node:23-slim
 
+# Install pnpm
+RUN npm install -g pnpm
+
 # Set the working directory
 WORKDIR /app
 

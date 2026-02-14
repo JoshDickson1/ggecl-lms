@@ -10,7 +10,7 @@ import { studentAuthService } from "../services/studentAuth.js";
 import { generatePassword } from "../utils/genPassword.js";
 import coursesModel from "../models/coursesModel.js";
 import instructorModel from "../models/instructorModel.js";
-import { sendMailToEmail } from "../services/sendMailToEmail.js";
+import { sendMailToEmail } from "../services/resendClient.js";
 import { enrollMail } from "../constants/emrollmentMailTemplate.js";
 import { frontEndLoginLink } from "../utils/feLoginLink.js";
 import {
@@ -181,6 +181,8 @@ export const studentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id: adminId, role } = ctx.user;
 
+      console.log('hi im here oooo')
+
       try {
         const adminExists = await adminModel.exists({ _id: adminId });
 
@@ -221,24 +223,36 @@ export const studentRouter = router({
         wildcardDeleteCache("students-");
         wildcardDeleteCache("instructors-");
 
+      console.log('hi before email')
+
         // send mail to student containing password and email
 
-        await sendMailToEmail({
-          toEmail: studentEmail,
-          html: enrollMail({
-            email: studentEmail,
-            link: studentLoginLink,
-            password: studentPassword,
-            role: "student",
-            username: student.fullName,
-          }),
-          message: ENROLL_EMAIL_TEXT(
-            studentLoginLink,
-            studentEmail,
-            studentPassword
-          ),
-          subject: ENROLL_EMAIL_SUBJECT,
-        });
+        // send mail to student containing password and email
+        if (process.env.SENDMAIL === "true") {
+          await sendMailToEmail({
+            toEmail: studentEmail,
+            html: enrollMail({
+              email: studentEmail,
+              link: studentLoginLink,
+              password: studentPassword,
+              role: "student",
+              username: student.fullName,
+            }),
+            message: ENROLL_EMAIL_TEXT(
+              studentLoginLink,
+              studentEmail,
+              studentPassword
+            ),
+            subject: ENROLL_EMAIL_SUBJECT,
+          });
+        } else {
+          console.log("📧 Email sending skipped (SENDMAIL=false)");
+          console.log("Student login link:", studentLoginLink);
+        }
+
+
+      console.log('hi after email')
+
 
         return { success: true, student };
       } catch (error) {

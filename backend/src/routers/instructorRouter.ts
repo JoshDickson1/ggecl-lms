@@ -135,23 +135,27 @@ export const instructorRouter = router({
 
         wildcardDeleteCache("students-");
         wildcardDeleteCache("instructors-");
-
-        await sendMailToEmail({
-          toEmail: instructorEmail,
-          html: enrollMail({
-            email: instructorEmail,
-            link: instructorLoginLink,
-            password: instructorPassword,
-            role: "instructor",
-            username: instructor.fullName,
-          }),
-          message: ENROLL_EMAIL_TEXT(
-            instructorLoginLink,
-            instructorEmail,
-            instructorPassword
-          ),
-          subject: ENROLL_EMAIL_SUBJECT,
-        });
+        if (process.env.SENDMAIL === "true") {
+          await sendMailToEmail({
+            toEmail: instructorEmail,
+            html: enrollMail({
+              email: instructorEmail,
+              link: instructorLoginLink,
+              password: instructorPassword,
+              role: "instructor",
+              username: instructor.fullName,
+            }),
+            message: ENROLL_EMAIL_TEXT(
+              instructorLoginLink,
+              instructorEmail,
+              instructorPassword
+            ),
+            subject: ENROLL_EMAIL_SUBJECT,
+          });
+        } else {
+          console.log("📧 Email sending skipped (SENDMAIL=false)");
+          console.log("Student login link:", instructorLoginLink);
+        }
 
         return { success: true, instructor };
       } catch (error) {

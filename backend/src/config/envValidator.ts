@@ -42,6 +42,8 @@ function validateConfig() {
     smtpUser: process.env.SMTP_USER,
     smtpHost: process.env.SMTP_HOST,
     smtpPass: process.env.SMTP_PASS,
+    resendApiKey: process.env.RESEND_API_KEY,
+    fromEmail: process.env.FROM_EMAIL,
     googleClientId: process.env.GOOGLE_CLIENT_ID,
     superadminEmail: process.env.SUPERADMIN_EMAIL,
     superadminPassword: process.env.SUPERADMIN_PASSWORD,

@@ -48,7 +48,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Routes setup
-const ROUTE_PREFIX = "/api/v1";
+const ROUTE_PREFIX = "";
 app.use(`${ROUTE_PREFIX}/student`, studentRoutes);
 app.use(`${ROUTE_PREFIX}/instructor`, instructorRoutes);
 app.use(`${ROUTE_PREFIX}/admin`, adminRoutes);
