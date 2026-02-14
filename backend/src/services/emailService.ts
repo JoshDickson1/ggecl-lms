@@ -1,4 +1,4 @@
-import {  sendMailToEmail } from "./sendMailToEmail.js";
+import { sendMailToEmail } from "./resendClient.js"; // ✅ Changed from "./sendMailToEmail.js"
 import { z } from "zod";
 import { combinedUserModel, UserRole } from "../utils/roleMappings.js";
 import {

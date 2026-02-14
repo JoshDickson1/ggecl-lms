@@ -10,7 +10,7 @@ import { studentAuthService } from "../services/studentAuth.js";
 import { generatePassword } from "../utils/genPassword.js";
 import coursesModel from "../models/coursesModel.js";
 import instructorModel from "../models/instructorModel.js";
-import { sendMailToEmail } from "../services/sendMailToEmail.js";
+import { sendMailToEmail } from "../services/resendClient.js";
 import { enrollMail } from "../constants/emrollmentMailTemplate.js";
 import { frontEndLoginLink } from "../utils/feLoginLink.js";
 import {
