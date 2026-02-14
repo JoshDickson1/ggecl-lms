@@ -8,9 +8,9 @@ import { TRPCError } from "@trpc/server";
 export const uploadMiddleware = (category: UploadCategory) => {
   const config = uploadConfigs[category];
 
-  return async ({ ctx, next }) => {
+  return async ({ ctx, next }: { ctx: any; next: () => Promise<any> }) => {
     const fileFilter = (
-      req: Request,
+      _req: Request,
       file: Express.Multer.File,
       cb: multer.FileFilterCallback
     ) => {
@@ -81,9 +81,9 @@ export const uploadMiddleware = (category: UploadCategory) => {
 export const multiUploadMiddleware = (category: UploadCategory) => {
   const config = uploadConfigs[category];
 
-  return async ({ ctx, next }) => {
+  return async ({ ctx, next }: { ctx: any; next: () => Promise<any> }) => {
     const fileFilter = (
-      req: Request,
+      _req: Request,
       file: Express.Multer.File,
       cb: multer.FileFilterCallback
     ) => {
