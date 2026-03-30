@@ -39,7 +39,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://ggecl-preview.vercel.app",
-      "https://ggecl-lms.vercel.app/",
+      "https://ggecl-lms.vercel.app",
     ],
   })
 );
