@@ -73,7 +73,7 @@ const NAV_ITEMS: NavItemDef[] = [
     icon: GraduationCap,
     label: "Academics",
     children: [
-      { to: "/student/schedule", label: "Schedule" },
+      { to: "/student/live", label: "Live Class" },
       { to: "/student/grades", label: "Grades" }, 
       { to: "/student/certificates", label: "Certificates" },
     ],
@@ -105,6 +105,12 @@ const NAV_ITEMS: NavItemDef[] = [
       { to: "/student/settings", label: "Settings" },
     ],
   },
+
+  {
+    to: "/student/support",
+    icon: MessageSquare,
+    label: "Support",
+  }
 ];
 
 // ─── NavItem ──────────────────────────────────────────────────
@@ -265,7 +271,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="relative border-t border-gray-100 dark:border-white/[0.06]">
         <div className="px-3 pt-3 pb-2">
           <Link to="/student/profile" onClick={onNavigate}
-            className="flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-blue-50 dark:hover:bg-cyan-950/20 transition-all group">
+            className="flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all group">
             <div className="relative flex-shrink-0">
               <div className={`w-9 h-9 rounded-full overflow-hidden ring-2 ${accent.ring}`}>
                 {user?.avatarUrl
@@ -278,7 +284,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 ${accent.dot} rounded-full border-2 border-white dark:border-[#080d18]`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-cyan-400 transition-colors">
+              <p className="text-[12px] font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                 {displayName}
               </p>
               <p className="text-[10px] text-gray-400 truncate">{user?.email}</p>

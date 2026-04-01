@@ -2,9 +2,9 @@
 import { useState, useEffect, useContext, createContext, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate, Link } from "react-router-dom";
 import {
-  LayoutDashboard, BookOpen, Users, DollarSign,
-  BarChart3, Star, MessageSquare, UserCog,
-  Settings, ChevronDown, LogOut, GraduationCap, PlusCircle,
+  LayoutDashboard, BookOpen, Users, MessageSquare, ChevronDown, LogOut, GraduationCap,
+  Video,
+  UserCog,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -30,21 +30,55 @@ interface NavChild { to: string; label: string }
 interface NavItemDef { to: string; icon: React.ElementType; label: string; badge?: number; children?: NavChild[]; end?: boolean }
 
 const NAV_ITEMS: NavItemDef[] = [
-  { to: "/instructor",           icon: LayoutDashboard, label: "Overview", end: true },
   {
-    to: "/instructor/courses", icon: BookOpen, label: "My Courses",
+    to: "/instructor",
+    icon: LayoutDashboard,
+    label: "Dashboard",
+    end: true,
+  },
+
+  {
+    to: "/instructor/courses",
+    icon: BookOpen,
+    label: "Manage Courses",
     children: [
-      { to: "/instructor/courses",        label: "All Courses"   },
-      { to: "/instructor/courses/create", label: "Create Course" },
+      { to: "/instructor/courses", label: "All Courses" },
+      { to: "/instructor/assignments", label: "Assignments" },
     ],
   },
-  { to: "/instructor/students",  icon: Users,         label: "My Students" },
-  { to: "/instructor/earnings",  icon: DollarSign,    label: "Earnings"    },
-  { to: "/instructor/analytics", icon: BarChart3,     label: "Analytics"   },
-  { to: "/instructor/reviews",   icon: Star,          label: "Reviews", badge: 4 },
-  { to: "/instructor/messages",  icon: MessageSquare, label: "Messages", badge: 7 },
-  { to: "/instructor/profile",   icon: UserCog,       label: "Profile"     },
-  { to: "/instructor/settings",  icon: Settings,      label: "Settings"    },
+
+  { 
+    to: "/instructor/discussions",
+    icon: MessageSquare,
+    label: "Student Discussions",
+    badge: 7,
+  },
+
+  { 
+    to: "/instructor/video-call",
+    icon: Video,
+    label: "Video Call",
+  },
+
+  {
+    to: "/instructor/students",
+    icon: Users,
+    label: "Manage Students",
+    children: [
+      { to: "/instructor/students", label: "All Students" },
+      { to: "/instructor/reviews", label: "Reviews" },
+    ],
+  },
+
+  {
+    to: "/instructor/profile",
+    icon: UserCog,
+    label: "Profile",
+    children: [
+      { to: "/instructor/profile", label: "View Profile" },
+      { to: "/instructor/settings", label: "Settings" },
+    ],
+  }
 ];
 
 // ─── NavItem ──────────────────────────────────────────────────────────────────
@@ -154,20 +188,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         </Link>
       </div>
-
-      {/* Quick create */}
-      <div className="px-3 pt-3">
-        <Link to="/instructor/courses/create" onClick={onNavigate}
-          className="flex items-center gap-2 w-full px-3 py-2.5 rounded-2xl text-[12px] font-bold
-            bg-gradient-to-r from-indigo-600 to-blue-500 text-white
-            shadow-[0_4px_14px_rgba(99,102,241,0.35)]
-            hover:shadow-[0_6px_20px_rgba(99,102,241,0.45)]
-            transition-all duration-200">
-          <PlusCircle className="w-3.5 h-3.5" />
-          New Course
-        </Link>
-      </div>
-
       {/* Nav */}
       <nav className="relative flex-1 px-3 py-3 flex flex-col gap-1 overflow-y-auto
         [scrollbar-width:thin] [scrollbar-color:transparent_transparent]

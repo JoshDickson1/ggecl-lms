@@ -35,7 +35,7 @@ export const MOCK_USERS: Record<Role, DashboardUser> = {
     id: "adm-001",
     firstName: "Emeka",
     lastName: "Osei",
-    email: "emeka@learnflow.io",
+    email: "emeka@ggecl.io",
     role: "admin",
     isSuperAdmin: true,
   },
@@ -43,7 +43,7 @@ export const MOCK_USERS: Record<Role, DashboardUser> = {
     id: "inst-1",
     firstName: "Sarah",
     lastName: "Mitchell",
-    email: "sarah@learnflow.io",
+    email: "sarah@ggecl.io",
     role: "instructor",
   },
   student: {

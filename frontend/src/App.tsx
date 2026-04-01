@@ -49,6 +49,11 @@ import StudentHome from "./dashboards/student-dashboard/pages/StudentHome";
  
 // ── Shared ────────────────────────────────────────────────────
 import NotFound from "./landing/_components/NotFound";
+import InstructorProfile from "./dashboards/instructor-dashboard/pages/InstructorProfile";
+import InstructorSettings from "./dashboards/instructor-dashboard/pages/InstructorSettings";
+import StudentProfile from "./dashboards/student-dashboard/pages/StudentProfile";
+import AdminProfile from "./dashboards/admin-dashboard/pages/AdminProfile";
+import StudentSettings from "./dashboards/student-dashboard/pages/StudentSettings";
  
 const router = createBrowserRouter([
  
@@ -84,7 +89,7 @@ const router = createBrowserRouter([
   // ── Admin dashboard ───────────────────────────────────────────
   // Only admin role can access these routes (guard is inside AdminLayout)
   {
-  path: "/dashboard",
+  path: "/admin",
   element: (
     <DashboardAuthProvider defaultRole="admin">
       <AdminLayout />
@@ -92,6 +97,7 @@ const router = createBrowserRouter([
   ),
   children: [
     { index: true, element: <AdminHome /> },
+    { path: "profile", element: <AdminProfile /> },
   ],
 },
  
@@ -106,6 +112,8 @@ const router = createBrowserRouter([
   ),
   children: [
     { index: true, element: <InstructorHome /> },
+    { path: "profile", element: <InstructorProfile /> },
+    { path: "Settings", element: <InstructorSettings /> },
   ],
 },
  
@@ -120,6 +128,8 @@ const router = createBrowserRouter([
   ),
   children: [
     { index: true, element: <StudentHome /> },
+    { path: "profile", element: <StudentProfile /> },
+    { path: "settings", element: <StudentSettings /> },
   ],
 },
  

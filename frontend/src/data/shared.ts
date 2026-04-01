@@ -55,21 +55,21 @@ export function getAccent(role: Role) {
       accentHex:  "99,102,241",
     };
     case "student": return {
-      activeBg:   "bg-gradient-to-r from-blue-600 to-cyan-500",
+      activeBg:   "bg-gradient-to-r from-blue-600 to-blue-500",
       activeText: "text-white",
       activeIcon: "bg-white/20",
       hoverBg:    "hover:bg-blue-50 dark:hover:bg-blue-950/30",
       hoverText:  "hover:text-blue-700 dark:hover:text-blue-300",
       idleBg:     "bg-gray-100 dark:bg-white/[0.05]",
       idleText:   "text-gray-700 dark:text-gray-300",
-      badge:      "bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300",
-      logoBg:     "from-blue-600 via-blue-500 to-cyan-500",
+      badge:      "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300",
+      logoBg:     "from-blue-600 via-blue-500 to-blue-500",
       ring:       "ring-blue-200/60 dark:ring-blue-500/30",
-      pill:       "bg-cyan-50 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300",
-      border:     "border-cyan-100 dark:border-cyan-900/40",
+      pill:       "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
+      border:     "border-blue-100 dark:border-blue-900/40",
       dot:        "bg-emerald-400",
       shadow:     "shadow-[0_4px_14px_rgba(6,182,212,0.28)]",
-      roleColor:  "bg-cyan-50 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300",
+      roleColor:  "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
       accentHex:  "6,182,212",
     };
   }
