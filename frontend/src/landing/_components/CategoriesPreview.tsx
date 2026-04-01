@@ -1,276 +1,340 @@
-import { motion, useAnimationFrame } from "framer-motion";
-import { ArrowRight } from "lucide-react";
-import { useRef, useState } from "react";
+// CategoriesPreview.tsx — Windows 2000 Style
 import { categories, type Category } from "@/data/categories";
 import { Link } from "react-router-dom";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+const CSS = `
+  .cat-section {
+    font-family: "Tahoma", "MS Sans Serif", Arial, sans-serif;
+    background: #d4d0c8;
+    padding: 16px;
+  }
+  .cat-window {
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .cat-title-bar {
+    background: linear-gradient(to right, #0a246a, #a6b5e7);
+    color: #fff;
+    font-weight: bold;
+    font-size: 12px;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+  }
+  .cat-title-left { display: flex; align-items: center; gap: 6px; }
+  .cat-wbtns { display: flex; gap: 2px; }
+  .cat-wbtn {
+    width: 16px; height: 14px;
+    background: #d4d0c8;
+    border-top: 1px solid #fff;
+    border-left: 1px solid #fff;
+    border-right: 1px solid #404040;
+    border-bottom: 1px solid #404040;
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: #000; font-weight: bold;
+  }
+  .cat-toolbar {
+    background: #d4d0c8;
+    border-bottom: 1px solid #808080;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .cat-toolbar-left {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: bold; color: #000;
+  }
+  .cat-badge {
+    background: #000080; color: #fff;
+    font-size: 10px; padding: 1px 6px;
+  }
+  .cat-body {
+    background: #d4d0c8;
+    padding: 12px;
+  }
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  @media (max-width: 1100px) { .cat-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 760px)  { .cat-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px)  { .cat-grid { grid-template-columns: 1fr; } }
+
+  .cat-card {
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+  }
+  .cat-card:hover {
+    border-top: 2px solid #404040;
+    border-left: 2px solid #404040;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+  }
+  .cat-card-titlebar {
+    background: linear-gradient(to right, #0a246a, #a6b5e7);
+    color: #fff; font-size: 10px;
+    padding: 2px 6px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .cat-card-icon-wrap {
+    height: 60px;
+    background: #d4d0c8;
+    border-bottom: 1px solid #808080;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+  }
+  .cat-card-body {
+    padding: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .cat-card-name {
+    font-size: 12px;
+    font-weight: bold;
+    color: #000;
+    margin: 0;
+  }
+  .cat-card-courses {
+    font-size: 10px;
+    color: #000080;
+    font-weight: bold;
+  }
+  .cat-card-pop-wrap {
+    margin-top: 2px;
+  }
+  .cat-pop-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: #555;
+    margin-bottom: 2px;
+  }
+  .cat-pop-track {
+    height: 8px;
+    background: #d4d0c8;
+    border-top: 1px solid #808080;
+    border-left: 1px solid #808080;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #fff;
+    overflow: hidden;
+  }
+  .cat-pop-fill {
+    height: 100%;
+    background: linear-gradient(to right, #000080, #3060c0);
+  }
+  .cat-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 4px;
+  }
+  .cat-tag {
+    font-size: 9px;
+    border: 1px solid #808080;
+    padding: 0 4px;
+    background: #d4d0c8;
+    color: #000;
+  }
+  .cat-card-footer {
+    border-top: 1px solid #d4d0c8;
+    padding: 5px 8px;
+    background: #f0eee8;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .cat-students-count {
+    font-size: 10px;
+    color: #000080;
+    font-weight: bold;
+  }
+  .cat-explore-btn {
+    font-family: "Tahoma", Arial, sans-serif;
+    font-size: 10px;
+    padding: 2px 8px;
+    background: #d4d0c8;
+    border-top: 1.5px solid #ffffff;
+    border-left: 1.5px solid #ffffff;
+    border-right: 1.5px solid #404040;
+    border-bottom: 1.5px solid #404040;
+    cursor: pointer;
+    color: #000;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .cat-explore-btn:hover { background: #e8e8e8; }
+  .cat-explore-btn:active {
+    border-top: 1.5px solid #404040;
+    border-left: 1.5px solid #404040;
+    border-right: 1.5px solid #ffffff;
+    border-bottom: 1.5px solid #ffffff;
+  }
+  .cat-statusbar {
+    background: #d4d0c8;
+    border-top: 1px solid #808080;
+    padding: 2px 8px;
+    font-size: 10px;
+    color: #000;
+    display: flex; gap: 12px;
+    font-family: "Tahoma", Arial;
+  }
+  .cat-statusbar-panel {
+    border-right: 1px solid #808080;
+    padding-right: 8px;
+  }
+  .cat-toolbar-btn {
+    font-family: "Tahoma", Arial, sans-serif;
+    font-size: 11px;
+    padding: 3px 12px;
+    background: #d4d0c8;
+    border-top: 1.5px solid #ffffff;
+    border-left: 1.5px solid #ffffff;
+    border-right: 1.5px solid #404040;
+    border-bottom: 1.5px solid #404040;
+    cursor: pointer;
+    color: #000;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .cat-toolbar-btn:hover { background: #e8e8e8; }
+`;
+
+const CATEGORY_ICON_MAP: Record<string, string> = {
+  "Technology": "💻",
+  "Business": "💼",
+  "Design": "🎨",
+  "Science": "🔬",
+  "Math": "📐",
+  "Language": "📝",
+  "Music": "🎵",
+  "Art": "🖼️",
+  "Health": "❤️",
+  "Finance": "💰",
+  "Marketing": "📣",
+  "Photography": "📷",
+};
+
+function getCatIcon(cat: Category) {
+  const key = Object.keys(CATEGORY_ICON_MAP).find((k) =>
+    cat.title.toLowerCase().includes(k.toLowerCase()) ||
+    (cat.tags && cat.tags.some((t: string) => t.toLowerCase().includes(k.toLowerCase())))
+  );
+  return key ? CATEGORY_ICON_MAP[key] : "📁";
+}
+
 function formatStudents(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
 }
 
-// ─── Single card ─────────────────────────────────────────────────────────────
-function CategoryCard({ category }: { category: Category }) {
-  const Icon = category.icon;
-  const [hovered, setHovered] = useState(false);
-
+function CatCard({ cat }: { cat: Category }) {
+  const icon = getCatIcon(cat);
   return (
-    <motion.div
-      onHoverStart={() => setHovered(true)}
-      onHoverEnd={() => setHovered(false)}
-      className="relative flex-shrink-0 w-[320px] rounded-[22px] p-6 flex flex-col gap-4 cursor-pointer
-        bg-white/70 dark:bg-[#020618]
-        backdrop-blur-xl
-        border border-white/80 dark:border-white/[0.08]
-        transition-shadow duration-300"
-      style={{
-        boxShadow: hovered
-          ? "0 0 0 1.5px rgba(59,130,246,0.45), 0 12px 40px rgba(59,130,246,0.16)"
-          : "0 8px 30px rgba(15,23,42,0.08)",
-      }}
-      whileHover={{ y: -4 }}
-      transition={{ type: "spring", stiffness: 300, damping: 24 }}
-    >
-      {/* Hover glow */}
-      <motion.div
-        className="pointer-events-none absolute inset-0 rounded-[22px] z-0"
-        animate={{ opacity: hovered ? 1 : 0 }}
-        transition={{ duration: 0.3 }}
-        style={{
-          background:
-            "radial-gradient(circle at 50% 0%, rgba(59,130,246,0.09) 0%, transparent 70%)",
-        }}
-      />
-
-      {/* Icon */}
-      <div className="relative z-10 w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center">
-        <motion.div
-          animate={hovered ? { rotate: 360 } : { rotate: 0 }}
-          transition={{ duration: 0.6, ease: "easeInOut" }}
-        >
-          <Icon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-        </motion.div>
+    <div className="cat-card">
+      <div className="cat-card-titlebar">
+        <span>📁</span>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>
+          {cat.title}
+        </span>
       </div>
-
-      {/* Title + courses */}
-      <div className="relative z-10">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-          {category.title}
-        </h3>
-        <p className="text-sm mt-0.5">
-          <span className="text-blue-600 dark:text-blue-400 font-semibold">
-            {category.courses}
-          </span>
-          <span className="text-gray-400 dark:text-gray-500"> courses available</span>
-        </p>
-      </div>
-
-      {/* Popularity bar */}
-      <div className="relative z-10">
-        <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500 mb-1.5">
-          <span>Popularity</span>
-          <span>{category.popularity}%</span>
+      <div className="cat-card-icon-wrap">{icon}</div>
+      <div className="cat-card-body">
+        <p className="cat-card-name">{cat.title}</p>
+        <p className="cat-card-courses">{cat.courses} courses available</p>
+        <div className="cat-card-pop-wrap">
+          <div className="cat-pop-label">
+            <span>Popularity</span>
+            <span>{cat.popularity}%</span>
+          </div>
+          <div className="cat-pop-track">
+            <div className="cat-pop-fill" style={{ width: `${cat.popularity}%` }} />
+          </div>
         </div>
-        <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.07] overflow-hidden">
-          <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400"
-            initial={{ width: 0 }}
-            animate={{ width: `${category.popularity}%` }}
-            transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
-          />
-        </div>
-      </div>
-
-      {/* Tags */}
-      <div className="relative z-10 flex flex-wrap gap-2">
-        {category.tags.map((tag) => (
-          <span
-            key={tag}
-            className="px-3 py-1 rounded-full text-xs font-semibold
-              border border-gray-200 dark:border-white/[0.10]
-              text-gray-600 dark:text-gray-300
-              bg-gray-50 dark:bg-white/[0.04]"
-          >
-            {tag}
-          </span>
-        ))}
-      </div>
-
-      {/* Divider */}
-      <div className="relative z-10 h-px bg-gray-100 dark:bg-white/[0.06]" />
-
-      {/* Bottom: students + arrow */}
-      <div className="relative z-10 flex items-center gap-3 mt-auto">
-        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-2xl
-          bg-gray-50 dark:bg-white/[0.04]
-          border border-gray-100 dark:border-white/[0.07]">
-          <div className="flex -space-x-2">
-            {category.students_avatars.map((av, i) => (
-              <span
-                key={i}
-                className={`w-6 h-6 rounded-full text-[10px] font-bold text-white
-                  flex items-center justify-center
-                  border-2 border-white dark:border-[#020618]
-                  ${av.bg}`}
-              >
-                {av.initials}
-              </span>
+        {cat.tags && (
+          <div className="cat-tags">
+            {cat.tags.slice(0, 3).map((tag: string) => (
+              <span key={tag} className="cat-tag">{tag}</span>
             ))}
           </div>
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
-            {formatStudents(category.students)} students
-          </span>
-        </div>
-
-        <Link to={`/categories/${category.id}`} onClick={(e) => e.stopPropagation()}>
-          <motion.div
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.94 }}
-            className="w-10 h-10 rounded-2xl bg-blue-600 hover:bg-blue-500
-              transition-colors flex items-center justify-center flex-shrink-0
-              shadow-[0_4px_14px_rgba(59,130,246,0.4)]"
-          >
-            <ArrowRight className="w-4 h-4 text-white" />
-          </motion.div>
-        </Link>
+        )}
       </div>
-    </motion.div>
-  );
-}
-
-// ─── Marquee row (pauses on hover) ───────────────────────────────────────────
-function MarqueeRow({
-  items,
-  reverse = false,
-  speed = 28,
-}: {
-  items: Category[];
-  reverse?: boolean;
-  speed?: number;
-}) {
-  const x = useRef(0);
-  const [pos, setPos] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const doubled = [...items, ...items];
-  const cardW = 320 + 20; // card width + gap
-  const totalW = items.length * cardW;
-
-  useAnimationFrame((_, delta) => {
-    if (paused) return;
-    const dir = reverse ? 1 : -1;
-    x.current += dir * (speed / 1000) * delta;
-    if (x.current <= -totalW) x.current += totalW;
-    if (x.current >= 0) x.current -= totalW;
-    setPos(x.current);
-  });
-
-  return (
-    <div
-      className="overflow-hidden w-full py-4"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-    >
-      <div
-        className="flex gap-5"
-        style={{ transform: `translateX(${pos}px)`, willChange: "transform" }}
-      >
-        {doubled.map((cat, i) => (
-          <CategoryCard key={`${cat.id}-${i}`} category={cat} />
-        ))}
+      <div className="cat-card-footer">
+        <span className="cat-students-count">
+          {formatStudents(cat.students)} students
+        </span>
+        <Link to={`/categories/${cat.id}`}>
+          <button className="cat-explore-btn">Explore &gt;</button>
+        </Link>
       </div>
     </div>
   );
 }
 
-// ─── Main section ─────────────────────────────────────────────────────────────
 export default function CategoriesPreview() {
-  const row1 = categories.slice(0, 6);
-  const row2 = categories.slice(6, 12);
+  const preview = categories.slice(0, 8);
 
   return (
-    <section className="relative py-20 overflow-hidden bg-gray-50/50 dark:bg-[#080d18]">
-
-      {/* subtle blue grid + glow background */}
-      <div
-        className="absolute inset-0 z-0 pointer-events-none"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, rgba(59,130,246,0.035) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(59,130,246,0.035) 1px, transparent 1px),
-            radial-gradient(circle 600px at 0% 10%, rgba(59,130,246,0.08), transparent 60%),
-            radial-gradient(circle 500px at 100% 0%, rgba(96,165,250,0.07), transparent 55%)
-          `,
-          backgroundSize: "48px 48px, 48px 48px, 100% 100%, 100% 100%",
-        }}
-      />
-
-      {/* 20% fade masks — left & right, light/dark aware */}
-      <div
-        className="pointer-events-none absolute inset-y-0 left-0 z-20"
-        style={{
-          width: "20%",
-          background:
-            "linear-gradient(to right, var(--section-bg, #f9fafb) 20%, transparent 100%)",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute inset-y-0 right-0 z-20"
-        style={{
-          width: "20%",
-          background:
-            "linear-gradient(to left, var(--section-bg, #f9fafb) 20%, transparent 100%)",
-        }}
-      />
-
-      {/* Header — sits above the masks */}
-      <div className="relative z-30 max-w-[1200px] mx-auto px-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-14">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-              border border-blue-200 dark:border-blue-900/60
-              bg-blue-50 dark:bg-blue-950/30 mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span className="text-[11px] font-bold tracking-widest text-blue-600 dark:text-blue-400 uppercase">
-                Browse by field
-              </span>
+    <>
+      <style>{CSS}</style>
+      <section className="cat-section">
+        <div className="cat-window">
+          {/* Title bar */}
+          <div className="cat-title-bar">
+            <div className="cat-title-left">
+              <span>📂</span>
+              Top Categories — GGECL LMS
             </div>
-
-            <h2 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white leading-tight">
-              Top{" "}
-              <span className="text-blue-600 dark:text-blue-400">Categories</span>
-            </h2>
-            <p className="mt-3 text-gray-500 dark:text-gray-400 text-base max-w-sm">
-              Find your perfect learning path across our most popular disciplines.
-            </p>
+            <div className="cat-wbtns">
+              <div className="cat-wbtn">_</div>
+              <div className="cat-wbtn">&#9633;</div>
+              <div className="cat-wbtn">&#215;</div>
+            </div>
           </div>
 
-          <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
-            <Link
-              to="/categories"
-              className="self-start md:self-auto inline-flex items-center gap-2 px-5 py-3 rounded-full
-                bg-blue-600 hover:bg-blue-500
-                text-white text-sm font-semibold
-                shadow-[0_4px_20px_rgba(59,130,246,0.4)]
-                transition-colors duration-200"
-            >
-              Explore all categories
-              <ArrowRight className="w-4 h-4" />
+          {/* Toolbar */}
+          <div className="cat-toolbar">
+            <div className="cat-toolbar-left">
+              <span>Top Categories</span>
+              <span className="cat-badge">{preview.length} items</span>
+            </div>
+            <Link to="/categories">
+              <button className="cat-toolbar-btn">Browse All Categories &gt;&gt;</button>
             </Link>
-          </motion.div>
+          </div>
+
+          {/* Body */}
+          <div className="cat-body">
+            <div className="cat-grid">
+              {preview.map((cat) => (
+                <CatCard key={cat.id} cat={cat} />
+              ))}
+            </div>
+          </div>
+
+          {/* Status bar */}
+          <div className="cat-statusbar">
+            <span className="cat-statusbar-panel">{preview.length} object(s)</span>
+            <span className="cat-statusbar-panel">Ready</span>
+            <span>My Computer</span>
+          </div>
         </div>
-      </div>
-
-      {/* Marquee rows — behind masks (z-10), full bleed */}
-      <div className="relative z-10 flex flex-col gap-5">
-        <MarqueeRow items={row1} reverse={false} speed={28} />
-        <MarqueeRow items={row2} reverse={true} speed={22} />
-      </div>
-
-      {/* CSS custom property for the mask gradient — matches bg in light & dark */}
-      <style>{`
-        :root       { --section-bg: #f9fafb; }
-        .dark       { --section-bg: #080d18; }
-      `}</style>
-    </section>
+      </section>
+    </>
   );
 }

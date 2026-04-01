@@ -1,173 +1,10 @@
-// Navbar.tsx
-import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom"; // ✅ react-router-dom v6
-import { Menu, Search, ShoppingCart } from "lucide-react";
-import { cn } from "@/lib/utils";
-import {ModeToggle} from "@/common/mode-toggle";
-import { useCallback } from "react";
+// Navbar.tsx — Windows 2000 Style
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { ShoppingCart } from "lucide-react";
 import GGECL_LOGO from "@/assets/ggecl_logo.jpg";
-const CSS_VARS = `
-  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
 
-  .nav-theme {
-    --glass-bg:    rgba(255,255,255,0.55);
-    --glass-bd:    rgba(255,255,255,0.75);
-    --glass-sh:    0 8px 32px rgba(0,0,0,0.10), 0 1.5px 0 rgba(255,255,255,0.80) inset;
-    --pill-bg:     rgba(240,242,248,0.70);
-    --pill-bd:     rgba(255,255,255,0.75);
-    --text:        #0d1117;
-    --muted:       #5a6478;
-    --accent:      #1a6ef7;
-    --accent-s:    rgba(26,110,247,0.12);
-  }
-  .dark .nav-theme {
-  --glass-bg: rgba(8, 15, 35, 0.88); /* much darker navy glass */
-  --glass-bd: rgba(59, 130, 246, 0.12);
-  --glass-sh:
-    0 10px 38px rgba(0, 0, 0, 0.62),
-    0 1px 0 rgba(255, 255, 255, 0.04) inset;
-
-  --pill-bg: rgba(15, 23, 42, 0.72);
-  --pill-bd: rgba(59, 130, 246, 0.1);
-
-  --text: #f8fbff;
-  --muted: #94a3b8;
-
-  --accent: #3b82f6;
-  --accent-s: rgba(59, 130, 246, 0.14);
-}
-
-  /* All colour transitions run on the variables themselves */
-  .nav-pill-box {
-  backdrop-filter: blur(15px) saturate(180%);
--webkit-backdrop-filter: blur(28px) saturate(180%);
-    background:   var(--glass-bg);
-    border-color: var(--glass-bd);
-    box-shadow:   var(--glass-sh);
-    transition:
-      background   0.38s ease,
-      border-color 0.38s ease,
-      box-shadow   0.38s ease,
-      border-radius 0.32s cubic-bezier(0.4,0,0.2,1);
-  }
-  .nav-pill-box:hover {
-    box-shadow: var(--glass-sh), 0 16px 52px rgba(26,110,247,0.07);
-  }
-
-  .v-input {
-    background:   var(--pill-bg);
-    border-color: var(--pill-bd);
-    color:        var(--text);
-    transition: background 0.3s ease, border-color 0.28s ease, box-shadow 0.2s ease;
-  }
-  .v-input::placeholder { color: var(--muted); }
-  .v-input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-s);
-    background: var(--glass-bg);
-  }
-
-  .v-icon-btn {
-    background:   var(--pill-bg);
-    border-color: var(--pill-bd);
-    color: var(--muted);
-    transition: background 0.28s ease, border-color 0.28s ease, color 0.28s ease, transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease;
-  }
-  .v-icon-btn:hover {
-    background:   var(--accent-s);
-    border-color: var(--accent);
-    color: var(--accent);
-    transform: scale(1.09);
-  }
-  .v-icon-btn:active { transform: scale(0.93); }
-
-  .v-ghost-btn {
-    background:   var(--pill-bg);
-    border-color: var(--pill-bd);
-    color: var(--muted);
-    transition: background 0.28s ease, border-color 0.28s ease, color 0.28s ease, transform 0.22s ease, box-shadow 0.22s ease;
-  }
-  .v-ghost-btn:hover {
-    background:   var(--accent-s);
-    border-color: var(--accent);
-    color: var(--accent);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px var(--accent-s);
-  }
-  .v-ghost-btn:active { transform: translateY(0) scale(0.97); }
-
-  .v-nav-link {
-    color: var(--muted);
-    transition: color 0.25s ease, background 0.25s ease;
-  }
-  .v-nav-link:hover { color: var(--text); background: var(--accent-s); }
-
-  .v-m-link {
-    color: var(--text);
-    border-color: transparent;
-    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.22s cubic-bezier(0.34,1.56,0.64,1);
-  }
-  .v-m-link:hover {
-    background: linear-gradient(90deg, var(--accent-s) 0%, transparent 100%);
-    border-color: rgba(26,110,247,0.2);
-    color: var(--accent);
-    transform: translateX(4px);
-  }
-  .v-m-link:active { transform: translateX(4px) scale(0.98); }
-
-  .v-divider {
-    background: var(--glass-bd);
-    transition: background 0.38s ease;
-  }
-  .v-shortcut {
-    background:   var(--pill-bg);
-    border-color: var(--pill-bd);
-    color: var(--muted);
-    transition: opacity 0.2s ease;
-  }
-  .v-input:focus ~ .v-shortcut { opacity: 0; }
-
-  .v-toggle {
-    transition: background 0.38s ease, border-color 0.38s ease;
-  }
-
-  /* ── Mobile menu: absolute dropdown that floats OVER page content */
-  .mobile-menu-anchor {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0; right: 0;
-    z-index: 200;
-    pointer-events: none;
-  }
-  .mobile-menu-anchor.open { pointer-events: all; }
-
-  .mobile-menu-card {
-  backdrop-filter: blur(10px) saturate(180%);
--webkit-backdrop-filter: blur(28px) saturate(180%);
-    background:   var(--glass-bg);
-    border: 1px solid var(--glass-bd);
-    box-shadow:   var(--glass-sh);
-    border-radius: 22px;
-    overflow: hidden;
-    max-height: 0;
-    opacity: 0;
-    transform: translateY(-10px) scale(0.975);
-    transition:
-      max-height 0.42s cubic-bezier(0.4,0,0.2,1),
-      opacity    0.26s ease,
-      transform  0.36s cubic-bezier(0.34,1.56,0.64,1),
-      background   0.38s ease,
-      border-color 0.38s ease,
-      box-shadow   0.38s ease;
-  }
-  .mobile-menu-anchor.open .mobile-menu-card {
-    max-height: 640px;
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-`;
-
-const defaultLinks = [
+const links = [
   { path: "/courses",     title: "Courses" },
   { path: "/instructors", title: "Instructors" },
   { path: "/categories",  title: "Categories" },
@@ -177,191 +14,261 @@ const defaultLinks = [
 const Navbar = ({ showNav }: { showNav?: boolean }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-      if (e.key === "Escape") { setMenuOpen(false); searchRef.current?.blur(); }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, []);
-
-  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const [search, setSearch] = useState("");
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && e.currentTarget.value.trim()) {
-      navigate("/search?q=" + encodeURIComponent(e.currentTarget.value.trim()));
-      closeMenu();
+    if (e.key === "Enter" && search.trim()) {
+      navigate("/search?q=" + encodeURIComponent(search.trim()));
+      setMenuOpen(false);
     }
   };
 
-  const allLinks = showNav ? defaultLinks : defaultLinks;
-
   return (
     <>
-      <style>{CSS_VARS}</style>
+      <style>{`
+        .win-nav-bar {
+          font-family: "Tahoma", "MS Sans Serif", Arial, sans-serif;
+          background: #d4d0c8;
+          border-bottom: 2px solid #808080;
+          position: fixed;
+          top: 0; left: 0; right: 0;
+          z-index: 100;
+          box-shadow: 0 2px 0 #ffffff inset, 0 -1px 0 #404040 inset;
+        }
+        .win-title-bar {
+          background: linear-gradient(to right, #0a246a, #a6b5e7);
+          color: #fff;
+          font-weight: bold;
+          font-size: 11px;
+          padding: 2px 6px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          letter-spacing: 0.02em;
+        }
+        .win-title-bar img {
+          width: 14px; height: 14px; border-radius: 2px;
+        }
+        .win-menu-bar {
+          display: flex;
+          align-items: center;
+          padding: 0 8px;
+          background: #d4d0c8;
+          border-bottom: 1px solid #808080;
+          gap: 2px;
+        }
+        .win-menu-item {
+          font-family: "Tahoma", Arial, sans-serif;
+          font-size: 12px;
+          color: #000;
+          padding: 3px 8px;
+          cursor: pointer;
+          text-decoration: none;
+          display: block;
+          border: 1px solid transparent;
+        }
+        .win-menu-item:hover {
+          background: #0a246a;
+          color: #fff;
+          border: 1px solid #0a246a;
+        }
+        .win-toolbar {
+          display: flex;
+          align-items: center;
+          padding: 4px 8px;
+          gap: 6px;
+          background: #d4d0c8;
+        }
+        .win-btn {
+          font-family: "Tahoma", Arial, sans-serif;
+          font-size: 11px;
+          padding: 3px 10px;
+          background: #d4d0c8;
+          border-top: 1.5px solid #ffffff;
+          border-left: 1.5px solid #ffffff;
+          border-right: 1.5px solid #404040;
+          border-bottom: 1.5px solid #404040;
+          cursor: pointer;
+          color: #000;
+          text-decoration: none;
+          display: inline-block;
+          white-space: nowrap;
+        }
+        .win-btn:hover {
+          background: #e8e8e8;
+        }
+        .win-btn:active {
+          border-top: 1.5px solid #404040;
+          border-left: 1.5px solid #404040;
+          border-right: 1.5px solid #ffffff;
+          border-bottom: 1.5px solid #ffffff;
+        }
+        .win-btn-primary {
+          background: #0a246a;
+          color: #fff;
+          border-top: 1.5px solid #3060c0;
+          border-left: 1.5px solid #3060c0;
+          border-right: 1.5px solid #000820;
+          border-bottom: 1.5px solid #000820;
+          font-family: "Tahoma", Arial, sans-serif;
+          font-size: 11px;
+          padding: 3px 10px;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .win-btn-primary:hover { background: #1a3a8a; }
+        .win-search-box {
+          font-family: "Tahoma", Arial, sans-serif;
+          font-size: 11px;
+          padding: 2px 4px;
+          border-top: 1.5px solid #808080;
+          border-left: 1.5px solid #808080;
+          border-right: 1.5px solid #ffffff;
+          border-bottom: 1.5px solid #ffffff;
+          background: #fff;
+          color: #000;
+          outline: none;
+          width: 180px;
+        }
+        .win-separator {
+          width: 1px;
+          height: 20px;
+          background: #808080;
+          margin: 0 4px;
+          box-shadow: 1px 0 0 #fff;
+        }
+        .win-logo-img {
+          width: 20px; height: 20px;
+          border-radius: 2px;
+          border: 1px solid #808080;
+          object-fit: cover;
+        }
+        .win-icon-btn {
+          padding: 3px 7px;
+          background: #d4d0c8;
+          border-top: 1.5px solid #ffffff;
+          border-left: 1.5px solid #ffffff;
+          border-right: 1.5px solid #404040;
+          border-bottom: 1.5px solid #404040;
+          cursor: pointer;
+          color: #000;
+          font-size: 13px;
+          display: inline-flex;
+          align-items: center;
+        }
+        .win-icon-btn:hover { background: #e8e8e8; }
+        .win-mobile-menu {
+          background: #d4d0c8;
+          border: 2px solid #808080;
+          border-top: 2px solid #ffffff;
+          border-left: 2px solid #ffffff;
+          position: absolute;
+          top: 100%;
+          left: 0; right: 0;
+          z-index: 200;
+          padding: 4px;
+          box-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+        }
+        .win-mobile-link {
+          display: block;
+          font-family: "Tahoma", Arial, sans-serif;
+          font-size: 12px;
+          color: #000;
+          padding: 5px 12px;
+          text-decoration: none;
+          border: 1px solid transparent;
+        }
+        .win-mobile-link:hover {
+          background: #0a246a; color: #fff;
+        }
+        .win-spacer { height: 72px; }
+      `}</style>
 
-      {/* 
-        position: relative on the nav so the absolute mobile-menu-anchor
-        is positioned relative to it, but the nav itself is fixed so it
-        doesn't push down page content. 
-      */}
-      <nav
-        className={cn("nav-theme fixed top-0 left-0 z-[100] w-full px-4 pt-3")}
-        style={{ fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, sans-serif", position: "fixed" }}
-      >
-        {/* Centering wrapper — position:relative so mobile-menu-anchor is relative to this */}
-        <div className="relative max-w-[1200px] mx-auto">
+      <nav className="win-nav-bar">
+        {/* Title bar */}
+        <div className="win-title-bar">
+          <img src={GGECL_LOGO} alt="GGECL" />
+          GGECL Learning Management System
+        </div>
 
-          {/* ── Pill */}
-          <div className="nav-pill-box border rounded-full px-[18px]">
-            <div className="flex items-center gap-10 h-[72px]">
+        {/* Menu bar */}
+        <div className="win-menu-bar">
+          {links.map((l) => (
+            <Link key={l.path} to={l.path} className="win-menu-item">{l.title}</Link>
+          ))}
+        </div>
 
-              {/* Logo */}
-              <Link to="/" className="flex items-center flex-shrink-0 no-underline group">
-                <img
-                  src={GGECL_LOGO}
-                  alt="GGECL"
-                  className="w-[52px] h-[52px] rounded-full border-2 border-[rgba(255,255,255,0.75)] shadow-[0_2px_10px_rgba(0,0,0,0.14)] object-cover transition-transform duration-300 group-hover:scale-[1.09] group-hover:-rotate-[4deg]"
-                />
-              </Link>
+        {/* Toolbar */}
+        <div className="win-toolbar" style={{ position: "relative" }}>
+          <Link to="/">
+            <img src={GGECL_LOGO} alt="GGECL" className="win-logo-img" />
+          </Link>
 
-              {/* Desktop centre */}
-              {!showNav ? (
-                <div className="relative flex-1 max-w-[340px] hidden md:block">
-                  <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--muted)" }} />
-                  <input
-                    ref={searchRef}
-                    type="text"
-                    placeholder="Search courses, instructors…"
-                    onKeyDown={handleSearch}
-                    className="v-input w-full rounded-full py-[9px] pl-[38px] pr-[54px] text-sm outline-none border"
-                  />
-                  <span className="v-shortcut absolute right-2.5 top-1/2 -translate-y-1/2 border rounded-[7px] px-1.5 py-0.5 text-[10.5px] font-bold tracking-wide pointer-events-none">
-                    ⌘K
-                  </span>
-                </div>
-              ) : (
-                <div className="hidden md:flex items-center gap-0.5 flex-1 justify-center">
-                  {allLinks.map((link) => (
-                    <Link
-                      key={link.path}
-                      to={link.path}
-                      className="v-nav-link relative px-4 py-2 rounded-full text-[14px] font-medium no-underline whitespace-nowrap after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-0 after:h-0.5 after:rounded-sm after:bg-gradient-to-r after:from-[#1a6ef7] after:to-[#0a3ba8] after:transition-[width] after:duration-[250ms] hover:after:w-[38%]"
-                    >
-                      {link.title}
-                    </Link>
-                  ))}
-                </div>
-              )}
+          <div className="win-separator" />
 
-              {/* Actions */}
-              <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-                <Link to="/login" className="hidden md:block">
-                  <button className="v-ghost-btn px-[18px] py-2 rounded-full text-[13.5px] font-semibold cursor-pointer whitespace-nowrap border">
-                    Login Student
-                  </button>
+          {/* Back / Forward buttons */}
+          <button className="win-btn" style={{ fontSize: 10 }}>&#9664; Back</button>
+          <button className="win-btn" style={{ fontSize: 10 }}>Forward &#9654;</button>
+
+          <div className="win-separator" />
+
+          {/* Address / search */}
+          <span style={{ fontSize: 11, fontFamily: "Tahoma, Arial", color: "#000" }}>Search:</span>
+          <input
+            type="text"
+            placeholder="Search courses..."
+            className="win-search-box"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleSearch}
+          />
+          <button className="win-btn" onClick={() => search.trim() && navigate("/search?q=" + encodeURIComponent(search.trim()))}>Go</button>
+
+          <div className="win-separator" />
+
+          {/* Cart */}
+          <Link to="/cart">
+            <button className="win-icon-btn" title="Shopping Cart">
+              <ShoppingCart size={13} />
+            </button>
+          </Link>
+
+          <div className="win-separator" />
+
+          {/* Auth buttons */}
+          <Link to="/login">
+            <button className="win-btn">Login Student</button>
+          </Link>
+          <Link to="/instructor/login">
+            <button className="win-btn-primary">Login Instructor</button>
+          </Link>
+
+          {/* Hamburger for mobile */}
+          <button
+            className="win-icon-btn"
+            style={{ marginLeft: "auto", display: "none" }}
+            onClick={() => setMenuOpen((p) => !p)}
+            aria-label="Menu"
+          >
+            &#9776;
+          </button>
+
+          {/* Mobile dropdown */}
+          {menuOpen && (
+            <div className="win-mobile-menu">
+              {links.map((l) => (
+                <Link key={l.path} to={l.path} className="win-mobile-link" onClick={() => setMenuOpen(false)}>
+                  {l.title}
                 </Link>
-                <Link to="/instructor/login" className="hidden md:block">
-                  <button className="px-[18px] py-2 rounded-full text-[13.5px] font-bold cursor-pointer whitespace-nowrap text-white bg-gradient-to-br from-[#1a6ef7] to-[#0a3ba8] border border-[rgba(77,155,255,0.35)] shadow-[0_3px_14px_rgba(26,110,247,0.38)] transition-all duration-200 hover:from-[#2e7fff] hover:to-[#1a6ef7] hover:shadow-[0_7px_22px_rgba(26,110,247,0.50)] hover:-translate-y-[1.5px] active:scale-[0.97]">
-                    Login Instructor
-                  </button>
-                </Link>
-
-
-                  <Link to="/cart" className="v-icon-btn hidden md:flex w-10 h-10 rounded-full items-center justify-center border no-underline relative">
-                    <ShoppingCart size={16} />
-                    <span className="w-[7px] h-[7px] rounded-full absolute top-0.5 right-0.5 bg-[var(--accent)] shadow-[0_0_0_2px_var(--glass-bg)]" />
-                  </Link>
-
-                {/* Theme toggle */}
-                <button
-                  ><ModeToggle /></button>
-                
-
-                {/* Hamburger */}
-                <button
-                  onClick={() => setMenuOpen((p) => !p)}
-                  aria-label="Toggle menu"
-                  className="md:hidden v-icon-btn w-10 h-10 rounded-full flex flex-col items-center justify-center gap-[5px] border cursor-pointer p-0"
-                >
-                  <Menu /> 
-                </button>
-              </div>
+              ))}
+              <hr style={{ border: "none", borderTop: "1px solid #808080", margin: "4px 0" }} />
+              <Link to="/login" className="win-mobile-link" onClick={() => setMenuOpen(false)}>Login Student</Link>
+              <Link to="/instructor/login" className="win-mobile-link" onClick={() => setMenuOpen(false)}>Login Instructor</Link>
             </div>
-          </div>
-
-          {/* ── Mobile dropdown — absolute, overlays page content */}
-          <div className={cn("mobile-menu-anchor md:hidden", menuOpen && "open")}>
-            <div className="mobile-menu-card">
-              <div className="px-5 py-5">
-
-                {/* Search */}
-                <div className="relative mb-4">
-                  <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--muted)" }} />
-                  <input
-                    type="text"
-                    placeholder="Search courses, instructors…"
-                    onKeyDown={handleSearch}
-                    className="v-input w-full rounded-2xl py-3 pl-[42px] pr-4 text-[14.5px] outline-none border"
-                  />
-                </div>
-
-                <div className="v-divider h-px mb-4" />
-
-                {/* Links */}
-                <nav className="flex flex-col gap-0.5 mb-4">
-                  {allLinks.map((link) => (
-                    <Link
-                      key={link.path}
-                      to={link.path}
-                      onClick={closeMenu}
-                      className="v-m-link flex items-center justify-between px-4 py-[13px] rounded-2xl text-[15.5px] font-medium no-underline border"
-                    >
-                      {link.title}
-                      <span style={{ color: "var(--muted)", opacity: 0.35 }} className="text-[17px]">›</span>
-                    </Link>
-                  ))}
-                    <Link to="/cart" onClick={closeMenu} className="v-m-link flex items-center justify-between px-4 py-[13px] rounded-2xl text-[15.5px] font-medium no-underline border">
-                      Cart
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gradient-to-br from-[#1a6ef7] to-[#0a3ba8] text-white tracking-wider">NEW</span>
-                        <span style={{ color: "var(--muted)", opacity: 0.35 }} className="text-[17px]">›</span>
-                      </span>
-                    </Link>
-                </nav>
-
-                <div className="v-divider h-px mb-4" />
-
-                {/* Buttons */}
-                <div className="flex flex-col gap-2.5">
-                  <Link to="/login" onClick={closeMenu} className="block">
-                    <button className="v-ghost-btn w-full py-[14px] rounded-2xl text-[14.5px] font-semibold text-center cursor-pointer border">
-                      Login as Student
-                    </button>
-                  </Link>
-                  <Link to="/instructor/login" onClick={closeMenu} className="block">
-                    <button className="w-full py-[14px] rounded-2xl text-[14.5px] font-bold text-center cursor-pointer text-white bg-gradient-to-br from-[#1a6ef7] to-[#0a3ba8] border border-transparent shadow-[0_3px_14px_rgba(26,110,247,0.38)] transition-all duration-200 hover:from-[#2e7fff] hover:to-[#1a6ef7] hover:-translate-y-[1.5px]">
-                      Login as Instructor
-                    </button>
-                  </Link>
-
-                </div>
-
-              </div>
-            </div>
-          </div>
-
+          )}
         </div>
       </nav>
-      
-      {/* space for bottom content */}
-      {/* <div className="h-[80px]" /> */}
+      <div className="win-spacer" />
     </>
   );
 };

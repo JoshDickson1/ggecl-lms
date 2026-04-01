@@ -1,70 +1,151 @@
-import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+// InstructorsPreview.tsx — Windows 2000 Style
 import { Link } from "react-router-dom";
 import { instructors } from "@/data/Instructors";
-import { InstructorCard } from "@/landing/_components/InstructorCard";
+import { InstructorCard, WIN2K_INSTRUCTOR_CSS } from "@/landing/_components/InstructorCard";
+
+const CSS = `
+  ${WIN2K_INSTRUCTOR_CSS}
+
+  .ip-section {
+    font-family: "Tahoma", "MS Sans Serif", Arial, sans-serif;
+    background: #d4d0c8;
+    padding: 16px;
+  }
+  .ip-window {
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .ip-title-bar {
+    background: linear-gradient(to right, #0a246a, #a6b5e7);
+    color: #fff;
+    font-weight: bold;
+    font-size: 12px;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+  }
+  .ip-title-left { display: flex; align-items: center; gap: 6px; }
+  .ip-wbtns { display: flex; gap: 2px; }
+  .ip-wbtn {
+    width: 16px; height: 14px;
+    background: #d4d0c8;
+    border-top: 1px solid #fff;
+    border-left: 1px solid #fff;
+    border-right: 1px solid #404040;
+    border-bottom: 1px solid #404040;
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: #000; font-weight: bold;
+  }
+  .ip-toolbar {
+    background: #d4d0c8;
+    border-bottom: 1px solid #808080;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .ip-toolbar-left {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: bold; color: #000;
+  }
+  .ip-badge {
+    background: #000080; color: #fff;
+    font-size: 10px; padding: 1px 6px;
+  }
+  .ip-body {
+    background: #d4d0c8;
+    padding: 12px;
+  }
+  .ip-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  @media (max-width: 900px) { .ip-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .ip-grid { grid-template-columns: 1fr; } }
+  .ip-statusbar {
+    background: #d4d0c8;
+    border-top: 1px solid #808080;
+    padding: 2px 8px;
+    font-size: 10px; color: #000;
+    display: flex; gap: 12px;
+    font-family: "Tahoma", Arial;
+  }
+  .ip-statusbar-panel {
+    border-right: 1px solid #808080;
+    padding-right: 8px;
+  }
+  .ip-toolbar-btn {
+    font-family: "Tahoma", Arial, sans-serif;
+    font-size: 11px;
+    padding: 3px 12px;
+    background: #d4d0c8;
+    border-top: 1.5px solid #ffffff;
+    border-left: 1.5px solid #ffffff;
+    border-right: 1.5px solid #404040;
+    border-bottom: 1.5px solid #404040;
+    cursor: pointer; color: #000;
+    text-decoration: none; display: inline-block;
+  }
+  .ip-toolbar-btn:hover { background: #e8e8e8; }
+`;
 
 export default function InstructorsPreview() {
   const preview = instructors.slice(0, 4);
 
   return (
-    <section className="relative py-20 overflow-hidden bg-white dark:bg-[#080c17]">
-
-      {/* subtle blue grid + glow background */}
-      <div
-        className="absolute inset-0 z-0 pointer-events-none"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, rgba(59,130,246,0.035) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(59,130,246,0.035) 1px, transparent 1px),
-            radial-gradient(circle 600px at 100% 10%, rgba(59,130,246,0.07), transparent 60%),
-            radial-gradient(circle 500px at 0% 80%, rgba(96,165,250,0.06), transparent 55%)
-          `,
-          backgroundSize: "48px 48px, 48px 48px, 100% 100%, 100% 100%",
-        }}
-      />
-
-      <div className="relative z-10 max-w-[1200px] mx-auto px-6">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-14">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-              border border-blue-200 dark:border-blue-900/60
-              bg-blue-50 dark:bg-blue-950/30 mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span className="text-[11px] font-bold tracking-widest text-blue-600 dark:text-blue-400 uppercase">
-                Learn from the best
-              </span>
+    <>
+      <style>{CSS}</style>
+      <section className="ip-section">
+        <div className="ip-window">
+          {/* Title bar */}
+          <div className="ip-title-bar">
+            <div className="ip-title-left">
+              <span>👥</span>
+              Top Instructors — GGECL LMS
             </div>
-            <h2 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white leading-tight">
-              Top{" "}
-              <span className="text-blue-600 dark:text-blue-400">Instructors</span>
-            </h2>
-            <p className="mt-3 text-gray-500 dark:text-gray-400 text-base max-w-sm">
-              World-class educators with real industry experience, teaching what actually matters.
-            </p>
+            <div className="ip-wbtns">
+              <div className="ip-wbtn">_</div>
+              <div className="ip-wbtn">&#9633;</div>
+              <div className="ip-wbtn">&#215;</div>
+            </div>
           </div>
 
-          <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
-            <Link
-              to="/instructors"
-              className="self-start inline-flex items-center gap-2 px-5 py-3 rounded-full
-                bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold
-                shadow-[0_4px_20px_rgba(59,130,246,0.4)] transition-colors"
-            >
-              Meet all instructors
-              <ArrowRight className="w-4 h-4" />
+          {/* Toolbar */}
+          <div className="ip-toolbar">
+            <div className="ip-toolbar-left">
+              <span>Top Instructors</span>
+              <span className="ip-badge">{preview.length} items</span>
+            </div>
+            <Link to="/instructors">
+              <button className="ip-toolbar-btn">Meet All Instructors &gt;&gt;</button>
             </Link>
-          </motion.div>
-        </div>
+          </div>
 
-        {/* 4-col grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {preview.map((inst, i) => (
-            <InstructorCard key={inst.id} instructor={inst} index={i} />
-          ))}
+          {/* Grid */}
+          <div className="ip-body">
+            <div className="ip-grid">
+              {preview.map((inst, i) => (
+                <InstructorCard key={inst.id} instructor={inst} index={i} />
+              ))}
+            </div>
+          </div>
+
+          {/* Status bar */}
+          <div className="ip-statusbar">
+            <span className="ip-statusbar-panel">{preview.length} object(s)</span>
+            <span className="ip-statusbar-panel">Ready</span>
+            <span>My Computer</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }

@@ -6,7 +6,7 @@ import Footer from "./Footer";
 
 const Layout = () => {
   return (
-    <div className="min-h-screen bg-white dark:bg-[#0a0f1d] flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ background: "#d4d0c8", fontFamily: '"Tahoma", "MS Sans Serif", Arial, sans-serif' }}>
       <Navbar />
 
       <main className="flex-1">

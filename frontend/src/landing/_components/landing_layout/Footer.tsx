@@ -1,33 +1,7 @@
-import { motion } from "framer-motion";
-import { ArrowUpRight, MapPin } from "lucide-react";
+// Footer.tsx — Windows 2000 Style
 import lightImg from "@/assets/ggecl_logo.jpg";
-// import { FaInstagram, FaFacebookF, FaLinkedinIn, FaTwitter } from "react-icons/fa";
-// import { ModeToggle } from "@/mode-toggle";
+import { MapPin } from "lucide-react";
 
-// const socialNavs = [
-//   {
-//     name: "Instagram",
-//     url: "https://www.instagram.com/goldengosheneducation",
-//     icon: <FaInstagram size={18} />,
-//   },
-//   {
-//     name: "Facebook",
-//     url: "https://www.facebook.com/ggeclofficial",
-//     icon: <FaFacebookF size={18} />,
-//   },
-//   {
-//     name: "LinkedIn",
-//     url: "https://www.linkedin.com/company/ggecl",
-//     icon: <FaLinkedinIn size={18} />,
-//   },
-//   {
-//     name: "Twitter",
-//     url: "https://twitter.com/ggeclofficial",
-//     icon: <FaTwitter size={18} />,
-//   },
-// ];
-
-/* ── Exact ggecl.com links, open in _blank */
 const FOOTER_LINKS = {
   "Quick Links": [
     { name: "Home",     href: "https://ggecl.com/" },
@@ -36,9 +10,9 @@ const FOOTER_LINKS = {
     { name: "Apply",    href: "https://ggecl.com/apply/start" },
   ],
   "Support": [
-    { name: "Contact",  href: "https://ggecl.com/contact" },
-    { name: "GGECL LMS",href: "https://lms.ggecl.com" },
-    { name: "Career",   href: "https://ggecl.com/career" },
+    { name: "Contact",   href: "https://ggecl.com/contact" },
+    { name: "GGECL LMS", href: "https://lms.ggecl.com" },
+    { name: "Career",    href: "https://ggecl.com/career" },
   ],
   "Community": [
     { name: "FAQs",             href: "https://ggecl.com/faqs" },
@@ -48,7 +22,6 @@ const FOOTER_LINKS = {
   ],
 };
 
-/* ── Same Instagram posts as ggecl.com */
 const INSTAGRAM_POSTS = [
   "https://www.ggecl.com/foot-1.jpeg",
   "https://www.ggecl.com/foot-2.jpeg",
@@ -58,161 +31,282 @@ const INSTAGRAM_POSTS = [
   "https://www.ggecl.com/foot-6.jpeg",
 ];
 
+const CSS = `
+  .ft-win {
+    font-family: "Tahoma", "MS Sans Serif", Arial, sans-serif;
+    background: #d4d0c8;
+    border-top: 2px solid #ffffff;
+  }
+
+  /* IE-style status bar at very top of footer */
+  .ft-ie-bar {
+    background: #d4d0c8;
+    border-top: 1px solid #808080;
+    border-bottom: 1px solid #808080;
+    padding: 3px 12px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 11px;
+    color: #000;
+  }
+  .ft-ie-bar a {
+    color: #000080;
+    text-decoration: underline;
+  }
+  .ft-ie-bar a:hover { color: #cc0000; }
+
+  .ft-body {
+    padding: 16px 24px;
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr;
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .ft-body { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 540px) {
+    .ft-body { grid-template-columns: 1fr; }
+  }
+
+  /* Brand col */
+  .ft-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ft-brand-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 4px;
+  }
+  .ft-logo-img {
+    width: 32px; height: 32px;
+    border-top: 1px solid #808080;
+    border-left: 1px solid #808080;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #fff;
+    object-fit: cover;
+  }
+  .ft-brand-name {
+    font-size: 14px;
+    font-weight: bold;
+    color: #000080;
+    letter-spacing: 0.05em;
+  }
+  .ft-desc-box {
+    border-top: 1px solid #808080;
+    border-left: 1px solid #808080;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #fff;
+    background: #fff;
+    padding: 8px;
+    font-size: 11px;
+    color: #000;
+    line-height: 1.6;
+  }
+
+  /* Link columns */
+  .ft-col-title {
+    font-size: 11px;
+    font-weight: bold;
+    color: #fff;
+    background: #000080;
+    padding: 2px 6px;
+    margin-bottom: 6px;
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .ft-link-list {
+    list-style: none;
+    padding: 0; margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ft-link-list li a {
+    font-size: 11px;
+    color: #000080;
+    text-decoration: underline;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 0;
+  }
+  .ft-link-list li a:hover { color: #cc0000; }
+  .ft-link-arrow {
+    font-size: 9px; color: #808080;
+  }
+
+  /* Location box */
+  .ft-location-box {
+    border-top: 1px solid #808080;
+    border-left: 1px solid #808080;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #fff;
+    background: #fff;
+    padding: 8px;
+    font-size: 11px;
+    color: #000;
+    display: flex;
+    gap: 4px;
+    line-height: 1.5;
+    margin-top: 6px;
+  }
+
+  /* Instagram grid */
+  .ft-insta-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    margin-top: 6px;
+  }
+  .ft-insta-img {
+    aspect-ratio: 1;
+    width: 100%;
+    object-fit: cover;
+    border-top: 1px solid #808080;
+    border-left: 1px solid #808080;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #fff;
+    display: block;
+  }
+  .ft-insta-img:hover {
+    border-top: 1px solid #fff;
+    border-left: 1px solid #fff;
+    border-right: 1px solid #808080;
+    border-bottom: 1px solid #808080;
+  }
+
+  /* Bottom bar — like the IE status bar */
+  .ft-bottom-bar {
+    background: #d4d0c8;
+    border-top: 2px solid #808080;
+    box-shadow: 0 -1px 0 #fff;
+    padding: 4px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 10px;
+    color: #000;
+  }
+  .ft-bottom-right {
+    display: flex; gap: 16px;
+  }
+  .ft-bottom-link {
+    color: #000080;
+    text-decoration: underline;
+    font-size: 10px;
+  }
+  .ft-bottom-link:hover { color: #cc0000; }
+  .ft-status-icon {
+    display: flex; align-items: center; gap: 4px;
+  }
+  .ft-status-green {
+    width: 10px; height: 10px;
+    background: #00aa00;
+    border-top: 1px solid #007700;
+    border-left: 1px solid #007700;
+    border-right: 1px solid #00dd00;
+    border-bottom: 1px solid #00dd00;
+  }
+`;
+
 function Footer() {
   return (
-    <footer className="relative bg-white dark:bg-slate-950 pt-20 pb-10 overflow-hidden transition-colors duration-300">
+    <>
+      <style>{CSS}</style>
+      <footer className="ft-win">
+        {/* IE toolbar-style top */}
+        <div className="ft-ie-bar">
+          <div className="ft-status-icon">
+            <div className="ft-status-green" />
+            <span>Portal Online</span>
+          </div>
+          <span>&#124;</span>
+          <a href="https://ggecl.com" target="_blank" rel="noopener noreferrer">ggecl.com</a>
+          <span>&#124;</span>
+          <a href="https://lms.ggecl.com" target="_blank" rel="noopener noreferrer">LMS Portal</a>
+          <span>&#124;</span>
+          <span>Zone: Trusted Sites</span>
+        </div>
 
-      {/* ── Subtle gradient wash — the lil extra */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        {/* top-right glow */}
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-500/5 dark:bg-blue-400/6 blur-[130px] rounded-full" />
-        {/* bottom-left accent */}
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-500/4 dark:bg-indigo-400/5 blur-[110px] rounded-full" />
-        {/* very subtle top gradient band */}
-        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
-      </div>
+        {/* Main body */}
+        <div className="ft-body">
+          {/* Brand */}
+          <div className="ft-brand">
+            <div className="ft-brand-row">
+              <img src={lightImg} alt="GGECL LMS" className="ft-logo-img" />
+              <span className="ft-brand-name">G.G.E.C.L</span>
+            </div>
+            <div className="ft-desc-box">
+              GGECL is a smart learning platform designed to empower students,
+              educators, and organizations with cutting-edge tools, seamless
+              collaboration, and an engaging educational experience.
+            </div>
+          </div>
 
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-12 mb-20">
+          {/* Link columns */}
+          {Object.entries(FOOTER_LINKS).map(([title, links]) => (
+            <div key={title}>
+              <span className="ft-col-title">{title}</span>
+              <ul className="ft-link-list">
+                {links.map((link) => (
+                  <li key={link.name}>
+                    <a href={link.href} target="_blank" rel="noopener noreferrer">
+                      <span className="ft-link-arrow">&#9658;</span>
+                      {link.name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
 
-          {/* ── Brand col */}
-          <div className="lg:col-span-4 space-y-8">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/20 overflow-hidden flex-shrink-0 ring-1 ring-slate-100 dark:ring-slate-800">
-                <img src={lightImg} alt="GGECL LMS" className="w-full h-full object-cover" />
-              </div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tighter uppercase">
-                G.G.E.C.L
-              </h2>
+          {/* Location + Instagram */}
+          <div>
+            <span className="ft-col-title">Location</span>
+            <div className="ft-location-box">
+              <MapPin size={13} style={{ flexShrink: 0, marginTop: 1, color: "#000080" }} />
+              <span>University Business Centre — Leeds,<br />148 Rose Bowl, LS1 3HB, UK.</span>
             </div>
 
-            <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medium text-sm">
-              GGECL is a smart learning platform designed to empower students, educators,
-              and organizations with cutting-edge tools, seamless collaboration, and an
-              engaging educational experience.
-            </p>
-
-            {/* Socials */}
-            {/* <div className="flex gap-3 flex-wrap">
-              {socialNavs.map((link) => (
-                <motion.a
-                  key={link.name}
-                  whileHover={{ y: -5, scale: 1.1 }}
-                  href={link.url}
+            <span className="ft-col-title" style={{ display: "block", marginTop: 12 }}>Instagram</span>
+            <div className="ft-insta-grid">
+              {INSTAGRAM_POSTS.map((src, i) => (
+                <a
+                  key={i}
+                  href="https://www.instagram.com/goldengosheneducation"
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={link.name}
-                  className="w-10 h-10 rounded-full border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:bg-[#1e3a5f] dark:hover:bg-blue-700 hover:text-white hover:border-[#1e3a5f] transition-all shadow-sm"
                 >
-                  {link.icon}
-                </motion.a>
+                  <img src={src} alt={`Instagram post ${i + 1}`} className="ft-insta-img" loading="lazy" />
+                </a>
               ))}
-            </div> */}
-          </div>
-
-          {/* ── Nav cols */}
-          <div className="lg:col-span-5 grid grid-cols-2 md:grid-cols-3 gap-8">
-            {Object.entries(FOOTER_LINKS).map(([title, links]) => (
-              <div key={title} className="space-y-6">
-                <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">
-                  {title}
-                </h4>
-                <ul className="space-y-4">
-                  {links.map((link) => (
-                    <li key={link.name}>
-                      <a
-                        href={link.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group flex items-center text-slate-500 dark:text-slate-400 hover:text-[#1e3a5f] dark:hover:text-blue-400 transition-colors font-semibold text-sm"
-                      >
-                        <ArrowUpRight
-                          size={14}
-                          className="mr-1 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all flex-shrink-0"
-                        />
-                        {link.name}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-
-          {/* ── Location + Instagram */}
-          <div className="lg:col-span-3 space-y-8">
-            <div className="space-y-3">
-              <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">
-                Location
-              </h4>
-              <p className="text-sm text-slate-500 dark:text-slate-400 flex items-start gap-2 leading-relaxed">
-                <MapPin size={16} className="shrink-0 text-blue-500 mt-0.5" />
-                University Business Centre — Leeds,<br />148 Rose Bowl, LS1 3HB, UK.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">
-                Instagram Post
-              </h4>
-              <div className="grid grid-cols-3 gap-2">
-                {INSTAGRAM_POSTS.map((src, i) => (
-                  <motion.a
-                    key={i}
-                    href="https://www.instagram.com/goldengosheneducation"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    whileHover={{ scale: 1.06 }}
-                    className="aspect-square rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 block ring-0 hover:ring-2 hover:ring-blue-400/40 transition-all"
-                  >
-                    <img
-                      src={src}
-                      alt={`Instagram post ${i + 1}`}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  </motion.a>
-                ))}
-              </div>
             </div>
           </div>
         </div>
 
-        {/* ── Bottom bar */}
-        <div className="pt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-6">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-            © {new Date().getFullYear()} G.G.E.C.L All Rights Reserved by{" "}
-            <a
-              href="tel:+2349130993464"
-              className="text-[#1e3a5f] dark:text-blue-400 hover:underline"
-            >
-              BiTech
+        {/* Bottom status bar */}
+        <div className="ft-bottom-bar">
+          <span>
+            &copy; {new Date().getFullYear()} G.G.E.C.L All Rights Reserved by{" "}
+            <a href="tel:+2349130993464" className="ft-bottom-link">BiTech</a>
+          </span>
+          <div className="ft-bottom-right">
+            <a href="https://ggecl.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="ft-bottom-link">
+              Privacy Policy
             </a>
-          </p>
-
-          <div className="flex items-center gap-8">
-            <div className="flex gap-4 text-[10px] font-black uppercase tracking-tighter text-slate-400">
-              <a
-                href="https://ggecl.com/privacy-policy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-slate-900 dark:hover:text-white transition-colors"
-              >
-                Privacy Policy
-              </a>
-              <a
-                href="https://ggecl.com/terms"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-slate-900 dark:hover:text-white transition-colors"
-              >
-                Terms & Conditions
-              </a>
-            </div>
+            <a href="https://ggecl.com/terms" target="_blank" rel="noopener noreferrer" className="ft-bottom-link">
+              Terms &amp; Conditions
+            </a>
           </div>
         </div>
-      </div>
-    </footer>
+      </footer>
+    </>
   );
 }
 

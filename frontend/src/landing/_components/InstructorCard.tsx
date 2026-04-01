@@ -1,11 +1,8 @@
-// InstructorCard.tsx — shared card used by InstructorsPreview & AllInstructors
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+// InstructorCard.tsx — Windows 2000 Style
 import { Link } from "react-router-dom";
-import { Star, Users, BookOpen, ArrowUpRight } from "lucide-react";
+import { Star, Users, BookOpen } from "lucide-react";
 import { type Instructor, fmt } from "@/data/Instructors";
 
-// Deterministic placeholder photos from UI Faces / DiceBear
 const PHOTO_MAP: Record<string, string> = {
   "inst-1": "https://i.pinimg.com/736x/b5/ca/9b/b5ca9b6c98616c7d8465aae596917c76.jpg",
   "inst-2": "https://i.pinimg.com/736x/49/c3/65/49c365435c2566ef0c937d8290a8c034.jpg",
@@ -17,6 +14,127 @@ const PHOTO_MAP: Record<string, string> = {
   "inst-8": "https://i.pinimg.com/1200x/66/c3/31/66c331a7757b9d87397a05c46a678527.jpg",
 };
 
+export const WIN2K_INSTRUCTOR_CSS = `
+  .ic-card {
+    font-family: "Tahoma", "MS Sans Serif", Arial, sans-serif;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+  }
+  .ic-card:hover {
+    border-top: 2px solid #404040;
+    border-left: 2px solid #404040;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+  }
+  .ic-card-titlebar {
+    background: linear-gradient(to right, #0a246a, #a6b5e7);
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 6px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .ic-photo-wrap {
+    height: 140px;
+    background: #d4d0c8;
+    border-bottom: 1px solid #808080;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .ic-photo-wrap img {
+    width: 100%; height: 100%; object-fit: cover; object-position: top;
+  }
+  .ic-avatar-fallback {
+    font-size: 48px;
+    font-weight: bold;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%;
+  }
+  .ic-available-badge {
+    position: absolute;
+    top: 6px; left: 6px;
+    background: #007700;
+    color: #fff;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 1px 6px;
+  }
+  .ic-card-body {
+    padding: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ic-name {
+    font-size: 12px;
+    font-weight: bold;
+    color: #000;
+    margin: 0;
+  }
+  .ic-title {
+    font-size: 10px;
+    color: #555;
+    margin: 0;
+  }
+  .ic-stats {
+    display: flex;
+    gap: 8px;
+    font-size: 10px;
+    color: #000;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+  .ic-stat {
+    display: flex; align-items: center; gap: 3px;
+  }
+  .ic-badges {
+    display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px;
+  }
+  .ic-badge {
+    font-size: 9px;
+    background: #000080;
+    color: #fff;
+    padding: 1px 5px;
+    font-weight: bold;
+  }
+  .ic-card-footer {
+    border-top: 1px solid #d4d0c8;
+    padding: 5px 8px;
+    background: #f0eee8;
+  }
+  .ic-view-btn {
+    font-family: "Tahoma", Arial, sans-serif;
+    font-size: 10px;
+    padding: 3px 0;
+    background: #d4d0c8;
+    border-top: 1.5px solid #ffffff;
+    border-left: 1.5px solid #ffffff;
+    border-right: 1.5px solid #404040;
+    border-bottom: 1.5px solid #404040;
+    cursor: pointer;
+    color: #000;
+    text-decoration: none;
+    display: block;
+    text-align: center;
+    width: 100%;
+  }
+  .ic-view-btn:hover { background: #e8e8e8; }
+  .ic-view-btn:active {
+    border-top: 1.5px solid #404040;
+    border-left: 1.5px solid #404040;
+    border-right: 1.5px solid #ffffff;
+    border-bottom: 1.5px solid #ffffff;
+  }
+`;
+
 export function InstructorCard({
   instructor,
   index = 0,
@@ -24,157 +142,68 @@ export function InstructorCard({
   instructor: Instructor;
   index?: number;
 }) {
-  const [hovered, setHovered] = useState(false);
   const photo = instructor.photo ?? PHOTO_MAP[instructor.id];
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.32, delay: index * 0.045 }}
-      onHoverStart={() => setHovered(true)}
-      onHoverEnd={() => setHovered(false)}
-      className="relative flex flex-col rounded-[24px] overflow-hidden cursor-pointer
-        bg-white/70 dark:bg-[#020618]
-        backdrop-blur-xl
-        border border-white/80 dark:border-white/[0.08]
-        transition-shadow duration-300 group"
-      style={{
-        boxShadow: hovered
-          ? "0 0 0 1.5px rgba(59,130,246,0.45), 0 12px 40px rgba(59,130,246,0.16)"
-          : "0 8px 30px rgba(15,23,42,0.08)",
-      }}
-    >
-      {/* ── Photo area ──────────────────────────────────────────────────── */}
-      <div className="relative w-full h-62 overflow-hidden bg-gray-100 dark:bg-white/[0.05]">
+    <div className="ic-card">
+      {/* Title bar */}
+      <div className="ic-card-titlebar">
+        <span>👤</span>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>
+          {instructor.name}
+        </span>
+      </div>
+
+      {/* Photo */}
+      <div className="ic-photo-wrap">
         {photo ? (
-          <motion.img
+          <img
             src={photo}
             alt={instructor.name}
-            className="w-full h-full object-cover object-top"
-            animate={hovered ? { scale: 1.06 } : { scale: 1 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-            onError={(e) => {
-              // fallback to initials if image fails
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
         ) : null}
+        {!photo && (
+          <div className={`ic-avatar-fallback ${instructor.avatarBg}`}>
+            {instructor.avatar}
+          </div>
+        )}
+        <div className="ic-available-badge">&#9679; Available</div>
+      </div>
 
-        {/* Initials fallback — always rendered but hidden behind image */}
-        <div
-          className={`absolute inset-0 flex items-center justify-center text-4xl font-black text-white ${instructor.avatarBg}`}
-          style={{ zIndex: photo ? -1 : 0 }}
-        >
-          {instructor.avatar}
+      {/* Body */}
+      <div className="ic-card-body">
+        <p className="ic-name">{instructor.name}</p>
+        <p className="ic-title">{instructor.title}</p>
+
+        <div className="ic-stats">
+          <span className="ic-stat">
+            <Star size={10} style={{ fill: "#f59e0b", color: "#f59e0b" }} />
+            {instructor.rating}
+          </span>
+          <span className="ic-stat">
+            <Users size={9} />
+            {fmt(instructor.students)}
+          </span>
+          <span className="ic-stat">
+            <BookOpen size={9} />
+            {instructor.courses} courses
+          </span>
         </div>
 
-        {/* Gradient overlay — always subtle, stronger on hover */}
-        <motion.div
-          className="absolute inset-0"
-          animate={{
-            background: hovered
-              ? "linear-gradient(to top, rgba(2,6,24,0.85) 0%, rgba(2,6,24,0.2) 55%, transparent 100%)"
-              : "linear-gradient(to top, rgba(2,6,24,0.55) 0%, transparent 60%)",
-          }}
-          transition={{ duration: 0.35 }}
-        />
-
-        {/* Badges — top right */}
-        <div className="absolute top-3 right-3 flex flex-col gap-1 items-end">
+        <div className="ic-badges">
           {instructor.badges.slice(0, 2).map((b) => (
-            <span
-              key={b}
-              className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide
-                bg-blue-600/90 backdrop-blur-sm text-white
-                shadow-[0_2px_8px_rgba(59,130,246,0.4)]"
-            >
-              {b}
-            </span>
+            <span key={b} className="ic-badge">{b}</span>
           ))}
         </div>
-
-        {/* Online dot */}
-        <div className="absolute top-3 left-3">
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full
-            bg-black/30 backdrop-blur-sm text-[10px] font-semibold text-emerald-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Available
-          </span>
-        </div>
-
-        {/* Name over photo — always visible */}
-        <div className="absolute bottom-0 left-0 right-0 px-5 pb-4">
-          <p className="text-white font-black text-base leading-tight drop-shadow-lg">
-            {instructor.name}
-          </p>
-          <p className="text-white/70 text-xs mt-0.5 line-clamp-1 drop-shadow">
-            {instructor.title}
-          </p>
-        </div>
       </div>
 
-      {/* ── Static info (always visible) ────────────────────────────────── */}
-      <div className="px-5 pt-4 pb-3 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-        <span className="flex items-center gap-1.5">
-          <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-          <span className="font-bold text-gray-800 dark:text-white">{instructor.rating}</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Users className="w-3 h-3" />
-          {fmt(instructor.students)}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <BookOpen className="w-3 h-3" />
-          {instructor.courses} courses
-        </span>
-      </div>
-
-      {/* ── Hover-revealed info ──────────────────────────────────────────── */}
-      <AnimatePresence>
-  {hovered && (
-    <motion.div
-      initial={{ y: "100%", opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: "100%", opacity: 0 }}
-      transition={{ duration: 0.3, ease: "easeInOut" }}
-      className="absolute bottom-0 left-0 right-0 px-4 py-4
-        bg-gradient-to-t from-[#020618]/95 via-[#020618]/80 to-transparent
-        backdrop-blur-sm"
-    >
-      <p className="text-xs text-white/70 leading-relaxed line-clamp-2 mb-2">
-        {instructor.bio}
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        {instructor.categoryIds.slice(0, 3).map((c) => (
-          <span key={c} className="px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize
-            bg-white/10 border border-white/20 text-white/70">
-            {c}
-          </span>
-        ))}
-      </div>
-    </motion.div>
-  )}
-</AnimatePresence>
-
-      {/* ── CTA footer ──────────────────────────────────────────────────── */}
-      <div className="px-5 pb-5 mt-auto">
-        <Link to={`/instructors/${instructor.id}`} onClick={(e) => e.stopPropagation()}>
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-bold
-              bg-blue-600 hover:bg-blue-500 text-white
-              shadow-[0_4px_14px_rgba(59,130,246,0.35)]
-              transition-colors duration-200"
-          >
-            View Profile
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </motion.div>
+      {/* Footer */}
+      <div className="ic-card-footer">
+        <Link to={`/instructors/${instructor.id}`}>
+          <button className="ic-view-btn">View Profile &gt;&gt;</button>
         </Link>
       </div>
-    </motion.div>
+    </div>
   );
 }
