@@ -29,7 +29,12 @@ import AllCourses from "./landing/pages/AllCourses";
 import SingleCourse from "./landing/pages/SingleCourse";
 import SingleInstructor from "./landing/pages/SingleInstructor";
 import AllInstructors from "./landing/pages/AllInstructors";
-
+import CartSuccessFailure from "./landing/pages/CartSuccessFailure";
+import Cart from "./landing/pages/Cart";
+import Processing from "./landing/pages/Processing";
+import Checkout from "./landing/pages/Checkout";
+import Provider from "./landing/pages/Provider";
+import StudentInfoForm from "./landing/pages/StudentInfoForm";
 const router = createBrowserRouter([
   // 🌍 Landing routes
   {
@@ -44,6 +49,12 @@ const router = createBrowserRouter([
       { path: "courses/:id", element: <SingleCourse /> },
       { path: "instructors", element: <AllInstructors /> },
       { path: "instructors/:id", element: <SingleInstructor /> },
+      { path: "cart", element: <Cart /> },
+      { path: "processing", element: <Processing /> },
+      { path: "payment", element: <Provider /> },
+      { path: "order-complete", element: <CartSuccessFailure /> },
+      { path: "checkout", element: <Checkout /> },
+      { path: "student-info", element: <StudentInfoForm /> }, 
 
       // Auth routes for students:
       { path: "login", element: <Login /> },

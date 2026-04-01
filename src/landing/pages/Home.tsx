@@ -1,6 +1,7 @@
 import CategoriesPreview from "../_components/CategoriesPreview"
 import CoursesPreview from "../_components/CoursesPreview"
 import Hero from "../_components/Hero"
+import InstructorsPreview from "../_components/InstructorsPreview"
 import JoinAs from "../_components/JoinAs"
 import Testimonial from "../_components/Testimonial"
 
@@ -13,6 +14,8 @@ const Home = () => {
       <CoursesPreview />
       {/* Categories Preview */}
       <CategoriesPreview />
+      {/* Instructors Preview */}
+      <InstructorsPreview />
       {/* Join As */}
       <JoinAs />
       {/* Testimonial */}
