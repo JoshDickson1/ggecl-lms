@@ -5,6 +5,7 @@ import {
   LayoutDashboard, BookOpen, Users, MessageSquare, ChevronDown, LogOut, GraduationCap,
   Video,
   UserCog,
+  Flame,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,11 @@ const NAV_ITEMS: NavItemDef[] = [
       { to: "/instructor/profile", label: "View Profile" },
       { to: "/instructor/settings", label: "Settings" },
     ],
+  },
+  {
+    to: "/instructor/support",
+    icon: Flame,
+    label: "Support",
   }
 ];
 

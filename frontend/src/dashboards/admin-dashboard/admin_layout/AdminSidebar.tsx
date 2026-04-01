@@ -2,8 +2,10 @@
 import { useState, useEffect, useContext, createContext, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate, Link } from "react-router-dom";
 import {
-  LayoutDashboard, BookOpen, GraduationCap, Users, ArrowLeftRight,
-  Settings, ChevronDown, LogOut, Ticket, BarChart3, ShieldCheck,
+  LayoutDashboard, BookOpen, Users, ArrowLeftRight,
+  Settings, ChevronDown, LogOut, BarChart3, ShieldCheck,
+  MessageSquare,
+  UserCog,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -28,42 +30,95 @@ export const useAdminSidebar = () => useContext(SidebarCtx);
 interface NavChild  { to: string; label: string }
 interface NavItemDef { to: string; icon: React.ElementType; label: string; badge?: number; children?: NavChild[]; end?: boolean; superAdminOnly?: boolean }
 
-function getNavItems(isSuperAdmin: boolean): NavItemDef[] {
-  return [
-    {
-      to: "/dashboard", icon: LayoutDashboard, label: "Overview", end: true,
-      children: [
-        { to: "/dashboard",        label: "Dashboard"     },
-      ],
-    },
-    { to: "/dashboard/users",       icon: Users,         label: "Users"           },
-    { to: "/dashboard/courses",     icon: BookOpen,      label: "Courses"         },
-    { to: "/dashboard/instructors", icon: GraduationCap, label: "Instructors"     },
-    {
-      to: "/dashboard/transactions", icon: ArrowLeftRight, label: "Transactions",
-      children: [
-        { to: "/dashboard/transactions",         label: "All Transactions"   },
-        { to: "/dashboard/transactions/payouts", label: "Instructor Payouts" },
-      ],
-    },
-    { to: "/dashboard/support",   icon: Ticket,    label: "Support Tickets", badge: 3 },
-    { to: "/dashboard/analytics", icon: BarChart3,  label: "Analytics"       },
-    {
-      to: "/dashboard/settings", icon: Settings, label: "Settings",
-      children: [
-        { to: "/dashboard/settings/general",       label: "General"       },
-        { to: "/dashboard/settings/notifications", label: "Notifications" },
-        { to: "/dashboard/settings/features",      label: "Features"      },
-      ],
-    },
-    ...(isSuperAdmin ? [{
-      to: "/dashboard/admin-access", icon: ShieldCheck, label: "Admin & Access", superAdminOnly: true,
-      children: [
-        { to: "/dashboard/admin-access",      label: "Admin Profiles" },
-        { to: "/dashboard/admin-access/logs", label: "Audit Logs"     },
-      ],
-    }] : []),
-  ];
+function getNavItems(_isSuperAdmin: boolean): NavItemDef[] {
+  const NAV_ITEMS: NavItemDef[] = [
+  // ── Core overview (keep lightweight)
+  {
+    to: "/admin",
+    icon: LayoutDashboard,
+    label: "Overview",
+    end: true,
+  },
+
+  // ── Course operations
+  {
+    to: "/admin/courses",
+    icon: BookOpen,
+    label: "Course Management",
+    children: [
+      { to: "/admin/courses", label: "Manage Courses" },
+      { to: "/admin/courses/create", label: "Add New Course" },
+    ],
+  },
+
+  // ── People management
+  {
+    to: "/admin/",
+    icon: Users,
+    label: "People",
+    children: [
+      { to: "/admin/students", label: "Student Management" },
+      { to: "/admin/instructors", label: "Instructor Management" },
+      { to: "/admin/admins", label: "Admin Management" },
+    ],
+  },
+
+  // ── Communication / engagement
+  {
+    to: "/admin/discussions",
+    icon: MessageSquare,
+    label: "Community",
+    children: [
+      { to: "/admin/discussions", label: "Student Discussions" },
+      { to: "/admin/support", label: "Support Tickets" },
+    ],
+  },
+
+  // ── Finance
+  {
+    to: "/admin/transactions",
+    icon: ArrowLeftRight,
+    label: "Transactions",
+    children: [
+      { to: "/admin/transactions", label: "All Transactions" },
+      { to: "/admin/transactions/payouts", label: "Instructor Payouts" },
+    ],
+  },
+
+  // ── Business intelligence
+  {
+    to: "/admin/analytics",
+    icon: BarChart3,
+    label: "Analytics",
+  },
+
+  // ── Platform settings
+  {
+    to: "/admin/settings",
+    icon: Settings,
+    label: "Settings",
+    children: [
+      { to: "/admin/settings/general", label: "General" },
+      { to: "/admin/settings/notifications", label: "Notifications" },
+      { to: "/admin/settings/features", label: "Features" },
+    ],
+  },
+  
+  {
+    to: "/admin/profile",
+    icon: UserCog,
+    label: "My Profile"
+  },
+  
+  // ── Support (important to be easily accessible for admins)
+  {
+    to: "/admin/support",
+    icon: MessageSquare,
+    label: "Support",
+    badge: 3,
+  },
+];
+  return NAV_ITEMS;
 }
 
 // ─── NavItem ──────────────────────────────────────────────────────────────────
@@ -196,7 +251,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Footer */}
       <div className="relative border-t border-gray-100 dark:border-white/[0.06]">
         <div className="px-3 pt-3 pb-2">
-          <Link to="/dashboard/profile" onClick={onNavigate}
+          <Link to="/admin/profile" onClick={onNavigate}
             className="flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all group">
             <div className="relative flex-shrink-0">
               <div className={`w-9 h-9 rounded-full overflow-hidden ring-2 ${accent.ring}`}>

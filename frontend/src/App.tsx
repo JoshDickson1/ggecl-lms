@@ -54,6 +54,13 @@ import InstructorSettings from "./dashboards/instructor-dashboard/pages/Instruct
 import StudentProfile from "./dashboards/student-dashboard/pages/StudentProfile";
 import AdminProfile from "./dashboards/admin-dashboard/pages/AdminProfile";
 import StudentSettings from "./dashboards/student-dashboard/pages/StudentSettings";
+import PreviewInstructor from "./dashboards/commons/PreviewInstructor";
+import AdminStudentManagement from "./dashboards/admin-dashboard/pages/AdminStudentManagement";
+import AdminInstructorManagement from "./dashboards/admin-dashboard/pages/AdminInstructorManagement";
+import AdminAdminManagement from "./dashboards/admin-dashboard/pages/AdminAdminManagement";
+import StudentSupport from "./dashboards/student-dashboard/pages/StudentSupport";
+import InstructorSupport from "./dashboards/instructor-dashboard/pages/InstructorSupport";
+import AdminSupport from "./dashboards/admin-dashboard/pages/AdminSupport";
  
 const router = createBrowserRouter([
  
@@ -97,7 +104,12 @@ const router = createBrowserRouter([
   ),
   children: [
     { index: true, element: <AdminHome /> },
+    { path: "admins", element: <AdminAdminManagement /> },
+    { path: "instructors", element: <AdminInstructorManagement /> },
+    { path: "students", element: <AdminStudentManagement /> },
     { path: "profile", element: <AdminProfile /> },
+    { path: "instructors/:id", element: <PreviewInstructor /> },
+    { path: "support", element: <AdminSupport /> }, 
   ],
 },
  
@@ -114,6 +126,9 @@ const router = createBrowserRouter([
     { index: true, element: <InstructorHome /> },
     { path: "profile", element: <InstructorProfile /> },
     { path: "Settings", element: <InstructorSettings /> },
+    { path: "instructor-profile", element: <PreviewInstructor /> },
+    { path: "support", element: <InstructorSupport /> },
+
   ],
 },
  
@@ -130,6 +145,8 @@ const router = createBrowserRouter([
     { index: true, element: <StudentHome /> },
     { path: "profile", element: <StudentProfile /> },
     { path: "settings", element: <StudentSettings /> },
+    { path: "instructor-profile", element: <PreviewInstructor /> },
+    { path: "support", element: <StudentSupport /> },
   ],
 },
  
