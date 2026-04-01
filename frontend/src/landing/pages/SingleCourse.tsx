@@ -33,7 +33,7 @@ function formatReviews(n: number) {
 }
 
 // ─── Mock curriculum (generated from course data) ─────────────────────────────
-function generateCurriculum(lectures: number, title: string) {
+function generateCurriculum(_lectures: number, _title: string) {
   const sections = [
     {
       title: "Getting Started",

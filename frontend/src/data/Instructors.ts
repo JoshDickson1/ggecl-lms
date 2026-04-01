@@ -1,8 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Code2, Megaphone, Atom, Telescope, PenLine,
-  ListOrdered, HeartPulse, Music4, Briefcase,
-  Camera, FlaskConical, Globe,
+  HeartPulse, Music4, Briefcase,
 } from "lucide-react";
 
 export type SocialLink = {
