@@ -1,6 +1,17 @@
 @import "tailwindcss";
 @custom-variant dark (&:is(.dark *));
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
 
+  .ja-heading {
+    font-family: 'Syne', system-ui, sans-serif;
+    font-size: clamp(1.9rem, 3.2vw, 2.75rem);
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    color: #111827;
+    margin: 0 0 16px;
+  }
+  .dark .ja-heading { color: #f0f6ff; }
 :root {
   /* ── Light mode — clean white, matching screenshot 2 */
   --background:          oklch(0.99 0.004 265);   /* #f8faff off-white */
@@ -35,7 +46,7 @@
 
 .dark {
   /* ── Dark mode — deep navy, matching screenshot 1 */
-  --background:          oklch(10.945% 0.03151 260.741);   /* #0a0c1c */
+  --background:          oklch(0.14 0.03 260);   /* #0a0c1c */
   --foreground:          oklch(0.93 0.010 265);   /* #e8f0ff */
 
   --card:                oklch(0.13 0.030 265);

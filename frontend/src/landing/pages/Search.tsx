@@ -54,7 +54,7 @@ const SearchPage = () => {
 
   return (
     <div
-      className="relative top-0 min-h-screen overflow-hidden transition-colors duration-300 bg-none"
+      className="relative top-0 min-h-screen pt-30 overflow-hidden transition-colors duration-300 bg-none"
       style={{ fontFamily: "'Geist', sans-serif" }}
     >
       <div className="relative z-10 px-5 py-12 max-w-[720px] mx-auto">
@@ -230,7 +230,7 @@ const SearchPage = () => {
             {[
               { icon: <BookOpen size={20} />, label: "Browse Courses", path: "/courses", desc: "Explore all courses" },
               { icon: <Users size={20} />, label: "Instructors", path: "/instructors", desc: "Meet our teachers" },
-              { icon: <Layers size={20} />, label: "Programs", path: "/programs", desc: "Structured paths" },
+              { icon: <Layers size={20} />, label: "Categories", path: "/categories", desc: "Discover different categories" },
             ].map((cat) => (
               <Link
                 key={cat.path}

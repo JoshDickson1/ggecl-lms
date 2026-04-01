@@ -23,6 +23,12 @@ import AdminForgotten from "./auth/admin_auth/AdminForgotten";
 import AdminLogin from "./auth/admin_auth/AdminLogin";
 import InstructorForgotten from "./auth/instructor_auth/InstructorForgotten";
 import InstructorLogin from "./auth/instructor_auth/InstructorLogin";
+import AllCategories from "./landing/pages/AllCategories";
+import SingleCategory from "./landing/pages/SingleCategory";
+import AllCourses from "./landing/pages/AllCourses";
+import SingleCourse from "./landing/pages/SingleCourse";
+import SingleInstructor from "./landing/pages/SingleInstructor";
+import AllInstructors from "./landing/pages/AllInstructors";
 
 const router = createBrowserRouter([
   // 🌍 Landing routes
@@ -32,7 +38,12 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Home /> },
       { path: "search", element: <Search /> },
-      // { path: "courses", element: <Courses /> },
+      { path: "categories", element: <AllCategories /> },
+      { path: "categories/:id", element: <SingleCategory /> },
+      { path: "courses", element: <AllCourses /> },
+      { path: "courses/:id", element: <SingleCourse /> },
+      { path: "instructors", element: <AllInstructors /> },
+      { path: "instructors/:id", element: <SingleInstructor /> },
 
       // Auth routes for students:
       { path: "login", element: <Login /> },
