@@ -1,5 +1,5 @@
 // src/dashboards/instructor-dashboard/InstructorNavbar.tsx
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Search, Bell, Menu, ChevronDown,
@@ -32,7 +32,7 @@ function ThemeToggle() {
 
 function Breadcrumb() {
   const location = useLocation();
-  const parts = location.pathname.replace(/^\//, "").split("/").filter(Boolean);
+  const parts = location.pathname.replace(/^\//, "").split("/instructor").filter(Boolean);
   if (!parts.length) return <span className="text-sm font-bold text-gray-900 dark:text-white">Home</span>;
   return (
     <div className="flex items-center gap-1.5 text-xs">
@@ -57,6 +57,7 @@ const NOTIFS = [
 ];
 
 function NotificationBell() {
+  const navigate = useNavigate();
   const unread = NOTIFS.filter(n => n.unread).length;
   return (
     <Popover>
@@ -85,7 +86,9 @@ function NotificationBell() {
           </div>
         ))}
         <div className="px-4 py-2.5">
-          <button className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+          <button 
+            onClick={()=> navigate("/instructor/notifications")}
+          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
         </div>
       </PopoverContent>
     </Popover>
@@ -163,6 +166,27 @@ function ProfileDropdown() {
 }
 
 export function InstructorNavbar() {
+    // search functionality to show what was searched in StudentSearch page
+  const navigate = useNavigate();
+    const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+      const handleKey = (e: KeyboardEvent) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+          e.preventDefault();
+          searchRef.current?.focus();
+        }
+        if (e.key === "Escape") { setMenuOpen(false); searchRef.current?.blur(); }
+      };
+      window.addEventListener("keydown", handleKey);
+      return () => window.removeEventListener("keydown", handleKey);
+    }, []);
+  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && e.currentTarget.value.trim()) {
+        navigate("/instructor/search?q=" + encodeURIComponent(e.currentTarget.value.trim()));
+        // closeMenu();
+      }
+    };
+
   const { toggle } = useInstructorSidebar();
   const [searchFocused, setSearchFocused] = useState(false);
   return (
@@ -175,6 +199,8 @@ export function InstructorNavbar() {
         <div className={`relative transition-all duration-300 ${searchFocused ? "w-80" : "w-60"}`}>
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
           <input placeholder="Search students, courses…"
+            ref={searchRef}
+            onKeyDown={handleSearch}
             onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
             className="w-full pl-9 pr-9 py-2 rounded-full text-[12px]
               bg-gray-100/80 dark:bg-white/[0.05]
@@ -199,7 +225,7 @@ export function InstructorNavbar() {
         <button onClick={toggle} className="w-9 h-9 rounded-xl flex items-center justify-center bg-gray-100 dark:bg-white/[0.06] hover:bg-indigo-50 transition-all">
           <Menu className="w-4 h-4 text-gray-700 dark:text-gray-300" />
         </button>
-        <Link to="/" className="flex items-center gap-1.5">
+        <Link to="/instructor" className="flex items-center gap-1.5">
           <GraduationCap className="w-4 h-4 text-indigo-500" />
           <span className="text-sm font-black text-gray-900 dark:text-white">GGECL</span>
         </Link>
@@ -210,4 +236,8 @@ export function InstructorNavbar() {
       </div>
     </>
   );
+}
+
+function setMenuOpen(_arg0: boolean) {
+  throw new Error("Function not implemented.");
 }

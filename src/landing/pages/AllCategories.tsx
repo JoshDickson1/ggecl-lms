@@ -388,7 +388,7 @@ export default function AllCategories() {
       </div>
 
       {/* Layout: sidebar + grid */}
-      <div className="max-w-[1380px] mx-auto px-6 pb-20 flex flex-col lg:flex-row gap-8 items-start">
+      <div className="max-w-[1380px] mx-auto px-6 pb-20 flex flex-col lg:flex-row gap-8 items-center lg:items-start">
         <FilterSidebar
           search={search}
           setSearch={setSearch}
@@ -401,7 +401,7 @@ export default function AllCategories() {
         />
 
         {/* Grid */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 w-full items-center justify-center">
           <AnimatePresence mode="popLayout">
             {filtered.length > 0 ? (
               <motion.div

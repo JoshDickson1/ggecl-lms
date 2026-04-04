@@ -302,7 +302,7 @@ const InstructorLogin = () => {
               <div className="il-3 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-[13px] font-medium text-gray-700">Password</label>
-                  <Link to="/forgot-password" className="text-[12px] text-amber-500 font-medium no-underline hover:underline">
+                  <Link to="/instructor/forgotten-password" className="text-[12px] text-amber-500 font-medium no-underline hover:underline">
                     Forgot password?
                   </Link>
                 </div>

@@ -2,9 +2,11 @@
 import { useState, useEffect, useContext, createContext, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate, Link } from "react-router-dom";
 import {
-  LayoutDashboard, BookOpen, Users, DollarSign,
-  BarChart3, Star, MessageSquare, UserCog,
-  Settings, ChevronDown, LogOut, GraduationCap, PlusCircle,
+  LayoutDashboard, BookOpen, Users, MessageSquare, ChevronDown, LogOut, GraduationCap,
+  Video,
+  UserCog,
+  Info,
+  BookAIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -30,21 +32,67 @@ interface NavChild { to: string; label: string }
 interface NavItemDef { to: string; icon: React.ElementType; label: string; badge?: number; children?: NavChild[]; end?: boolean }
 
 const NAV_ITEMS: NavItemDef[] = [
-  { to: "/instructor",           icon: LayoutDashboard, label: "Overview", end: true },
   {
-    to: "/instructor/courses", icon: BookOpen, label: "My Courses",
+    to: "/instructor",
+    icon: LayoutDashboard,
+    label: "Dashboard",
+    end: true,
+  },
+
+  {
+    to: "/instructor/courses",
+    icon: BookOpen,
+    label: "Manage Courses",
     children: [
-      { to: "/instructor/courses",        label: "All Courses"   },
-      { to: "/instructor/courses/create", label: "Create Course" },
+      { to: "/instructor/courses", label: "All My Courses" },
+      { to: "/instructor/assignments", label: "Assignments" },
+      { to: "/instructor/grades", label: "Grades" },
     ],
   },
-  { to: "/instructor/students",  icon: Users,         label: "My Students" },
-  { to: "/instructor/earnings",  icon: DollarSign,    label: "Earnings"    },
-  { to: "/instructor/analytics", icon: BarChart3,     label: "Analytics"   },
-  { to: "/instructor/reviews",   icon: Star,          label: "Reviews", badge: 4 },
-  { to: "/instructor/messages",  icon: MessageSquare, label: "Messages", badge: 7 },
-  { to: "/instructor/profile",   icon: UserCog,       label: "Profile"     },
-  { to: "/instructor/settings",  icon: Settings,      label: "Settings"    },
+
+  {
+    to: "/instructor/course-materials",
+    icon: BookAIcon,
+    label: "Course Materials",
+  },
+
+  { 
+    to: "/instructor/discussions",
+    icon: MessageSquare,
+    label: "Student Discussions",
+    badge: 7,
+  },
+
+  { 
+    to: "/instructor/video-call",
+    icon: Video,
+    label: "Live Classes",
+  },
+
+  {
+    to: "/instructor/students",
+    icon: Users,
+    label: "Manage Students",
+    children: [
+      { to: "/instructor/students", label: "All Students" },
+      { to: "/instructor/reviews", label: "Reviews" },
+    ],
+  },
+
+  {
+    to: "/instructor/profile",
+    icon: UserCog,
+    label: "Profile",
+    children: [
+      { to: "/instructor/profile", label: "View Profile" },
+      { to: "/instructor/settings", label: "Settings" },
+    ],
+  },
+  {
+    to: "/instructor/support",
+    icon: Info,
+    label: "Support",
+  }
 ];
 
 // ─── NavItem ──────────────────────────────────────────────────────────────────
@@ -83,7 +131,7 @@ function NavItem({ item, accent, onNavigate }: {
               className="overflow-hidden">
               <div className={cn("ml-4 mt-1 pl-3 flex flex-col gap-0.5 border-l-2", accent.border)}>
                 {item.children!.map(child => {
-                  const active = location.pathname === child.to || location.pathname.startsWith(child.to + "/");
+                  const active = location.pathname === child.to || location.pathname.startsWith(child.to + "/instructor");
                   return (
                     <NavLink key={child.to} to={child.to} onClick={onNavigate}
                       className={cn(
@@ -144,7 +192,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Logo */}
       <div className="relative px-4 py-4 border-b border-gray-100 dark:border-white/[0.06]">
-        <Link to="/" className="flex items-center gap-2.5">
+        <Link to="/instructor" className="flex items-center gap-2.5">
           <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${accent.logoBg} flex items-center justify-center shadow-[0_4px_14px_rgba(99,102,241,0.4)]`}>
             <GraduationCap className="w-4 h-4 text-white" />
           </div>
@@ -154,20 +202,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         </Link>
       </div>
-
-      {/* Quick create */}
-      <div className="px-3 pt-3">
-        <Link to="/instructor/courses/create" onClick={onNavigate}
-          className="flex items-center gap-2 w-full px-3 py-2.5 rounded-2xl text-[12px] font-bold
-            bg-gradient-to-r from-indigo-600 to-blue-500 text-white
-            shadow-[0_4px_14px_rgba(99,102,241,0.35)]
-            hover:shadow-[0_6px_20px_rgba(99,102,241,0.45)]
-            transition-all duration-200">
-          <PlusCircle className="w-3.5 h-3.5" />
-          New Course
-        </Link>
-      </div>
-
       {/* Nav */}
       <nav className="relative flex-1 px-3 py-3 flex flex-col gap-1 overflow-y-auto
         [scrollbar-width:thin] [scrollbar-color:transparent_transparent]
@@ -239,7 +273,7 @@ export function InstructorSidebar() {
         className="lg:hidden fixed top-0 left-0 bottom-0 w-[272px] z-50 shadow-2xl">
         <SidebarContent onNavigate={close} />
       </motion.aside>
-      <aside className="hidden lg:block fixed top-3 left-3 bottom-3 w-56 rounded-[20px] z-30 overflow-hidden
+      <aside className="hidden lg:block fixed top-3 left-3 bottom-3 w-56 rounded-[20px] z-10 overflow-hidden
         shadow-[0_8px_40px_rgba(0,0,0,0.10)] border border-gray-200/50 dark:border-white/[0.07]">
         <SidebarContent />
       </aside>

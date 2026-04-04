@@ -244,6 +244,114 @@ const CSS = `
   .al-footer-note a { color: #dc2626; text-decoration: none; }
   .al-footer-note a:hover { text-decoration: underline; }
   .dark .al-footer-note { color: #334155; }
+
+  /* ── Form inputs */
+  .lg-input-wrap { position: relative; }
+  .lg-input-icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    pointer-events: none; color: #94a3b8;
+  }
+  .dark .lg-input-icon { color: #475569; }
+
+  .lg-input {
+    width: 100%;
+    padding: 13px 14px 13px 44px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(0,0,0,0.10);
+    background: rgba(0,0,0,0.025);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 14px; color: #0f172a;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    -webkit-appearance: none;
+  }
+  .lg-input::placeholder { color: #94a3b8; font-weight: 300; }
+  .lg-input:focus {
+    border-color: rgba(26,110,247,0.45);
+    background: rgba(26,110,247,0.03);
+    box-shadow: 0 0 0 3px rgba(26,110,247,0.10);
+  }
+  .dark .lg-input {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+    color: #e2e8f0;
+  }
+  .dark .lg-input::placeholder { color: #475569; }
+  .dark .lg-input:focus {
+    border-color: rgba(77,155,255,0.45);
+    background: rgba(77,155,255,0.06);
+    box-shadow: 0 0 0 3px rgba(77,155,255,0.12);
+  }
+
+  /* eye toggle */
+  .lg-eye {
+    position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; padding: 2px;
+    color: #94a3b8; transition: color 0.18s;
+    display: flex; align-items: center;
+  }
+  .lg-eye:hover { color: #475569; }
+  .dark .lg-eye { color: #475569; }
+  .dark .lg-eye:hover { color: #7a8499; }
+
+  /* label */
+  .lg-label {
+    display: block;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 13px; font-weight: 500; margin-bottom: 7px;
+    color: #374151;
+  }
+  .dark .lg-label { color: #94a3b8; }
+
+  /* error */
+  .lg-err { font-size: 12px; color: #ef4444; margin-top: 4px; }
+
+  /* submit */
+  .lg-submit {
+    width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    padding: 14px 24px; border-radius: 12px;
+    border: none; cursor: pointer;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 14.5px; font-weight: 600; letter-spacing: -.01em;
+    background: linear-gradient(135deg, #1a6ef7 0%, #0a3ba8 100%);
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(26,110,247,0.38);
+    transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease;
+  }
+  .lg-submit:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(26,110,247,0.52);
+  }
+  .lg-submit:active:not(:disabled) { transform: scale(0.98); }
+  .lg-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+  .lg-submit-arrow {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(255,255,255,0.20);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+  .lg-submit:hover .lg-submit-arrow { transform: translateX(2px); }
+
+  /* remember */
+  .lg-remember { display: flex; align-items: center; gap: 8px; }
+  .lg-remember input[type=checkbox] {
+    width: 16px; height: 16px; border-radius: 5px;
+    accent-color: #1a6ef7; cursor: pointer;
+  }
+  .lg-remember label {
+    font-size: 13px; font-weight: 400; color: #64748b; cursor: pointer; select: none;
+  }
+  .dark .lg-remember label { color: #475569; }
+
+  /* footer note */
+  .lg-footer-note {
+    font-size: 11.5px; color: #94a3b8; text-align: center; line-height: 1.6;
+  }
+  .lg-footer-note a { color: #1a6ef7; text-decoration: none; }
+  .lg-footer-note a:hover { text-decoration: underline; }
+  .dark .lg-footer-note { color: #334155; }
+
 `;
 
 function LeftPanel() {
@@ -348,7 +456,7 @@ const AdminLogin = () => {
                         <form style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
                             {/* Email */}
-                            <div className="lg-2">
+                            <div className="lg-2"> 
                                 <label className="lg-label">Email address</label>
                                 <div className="lg-input-wrap">
                                     <Mail className="lg-input-icon" size={15} />
@@ -365,8 +473,8 @@ const AdminLogin = () => {
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
                                     <label className="lg-label">Password</label>
                                     <Link
-                                        to="/forgot-password"
-                                        style={{ fontSize: 12, color: "#1a6ef7", fontWeight: 500, textDecoration: "none" }}
+                                        to="/forgotten-password"
+                                        style={{ fontSize: 12, color: "red", fontWeight: 500, textDecoration: "none" }}
                                     >
                                         Forgot password?
                                     </Link>

@@ -4,6 +4,7 @@ import { NavLink, useLocation, useNavigate, Link } from "react-router-dom";
 import {
   LayoutDashboard, PlayCircle,
   ShoppingCart, MessageSquare, UserCog, LogOut, GraduationCap, Clipboard, ChevronDown,
+  Info,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -63,9 +64,13 @@ const NAV_ITEMS: NavItemDef[] = [
   },
 
   {
-    to: "/student/assignments",
+    to: "/student/academics",
     icon: Clipboard,
-    label: "Assignments",
+    label: "Grades & Assignments",
+    children: [
+      { to: "/student/grades", label: "Grades" }, 
+      { to: "/student/assignments", label: "Assignments" },
+    ],
   },
 
   {
@@ -73,8 +78,7 @@ const NAV_ITEMS: NavItemDef[] = [
     icon: GraduationCap,
     label: "Academics",
     children: [
-      { to: "/student/schedule", label: "Schedule" },
-      { to: "/student/grades", label: "Grades" }, 
+      { to: "/student/live", label: "Live Classes" },
       { to: "/student/certificates", label: "Certificates" },
     ],
   },
@@ -105,6 +109,12 @@ const NAV_ITEMS: NavItemDef[] = [
       { to: "/student/settings", label: "Settings" },
     ],
   },
+
+  {
+    to: "/student/support",
+    icon: Info,
+    label: "Support",
+  }
 ];
 
 // ─── NavItem ──────────────────────────────────────────────────
@@ -171,7 +181,7 @@ function NavItem({ item, accent, onNavigate }: {
                 {item.children!.map((child) => {
                   const active =
                     location.pathname === child.to ||
-                    location.pathname.startsWith(child.to + "/");
+                    location.pathname.startsWith(child.to + "/student");
 
                   return (
                     <NavLink
@@ -235,7 +245,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Logo */}
       <div className="relative px-4 py-4 border-b border-gray-100 dark:border-white/[0.06]">
-        <Link to="/" className="flex items-center gap-2.5">
+        <Link to="/student" className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-900 flex items-center justify-center shadow-[0_4px_14px_rgba(6,182,212,0.4)]">
             <GraduationCap className="w-4 h-4 text-white" />
           </div>
@@ -265,7 +275,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="relative border-t border-gray-100 dark:border-white/[0.06]">
         <div className="px-3 pt-3 pb-2">
           <Link to="/student/profile" onClick={onNavigate}
-            className="flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-blue-50 dark:hover:bg-cyan-950/20 transition-all group">
+            className="flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all group">
             <div className="relative flex-shrink-0">
               <div className={`w-9 h-9 rounded-full overflow-hidden ring-2 ${accent.ring}`}>
                 {user?.avatarUrl
@@ -278,7 +288,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 ${accent.dot} rounded-full border-2 border-white dark:border-[#080d18]`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-cyan-400 transition-colors">
+              <p className="text-[12px] font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                 {displayName}
               </p>
               <p className="text-[10px] text-gray-400 truncate">{user?.email}</p>
@@ -329,7 +339,7 @@ export function StudentSidebar() {
         <SidebarContent onNavigate={close} />
       </motion.aside>
 
-      <aside className="hidden lg:block fixed top-3 left-3 bottom-3 w-56 rounded-[20px] z-30 overflow-hidden
+      <aside className="hidden lg:block fixed top-3 left-3 bottom-3 w-56 rounded-[20px] z-10 overflow-hidden
         shadow-[0_8px_40px_rgba(0,0,0,0.10)] border border-gray-200/50 dark:border-white/[0.07]">
         <SidebarContent />
       </aside>

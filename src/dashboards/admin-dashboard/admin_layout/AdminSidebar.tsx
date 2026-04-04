@@ -2,8 +2,11 @@
 import { useState, useEffect, useContext, createContext, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate, Link } from "react-router-dom";
 import {
-  LayoutDashboard, BookOpen, GraduationCap, Users, ArrowLeftRight,
-  Settings, ChevronDown, LogOut, Ticket, BarChart3, ShieldCheck,
+  LayoutDashboard, BookOpen, Users, ArrowLeftRight,
+  Settings, ChevronDown, LogOut, ShieldCheck,
+  MessageSquare,
+  UserCog,
+  ClipboardCheckIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -28,42 +31,98 @@ export const useAdminSidebar = () => useContext(SidebarCtx);
 interface NavChild  { to: string; label: string }
 interface NavItemDef { to: string; icon: React.ElementType; label: string; badge?: number; children?: NavChild[]; end?: boolean; superAdminOnly?: boolean }
 
-function getNavItems(isSuperAdmin: boolean): NavItemDef[] {
-  return [
-    {
-      to: "/dashboard", icon: LayoutDashboard, label: "Overview", end: true,
-      children: [
-        { to: "/dashboard",        label: "Dashboard"     },
-      ],
-    },
-    { to: "/dashboard/users",       icon: Users,         label: "Users"           },
-    { to: "/dashboard/courses",     icon: BookOpen,      label: "Courses"         },
-    { to: "/dashboard/instructors", icon: GraduationCap, label: "Instructors"     },
-    {
-      to: "/dashboard/transactions", icon: ArrowLeftRight, label: "Transactions",
-      children: [
-        { to: "/dashboard/transactions",         label: "All Transactions"   },
-        { to: "/dashboard/transactions/payouts", label: "Instructor Payouts" },
-      ],
-    },
-    { to: "/dashboard/support",   icon: Ticket,    label: "Support Tickets", badge: 3 },
-    { to: "/dashboard/analytics", icon: BarChart3,  label: "Analytics"       },
-    {
-      to: "/dashboard/settings", icon: Settings, label: "Settings",
-      children: [
-        { to: "/dashboard/settings/general",       label: "General"       },
-        { to: "/dashboard/settings/notifications", label: "Notifications" },
-        { to: "/dashboard/settings/features",      label: "Features"      },
-      ],
-    },
-    ...(isSuperAdmin ? [{
-      to: "/dashboard/admin-access", icon: ShieldCheck, label: "Admin & Access", superAdminOnly: true,
-      children: [
-        { to: "/dashboard/admin-access",      label: "Admin Profiles" },
-        { to: "/dashboard/admin-access/logs", label: "Audit Logs"     },
-      ],
-    }] : []),
-  ];
+function getNavItems(_isSuperAdmin: boolean): NavItemDef[] {
+  const NAV_ITEMS: NavItemDef[] = [
+  // ── Core overview (keep lightweight)
+  {
+    to: "/admin",
+    icon: LayoutDashboard,
+    label: "Overview",
+    end: true,
+  },
+
+  // ── Course operations
+  {
+    to: "/admin/courses",
+    icon: BookOpen,
+    label: "Course Management",
+    children: [
+      { to: "/admin/courses", label: "Manage Courses" },
+      { to: "/admin/courses/create", label: "Add New Course" },
+    ],
+  },
+
+  // ── People management
+  {
+    to: "/admin/",
+    icon: Users,
+    label: "People",
+    children: [
+      { to: "/admin/students", label: "Student Management" },
+      { to: "/admin/instructors", label: "Instructor Management" },
+      { to: "/admin/admins", label: "Admin Management" },
+    ],
+  },
+
+  // ── Communication / engagement
+  {
+    to: "/admin/discussions",
+    icon: MessageSquare,
+    label: "Community",
+    children: [
+      { to: "/admin/discussions", label: "Student Discussions" },
+      { to: "/admin/live", label: "Live Classes" },
+      { to: "/admin/announcements", label: "Announcements" },
+    ],
+  },
+
+  // ── Finance
+  {
+    to: "/admin/transactions",
+    icon: ArrowLeftRight,
+    label: "Transactions",
+    children: [
+      { to: "/admin/transactions", label: "All Transactions" },
+    ],
+  },
+
+  // ── Business intelligence
+  {
+    to: "/assignments",
+    icon: ClipboardCheckIcon,
+    label: "Assignment Management",
+    children: [
+      { to: "/admin/assignments", label: "All Assignments" },
+      { to: "/admin/assignments/create", label: "Create Assignment" },
+    ],
+  },
+
+  // ── Platform settings
+  {
+    to: "/admin/settings",
+    icon: Settings,
+    label: "Settings",
+    children: [
+      { to: "/admin/settings", label: "General Settings" },
+      { to: "/admin/notifications", label: "Notifications" },
+    ],
+  },
+  
+  {
+    to: "/admin/profile",
+    icon: UserCog,
+    label: "My Profile"
+  },
+  
+  // ── Support (important to be easily accessible for admins)
+  {
+    to: "/admin/support",
+    icon: MessageSquare,
+    label: "Support Tickets",
+    badge: 3,
+  },
+];
+  return NAV_ITEMS;
 }
 
 // ─── NavItem ──────────────────────────────────────────────────────────────────
@@ -107,7 +166,7 @@ function NavItem({ item, accent, onNavigate }: {
               className="overflow-hidden">
               <div className={cn("ml-4 mt-1 pl-3 flex flex-col gap-0.5 border-l-2", accent.border)}>
                 {item.children!.map(child => {
-                  const active = location.pathname === child.to || location.pathname.startsWith(child.to + "/");
+                  const active = location.pathname === child.to || location.pathname.startsWith(child.to + "/admin");
                   return (
                     <NavLink key={child.to} to={child.to} onClick={onNavigate}
                       className={cn(
@@ -169,7 +228,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Logo */}
       <div className="relative px-4 py-4 border-b border-gray-100 dark:border-white/[0.06]">
-        <Link to="/" className="flex items-center gap-2.5">
+        <Link to="/admin" className="flex items-center gap-2.5">
           <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${accent.logoBg} flex items-center justify-center shadow-[0_4px_14px_rgba(59,130,246,0.4)]`}>
             <ShieldCheck className="w-4 h-4 text-white" />
           </div>
@@ -196,7 +255,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Footer */}
       <div className="relative border-t border-gray-100 dark:border-white/[0.06]">
         <div className="px-3 pt-3 pb-2">
-          <Link to="/dashboard/profile" onClick={onNavigate}
+          <Link to="/admin/profile" onClick={onNavigate}
             className="flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all group">
             <div className="relative flex-shrink-0">
               <div className={`w-9 h-9 rounded-full overflow-hidden ring-2 ${accent.ring}`}>
@@ -253,7 +312,7 @@ export function AdminSidebar() {
         className="lg:hidden fixed top-0 left-0 bottom-0 w-[272px] z-50 shadow-2xl">
         <SidebarContent onNavigate={close} />
       </motion.aside>
-      <aside className="hidden lg:block fixed top-3 left-3 bottom-3 w-56 rounded-[20px] z-30 overflow-hidden
+      <aside className="hidden lg:block fixed top-3 left-3 bottom-3 w-56 rounded-[20px] z-10 overflow-hidden
         shadow-[0_8px_40px_rgba(0,0,0,0.10)] border border-gray-200/50 dark:border-white/[0.07]">
         <SidebarContent />
       </aside>

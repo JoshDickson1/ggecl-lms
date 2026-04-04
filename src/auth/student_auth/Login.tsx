@@ -444,7 +444,7 @@ const Login = () => {
                                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
                                         <label className="lg-label">Password</label>
                                         <Link
-                                            to="/forgot-password"
+                                            to="/forgotten-password"
                                             style={{ fontSize: 12, color: "#1a6ef7", fontWeight: 500, textDecoration: "none" }}
                                         >
                                             Forgot password?

@@ -118,7 +118,7 @@ function BankInfo() {
       <p className="text-sm font-bold text-gray-800 dark:text-white mb-3">Transfer to:</p>
       {[
         { label: "Bank", value: "First National Learning Bank" },
-        { label: "Account Name", value: "LearnFlow Ltd" },
+        { label: "Account Name", value: "GGECL Ltd" },
         { label: "Account No.", value: "0123456789" },
         { label: "Sort Code", value: "12-34-56" },
         { label: "Reference", value: "Use your email" },
