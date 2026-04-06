@@ -95,6 +95,8 @@ import About from "./landing/pages/About";
 import ResetPassword from "./auth/student_auth/ResetPassword";
 import InstructorResetPassword from "./auth/instructor_auth/InstructorResetPassword";
 import AdminResetPassword from "./auth/admin_auth/AdminResetPassword";
+import StudentCourseVideoPreview from "./dashboards/student-dashboard/pages/StudentCourseVideoPreview";
+import { InstructorCourseVideoUpload } from "./dashboards/instructor-dashboard/pages/InstructorCourseVideoUpload";
  
 const router = createBrowserRouter([
   // ── Landing ──────────────────────────────────────────────────
@@ -185,6 +187,7 @@ const router = createBrowserRouter([
     { path: "courses", element: <InstructorCourses /> },
     { path: "courses/:id", element: <InstructorSingleCourse /> },
     { path: "search", element: <InstructorSearch /> },
+    { path: "courses/:id/upload-video", element: <InstructorCourseVideoUpload /> },
   ],
 },
   // ── Student dashboard ─────────────────────────────────────────
@@ -223,6 +226,8 @@ const router = createBrowserRouter([
     { path: "search", element: <StudentSearch /> }, 
     { path: "categories", element: <StudentCategories /> },
     { path: "categories/:id", element: <StudentSingleCategory /> },
+    // watch course video route
+    { path: "courses/:id/watch", element: <StudentCourseVideoPreview /> },
   ],
 },
   // ── 404 ───────────────────────────────────────────────────────
