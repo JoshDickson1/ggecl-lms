@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from "lucide-react";
 import PageNotifier from "../PageNotifier";
+import { useNavigate } from "react-router-dom";
+import { authClient } from "@/lib/auth-client";
 
 import { Link } from "react-router-dom";
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');`;
@@ -390,140 +392,208 @@ function LeftPanel() {
 
 
 const Login = () => {
-    const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-    return (
-        <>
-            <style>{FONTS + CSS}</style>
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
 
-            <div className="lg-root">
+    const { error } = await authClient.signIn.email({
+      email,
+      password,
+      callbackURL: "/student",
+    });
 
-                {/* ── Left decorative panel */}
-                <LeftPanel />
+    setLoading(false);
 
-                {/* ── Right: form */}
-                <div className="lg-right">
-                    <div className="lg-form-inner">
+    if (error) {
+      setError(error.message ?? "Sign in failed");
+      return;
+    }
 
-                        {/* Header */}
-                        <div className="lg-1" style={{ marginBottom: 28 }}>
-                            <h1 style={{
-                                fontFamily: "'Syne', system-ui, sans-serif",
-                                fontSize: "clamp(1.8rem, 3vw, 2.4rem)",
-                                fontWeight: 800,
-                                letterSpacing: "-0.03em",
-                                lineHeight: 1.1,
-                                marginBottom: 8,
-                                color: "inherit",
-                            }}>
-                                Welcome back.
-                            </h1>
-                            <p style={{ fontSize: 14, fontWeight: 300, color: "#64748b", lineHeight: 1.5 }}>
-                                Login to your student account to continue learning.
-                            </p>
-                        </div>
+    navigate("/student");
+  };
 
-                        <>
-                            <form style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+  const handleGoogleSignIn = async () => {
+    await authClient.signIn.social({
+      provider: "google",
+      callbackURL: "/student",
+    });
+  };
 
-                                {/* Email */}
-                                <div className="lg-2">
-                                    <label className="lg-label">Email address</label>
-                                    <div className="lg-input-wrap">
-                                        <Mail className="lg-input-icon" size={15} />
-                                        <input
-                                            placeholder="you@example.com"
-                                            className="lg-input"
-                                            type="email"
-                                        />
-                                    </div>
-                                </div>
+  return (
+    <>
+      <style>{FONTS + CSS}</style>
 
-                                {/* Password */}
-                                <div className="lg-3">
-                                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
-                                        <label className="lg-label">Password</label>
-                                        <Link
-                                            to="/forgotten-password"
-                                            style={{ fontSize: 12, color: "#1a6ef7", fontWeight: 500, textDecoration: "none" }}
-                                        >
-                                            Forgot password?
-                                        </Link>
-                                    </div>
-                                    <div className="lg-input-wrap">
-                                        <Lock className="lg-input-icon" size={15} />
-                                        <input
-                                            type={showPassword ? "text" : "password"}
-                                            placeholder="••••••••"
-                                            className="lg-input"
-                                            style={{ paddingRight: 44 }}
-                                        />
-                                        <button
-                                            type="button"
-                                            className="lg-eye"
-                                            onClick={() => setShowPassword(p => !p)}
-                                        >
-                                            {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                                        </button>
-                                    </div>
-                                </div>
+      <div className="lg-root">
 
-                                {/* Remember me */}
-                                <div className="lg-4 lg-remember">
-                                    <input type="checkbox" id="lg-remember" />
-                                    <label htmlFor="lg-remember">Remember me</label>
-                                </div>
+        {/* ── Left decorative panel */}
+        <LeftPanel />
 
-                                {/* Submit */}
-                                <div className="lg-5">
-                                    <button type="submit" className="lg-submit">
+        {/* ── Right: form */}
+        <div className="lg-right">
+          <div className="lg-form-inner">
 
-                                        Sign in to your account
-                                        <span className="lg-submit-arrow"><ArrowRight size={9} /></span>
-                                    </button>
-                                </div>
-                            </form>
-                        </>
-
-                        {/* Google sign-in */}
-                        <div className="il-7 mt-3.5">
-                            <button
-                                type="button"
-                                className="w-full flex items-center justify-center gap-3 py-[13px] px-5 rounded-xl border-[1.5px] border-slate-200 bg-white text-[14px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 cursor-pointer"
-                                style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
-                            >
-                                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
-                                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
-                                    <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05" />
-                                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
-                                </svg>
-                                Continue with Google
-                            </button>
-                        </div>
-
-                        {/* Instructor link */}
-                        <p className="il-8 text-center text-[13px] text-slate-500 mt-[22px]">
-                            Are you an Instructor?{" "}
-                            <Link to="/instructor/login" className="text-amber-500 font-semibold no-underline hover:underline">
-                                Login here
-                            </Link>
-                        </p>
-
-                        {/* Footer note */}
-                        <p className="text-[11.5px] text-slate-400 text-center leading-relaxed mt-4">
-                            By signing in you agree to GGECL's{" "}
-                            <a href="https://ggecl.com/terms" target="_blank" rel="noopener noreferrer" className="text-amber-500 no-underline hover:underline">
-                                Terms of Service
-                            </a>
-                        </p>
-                    </div>
-                </div>
+            {/* Header */}
+            <div className="lg-1" style={{ marginBottom: 28 }}>
+              <h1 style={{
+                fontFamily: "'Syne', system-ui, sans-serif",
+                fontSize: "clamp(1.8rem, 3vw, 2.4rem)",
+                fontWeight: 800,
+                letterSpacing: "-0.03em",
+                lineHeight: 1.1,
+                marginBottom: 8,
+                color: "inherit",
+              }}>
+                Welcome back.
+              </h1>
+              <p style={{ fontSize: 14, fontWeight: 300, color: "#64748b", lineHeight: 1.5 }}>
+                Login to your student account to continue learning.
+              </p>
             </div>
 
-            <PageNotifier />
-        </>
-    );
+            <form onSubmit={handleEmailSignIn} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+              {/* Email */}
+              <div className="lg-2">
+                <label className="lg-label">Email address</label>
+                <div className="lg-input-wrap">
+                  <Mail className="lg-input-icon" size={15} />
+                  <input
+                    placeholder="you@example.com"
+                    className="lg-input"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div className="lg-3">
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+                  <label className="lg-label">Password</label>
+                  <Link
+                    to="/forgotten-password"
+                    style={{ fontSize: 12, color: "#1a6ef7", fontWeight: 500, textDecoration: "none" }}
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+                <div className="lg-input-wrap">
+                  <Lock className="lg-input-icon" size={15} />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    className="lg-input"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    style={{ paddingRight: 44 }}
+                  />
+                  <button
+                    type="button"
+                    className="lg-eye"
+                    onClick={() => setShowPassword(p => !p)}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Auth error */}
+              {error && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 14px", borderRadius: 10,
+                  background: "rgba(239,68,68,0.06)",
+                  border: "1px solid rgba(239,68,68,0.18)",
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+                    <circle cx="7" cy="7" r="6.5" stroke="#ef4444" />
+                    <path d="M7 4v3.5M7 9.5v.5" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" />
+                  </svg>
+                  <p style={{ fontSize: 12.5, color: "#dc2626", margin: 0 }}>{error}</p>
+                </div>
+              )}
+
+              {/* Remember me */}
+              <div className="lg-4 lg-remember">
+                <input type="checkbox" id="lg-remember" />
+                <label htmlFor="lg-remember">Remember me</label>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="submit"
+                className="lg-submit"
+                disabled={loading}
+                style={{ opacity: loading ? 0.65 : 1, cursor: loading ? "not-allowed" : "pointer" }}
+              >
+                {loading ? (
+                  <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    <svg style={{ width: 15, height: 15, animation: "spin 1s linear infinite" }} fill="none" viewBox="0 0 24 24">
+                      <circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Signing in…
+                  </span>
+                ) : (
+                  <>
+                    Sign in to your account
+                    <span className="lg-submit-arrow"><ArrowRight size={9} /></span>
+                  </>
+                )}
+              </button>
+
+            </form>
+
+            {/* Google sign-in */}
+            <div className="il-7 mt-3.5">
+              <button
+                type="button"
+                className="w-full flex items-center justify-center gap-3 py-[13px] px-5 rounded-xl border-[1.5px] border-slate-200 bg-white text-[14px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 cursor-pointer"
+                onClick={handleGoogleSignIn}
+                style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4" />
+                  <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853" />
+                  <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05" />
+                  <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
+                </svg>
+                Continue with Google
+              </button>
+            </div>
+
+            {/* Instructor link */}
+            <p className="il-8 text-center text-[13px] text-slate-500 mt-[22px]">
+              Are you an Instructor?{" "}
+              <Link to="/instructor/login" className="text-amber-500 font-semibold no-underline hover:underline">
+                Login here
+              </Link>
+            </p>
+
+            {/* Footer note */}
+            <p className="text-[11.5px] text-slate-400 text-center leading-relaxed mt-4">
+              By signing in you agree to GGECL's{" "}
+              <a href="https://ggecl.com/terms" target="_blank" rel="noopener noreferrer" className="text-amber-500 no-underline hover:underline">
+                Terms of Service
+              </a>
+            </p>
+
+          </div>
+        </div>
+      </div>
+
+      <PageNotifier />
+    </>
+  );
 };
 
 export default Login;

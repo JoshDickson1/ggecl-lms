@@ -1,5 +1,6 @@
 import "./index.css";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { AuthProvider } from "@/context/AuthProvider";
 import { DashboardAuthProvider } from "@/hooks/useDashboardUser";
 // ── Layouts ──────────────────────────────────────────────────
 import LandingLayout from "./landing/_components/landing_layout/Layout";
@@ -95,78 +96,177 @@ import About from "./landing/pages/About";
 import ResetPassword from "./auth/student_auth/ResetPassword";
 import InstructorResetPassword from "./auth/instructor_auth/InstructorResetPassword";
 import AdminResetPassword from "./auth/admin_auth/AdminResetPassword";
+import { ProtectedRoute } from "./auth/ProtectedRoute";
+
 import StudentCourseVideoPreview from "./dashboards/student-dashboard/pages/StudentCourseVideoPreview";
 import { InstructorCourseVideoUpload } from "./dashboards/instructor-dashboard/pages/InstructorCourseVideoUpload";
  
 const router = createBrowserRouter([
-  // ── Landing ──────────────────────────────────────────────────
+  // ── Landing (public) ──────────────────────────────────────────────────
   {
     path: "/",
     element: <LandingLayout />,
     children: [
-      { index: true,                  element: <Home /> },
-      { path: "search",               element: <Search /> },
-      { path: "categories",           element: <AllCategories /> },
-      { path: "categories/:id",       element: <SingleCategory /> },
-      { path: "courses",              element: <AllCourses /> },
-      { path: "courses/:id",          element: <SingleCourse /> },
-      { path: "instructors",          element: <AllInstructors /> },
-      { path: "instructors/:id",      element: <SingleInstructor /> },
-      { path: "cart",                 element: <Cart /> },
-      { path: "processing",           element: <Processing /> },
-      { path: "payment",              element: <Provider /> },
-      { path: "order-complete",       element: <CartSuccessFailure /> },
-      { path: "checkout",             element: <Checkout /> },
-      { path: "student-info",         element: <StudentInfoForm /> },
+      { index: true,                element: <Home /> },
+      { path: "search",             element: <Search /> },
+      { path: "categories",         element: <AllCategories /> },
+      { path: "categories/:id",     element: <SingleCategory /> },
+      { path: "courses",            element: <AllCourses /> },
+      { path: "courses/:id",        element: <SingleCourse /> },
+      { path: "instructors",        element: <AllInstructors /> },
+      { path: "instructors/:id",    element: <SingleInstructor /> },
+      { path: "cart",               element: <Cart /> },
+      { path: "processing",         element: <Processing /> },
+      { path: "payment",            element: <Provider /> },
+      { path: "order-complete",     element: <CartSuccessFailure /> },
+      { path: "checkout",           element: <Checkout /> },
+      { path: "student-info",       element: <StudentInfoForm /> },
       { path: "about",              element: <About /> },
-      // Auth
-      { path: "login",                          element: <Login /> },
-      { path: "forgotten-password",             element: <Forgotten /> },
-      { path: "reset-password",           element: <ResetPassword /> },
-      { path: "instructor/login",               element: <InstructorLogin /> },
-      { path: "instructor/forgotten-password",  element: <InstructorForgotten /> },
-      { path: "instructor/reset-password",  element: <InstructorResetPassword /> },
-      { path: "admin/login",                    element: <AdminLogin /> },
-      { path: "admin/forgotten-password",       element: <AdminForgotten /> },
-      { path: "admin/reset-password",           element: <AdminResetPassword /> }
+      // ── Auth ──────────────────────────────────────────────────────────
+      { path: "login",                         element: <Login /> },
+      { path: "forgotten-password",            element: <Forgotten /> },
+      { path: "reset-password",                element: <ResetPassword /> },
+      { path: "instructor/login",              element: <InstructorLogin /> },
+      { path: "instructor/forgotten-password", element: <InstructorForgotten /> },
+      { path: "instructor/reset-password",     element: <InstructorResetPassword /> },
+      { path: "admin/login",                   element: <AdminLogin /> },
+      { path: "admin/forgotten-password",      element: <AdminForgotten /> },
+      { path: "admin/reset-password",          element: <AdminResetPassword /> },
     ],
   },
-  // ── Admin dashboard ───────────────────────────────────────────
+
+  // ── Admin dashboard (ADMIN only) ──────────────────────────────────────
   {
-  path: "/admin",
-  element: (
-    <DashboardAuthProvider defaultRole="admin">
-      <AdminLayout />
-    </DashboardAuthProvider>
-  ),
-  children: [
-    { index: true, element: <AdminHome /> },
-    { path: "admins", element: <AdminAdminManagement /> },
-    { path: "instructors", element: <AdminInstructorManagement /> },
-    { path: "students", element: <AdminStudentManagement /> },
-    { path: "profile", element: <AdminProfile /> },
-    { path: "instructors/:id", element: <PreviewInstructor /> },
-    { path: "admins/:id", element: <PreviewAdmin /> },
-    { path: "students/:id", element: <PreviewStudent /> },
-    { path: "support", element: <AdminSupport /> },
-    { path: "settings", element: <AdminSettings /> },
-    { path: "notifications", element: <AdminAllNotifications /> },
-    { path: "grades", element: <AdminGrades /> },
-    { path: "assignments", element: <AdminAssignment /> },  
-    { path: "assignments/:id/submissions", element: <SingleSubmittedAssignment /> },
-    { path: "assignments/create", element: <AdminCreateAssignment /> },
-    { path: "transactions", element: <AdminTransactions /> },
-    { path: "announcements", element: <AdminAnnouncements /> },
-    { path: "discussions", element: <AdminChat /> },
-    { path: "courses/create", element: <AdminCreateCourse /> },
-    { path: "courses/:id", element: <AdminSingleCourse /> },
-    { path: "courses/:id/edit", element: <AdminCreateCourse /> },
-    { path: "courses", element: <AdminManageCourses /> },
-    { path: "search", element: <AdminSearch /> },
-  ],
-},
-  // ── Instructor dashboard ──────────────────────────────────────
+    path: "/admin",
+    element: (
+      <ProtectedRoute allowedRoles={["ADMIN"]} redirectTo="/admin/login" />
+    ),
+    children: [
+      {
+        element: (
+          <DashboardAuthProvider defaultRole="admin">
+            <AdminLayout />
+          </DashboardAuthProvider>
+        ),
+        children: [
+          { index: true,                              element: <AdminHome /> },
+          { path: "admins",                           element: <AdminAdminManagement /> },
+          { path: "instructors",                      element: <AdminInstructorManagement /> },
+          { path: "students",                         element: <AdminStudentManagement /> },
+          { path: "profile",                          element: <AdminProfile /> },
+          { path: "instructors/:id",                  element: <PreviewInstructor /> },
+          { path: "admins/:id",                       element: <PreviewAdmin /> },
+          { path: "students/:id",                     element: <PreviewStudent /> },
+          { path: "support",                          element: <AdminSupport /> },
+          { path: "settings",                         element: <AdminSettings /> },
+          { path: "notifications",                    element: <AdminAllNotifications /> },
+          { path: "grades",                           element: <AdminGrades /> },
+          { path: "assignments",                      element: <AdminAssignment /> },
+          { path: "assignments/:id/submissions",      element: <SingleSubmittedAssignment /> },
+          { path: "assignments/create",               element: <AdminCreateAssignment /> },
+          { path: "transactions",                     element: <AdminTransactions /> },
+          { path: "announcements",                    element: <AdminAnnouncements /> },
+          { path: "discussions",                      element: <AdminChat /> },
+          { path: "courses/create",                   element: <AdminCreateCourse /> },
+          { path: "courses/:id",                      element: <AdminSingleCourse /> },
+          { path: "courses/:id/edit",                 element: <AdminCreateCourse /> },
+          { path: "courses",                          element: <AdminManageCourses /> },
+          { path: "search",                           element: <AdminSearch /> },
+        ],
+      },
+    ],
+  },
+
+  // ── Instructor dashboard (INSTRUCTOR only) ────────────────────────────
   {
+    path: "/instructor",
+    element: (
+      <ProtectedRoute allowedRoles={["INSTRUCTOR"]} redirectTo="/instructor/login" />
+    ),
+    children: [
+      {
+        element: (
+          <DashboardAuthProvider defaultRole="instructor">
+            <InstructorLayout />
+          </DashboardAuthProvider>
+        ),
+        children: [
+          { index: true,                          element: <InstructorHome /> },
+          { path: "profile",                      element: <InstructorProfile /> },
+          { path: "Settings",                     element: <InstructorSettings /> },
+          { path: "instructor-profile",           element: <PreviewInstructor /> },
+          { path: "support",                      element: <InstructorSupport /> },
+          { path: "notifications",                element: <InstructorAllNotifications /> },
+          { path: "assignments",                  element: <InstructorAssignment /> },
+          { path: "assignments/:id/submissions",  element: <SingleSubmittedAssignment /> },
+          { path: "grades",                       element: <InstructorGrades /> },
+          { path: "discussions",                  element: <InstructorChat /> },
+          { path: "courses",                      element: <InstructorCourses /> },
+          { path: "courses/:id",                  element: <InstructorSingleCourse /> },
+          { path: "search",                       element: <InstructorSearch /> },
+        ],
+      },
+    ],
+  },
+
+  // ── Student dashboard (STUDENT only) ─────────────────────────────────
+  {
+    path: "/student",
+    element: (
+      <ProtectedRoute allowedRoles={["STUDENT"]} redirectTo="/login" />
+    ),
+    children: [
+      {
+        element: (
+          <DashboardAuthProvider defaultRole="student">
+            <StudentLayout />
+          </DashboardAuthProvider>
+        ),
+        children: [
+          { index: true,                          element: <StudentHome /> },
+          { path: "profile",                      element: <StudentProfile /> },
+          { path: "settings",                     element: <StudentSettings /> },
+          { path: "instructor-profile",           element: <PreviewInstructor /> },
+          { path: "support",                      element: <StudentSupport /> },
+          { path: "notifications",                element: <StudentAllNotifications /> },
+          { path: "certificates",                 element: <StudentCertificates /> },
+          { path: "progress",                     element: <StudentProgress /> },
+          { path: "wishlist",                     element: <StudentWishlist /> },
+          { path: "courses",                      element: <StudentCourses /> },
+          { path: "courses/:id",                  element: <StudentSingleCourse /> },
+          { path: "explore",                      element: <StudentExploreCourses /> },
+          { path: "instructors/:id",              element: <StudentSingleInstructor /> },
+          // ── Cart / payment ───────────────────────────────────────────
+          { path: "cart",                         element: <StudentCart /> },
+          { path: "cart/processing",              element: <StudentProcessing /> },
+          { path: "cart/payment",                 element: <StudentProvider /> },
+          { path: "cart/order-complete",          element: <StudentCartSuccessFailure /> },
+          { path: "cart/checkout",                element: <StudentCheckout /> },
+          { path: "cart/student-info",            element: <StudentStudentInfoForm /> },
+          // ── Assignments & grades ─────────────────────────────────────
+          { path: "assignments",                  element: <StudentAssignment /> },
+          { path: "grades",                       element: <StudentGrades /> },
+          { path: "messages",                     element: <StudentChat /> },
+          { path: "search",                       element: <StudentSearch /> },
+          { path: "categories",                   element: <StudentCategories /> },
+          { path: "categories/:id",               element: <StudentSingleCategory /> },
+        ],
+      },
+    ],
+  },
+
+  // ── 403 Forbidden ─────────────────────────────────────────────────────
+  {
+    path: "/403",
+    element: (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: "12px" }}>
+        <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>403</h1>
+        <p style={{ color: "#888" }}>You don't have permission to access this page.</p>
+      </div>
+    ),
+  },
+
+  // ── 404 ───────────────────────────────────────────────────────────────
   path: "/instructor",
   element: (
     <DashboardAuthProvider defaultRole="instructor">
@@ -233,5 +333,13 @@ const router = createBrowserRouter([
   // ── 404 ───────────────────────────────────────────────────────
   { path: "*", element: <NotFound /> },
 ]);
-const App = () => <RouterProvider router={router} />;
+
+// AuthProvider wraps everything so useAuth() works in ProtectedRoute
+// and anywhere else in the tree.
+const App = () => (
+  <AuthProvider>
+    <RouterProvider router={router} />
+  </AuthProvider>
+);
+
 export default App;
