@@ -163,8 +163,6 @@ export default function InstructorHome() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <StatCard label="Total Students" value={INSTRUCTOR.totalStudents.toLocaleString()} sub="+124 this month"
             icon={Users} color="from-blue-500 to-blue-600" trend="+8%" trendUp />
-          <StatCard label="Total Revenue" value={`$${(INSTRUCTOR.totalRevenue / 1000).toFixed(0)}k`} sub="lifetime earnings"
-            icon={DollarSign} color="from-violet-500 to-purple-600" trend={revenueTrend} trendUp={revenueUp} />
           <StatCard label="Avg Rating" value={String(INSTRUCTOR.rating)} sub="across all courses"
             icon={Star} color="from-amber-400 to-orange-500" />
           <StatCard label="Completion Rate" value={`${INSTRUCTOR.completionRate}%`} sub="student avg"
