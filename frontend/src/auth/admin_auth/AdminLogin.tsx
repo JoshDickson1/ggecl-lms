@@ -3,7 +3,8 @@ import { Eye, EyeOff, Lock, Mail, Shield } from "lucide-react";
 import PageNotifier from "../PageNotifier";
 
 
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { authClient } from "@/lib/auth-client";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');`;
 
@@ -414,130 +415,214 @@ function LeftPanel() {
 }
 
 const AdminLogin = () => {
-    const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isPending, setIsPending] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [emailErr, setEmailErr] = useState("");
+  const [passwordErr, setPasswordErr] = useState("");
+  const [authErr, setAuthErr] = useState("");
+  const navigate = useNavigate();
 
-    return (
-        <>
-            <style>{FONTS + CSS}</style>
-            <div className="al-root">
-                <LeftPanel />
+  const validate = () => {
+      let valid = true;
+      if (!email) { setEmailErr("Email is required"); valid = false; }
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setEmailErr("Invalid email address"); valid = false; }
+      else setEmailErr("");
+      if (!password) { setPasswordErr("Password is required"); valid = false; }
+      else setPasswordErr("");
+      return valid;
+  };
 
-                <div className="al-right">
-                    <div className="al-form-inner">
+  const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!validate()) return;
 
-                        {/* Header */}
-                        <div className="al-1" style={{ marginBottom: 28 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                <div style={{
-                                    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                                    background: "linear-gradient(135deg,#dc2626,#7f1d1d)",
-                                    boxShadow: "0 4px 14px rgba(220,38,38,0.35)",
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                }}>
-                                    <Shield size={16} color="white" strokeWidth={1.8} />
-                                </div>
-                                <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "#991b1b", fontFamily: "'DM Sans',sans-serif" }}>
-                                    Admin Portal
-                                </span>
-                            </div>
-                            <h1 style={{
-                                fontFamily: "'Syne',system-ui,sans-serif",
-                                fontSize: "clamp(1.8rem,3vw,2.4rem)",
-                                fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1,
-                                marginBottom: 8, color: "inherit",
-                            }}>
-                                Admin Access
-                            </h1>
-                            <p style={{ fontSize: 14, fontWeight: 300, color: "#64748b", lineHeight: 1.5 }}>
-                                Login to manage instructors, students, and platform settings.
-                            </p>
-                        </div>
-                        {/* Form */}
-                        <form style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      setAuthErr("");
+      setIsPending(true);
 
-                            {/* Email */}
-                            <div className="lg-2"> 
-                                <label className="lg-label">Email address</label>
-                                <div className="lg-input-wrap">
-                                    <Mail className="lg-input-icon" size={15} />
-                                    <input
-                                        placeholder="you@example.com"
-                                        className="lg-input"
-                                        type="email"
-                                    />
-                                </div>
-                            </div>
+      const { error } = await authClient.signIn.email({
+          email,
+          password,
+          callbackURL: "/admin",
+      });
 
-                            {/* Password */}
-                            <div className="lg-3">
-                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
-                                    <label className="lg-label">Password</label>
-                                    <Link
-                                        to="/forgotten-password"
-                                        style={{ fontSize: 12, color: "red", fontWeight: 500, textDecoration: "none" }}
-                                    >
-                                        Forgot password?
-                                    </Link>
-                                </div>
-                                <div className="lg-input-wrap">
-                                    <Lock className="lg-input-icon" size={15} />
-                                    <input
-                                        type={showPassword ? "text" : "password"}
-                                        placeholder="••••••••"
-                                        className="lg-input"
-                                        style={{ paddingRight: 44 }}
-                                    />
-                                    <button
-                                        type="button"
-                                        className="lg-eye"
-                                        onClick={() => setShowPassword(p => !p)}
-                                    >
-                                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                                    </button>
-                                </div>
-                            </div>
+      setIsPending(false);
 
-                            <div className="al-4 al-remember">
-                                <input type="checkbox" id="al-remember" />
-                                <label htmlFor="al-remember">Remember me on this device</label>
-                            </div>
+      if (error) {
+          setAuthErr(error.message ?? "Sign in failed. Please try again.");
+          return;
+      }
 
-                            <div className="al-5">
-                                <button type="submit" className="al-submit">
-                                    Access Dashboard
-                                </button>
-                            </div>
-                        </form>
+      navigate("/admin");
+  };
 
-                        {/* Security notice */}
-                        <div className="al-6" style={{ marginTop: 24 }}>
-                            <div style={{
-                                display: "flex", alignItems: "flex-start", gap: 10,
-                                padding: "12px 14px", borderRadius: 10,
-                                background: "rgba(220,38,38,0.05)",
-                                border: "1px solid rgba(220,38,38,0.12)",
-                            }}>
-                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-                                    <path d="M7 1L13 12H1L7 1Z" stroke="#dc2626" strokeWidth="1.4" strokeLinejoin="round" />
-                                    <path d="M7 5.5V8" stroke="#dc2626" strokeWidth="1.4" strokeLinecap="round" />
-                                    <circle cx="7" cy="10" r=".7" fill="#dc2626" />
-                                </svg>
-                                <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.55, margin: 0 }}>
-                                    This is a restricted area. All login attempts are monitored and logged for security purposes.
-                                </p>
-                            </div>
-                        </div>
+  return (
+      <>
+          <style>{FONTS + CSS}</style>
+          <div className="al-root">
+              <LeftPanel />
 
-                        <p className="al-footer-note" style={{ marginTop: 20 }}>
-                            By signing in you agree to GGECL's{" "}
-                            <a href="https://ggecl.com/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <PageNotifier variant="admin" />
-        </>
-    );
+              <div className="al-right">
+                  <div className="al-form-inner">
+
+                      {/* Header */}
+                      <div className="al-1" style={{ marginBottom: 28 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                              <div style={{
+                                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                                  background: "linear-gradient(135deg,#dc2626,#7f1d1d)",
+                                  boxShadow: "0 4px 14px rgba(220,38,38,0.35)",
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                              }}>
+                                  <Shield size={16} color="white" strokeWidth={1.8} />
+                              </div>
+                              <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "#991b1b", fontFamily: "'DM Sans',sans-serif" }}>
+                                  Admin Portal
+                              </span>
+                          </div>
+                          <h1 style={{
+                              fontFamily: "'Syne',system-ui,sans-serif",
+                              fontSize: "clamp(1.8rem,3vw,2.4rem)",
+                              fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1,
+                              marginBottom: 8, color: "inherit",
+                          }}>
+                              Admin Access
+                          </h1>
+                          <p style={{ fontSize: 14, fontWeight: 300, color: "#64748b", lineHeight: 1.5 }}>
+                              Login to manage instructors, students, and platform settings.
+                          </p>
+                      </div>
+
+                      {/* Form */}
+                      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+                          {/* Email */}
+                          <div className="lg-2">
+                              <label className="lg-label">Email address</label>
+                              <div className="lg-input-wrap">
+                                  <Mail className="lg-input-icon" size={15} />
+                                  <input
+                                      placeholder="you@example.com"
+                                      className="lg-input"
+                                      type="email"
+                                      value={email}
+                                      onChange={e => { setEmail(e.target.value); setEmailErr(""); }}
+                                  />
+                              </div>
+                              {emailErr && (
+                                  <p style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{emailErr}</p>
+                              )}
+                          </div>
+
+                          {/* Password */}
+                          <div className="lg-3">
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+                                  <label className="lg-label">Password</label>
+                                  <Link
+                                      to="/forgotten-password"
+                                      style={{ fontSize: 12, color: "red", fontWeight: 500, textDecoration: "none" }}
+                                  >
+                                      Forgot password?
+                                  </Link>
+                              </div>
+                              <div className="lg-input-wrap">
+                                  <Lock className="lg-input-icon" size={15} />
+                                  <input
+                                      type={showPassword ? "text" : "password"}
+                                      placeholder="••••••••"
+                                      className="lg-input"
+                                      style={{ paddingRight: 44 }}
+                                      value={password}
+                                      onChange={e => { setPassword(e.target.value); setPasswordErr(""); }}
+                                  />
+                                  <button
+                                      type="button"
+                                      className="lg-eye"
+                                      onClick={() => setShowPassword(p => !p)}
+                                  >
+                                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                                  </button>
+                              </div>
+                              {passwordErr && (
+                                  <p style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{passwordErr}</p>
+                              )}
+                          </div>
+
+                          {/* Auth-level error */}
+                          {authErr && (
+                              <div style={{
+                                  display: "flex", alignItems: "center", gap: 8,
+                                  padding: "10px 14px", borderRadius: 10,
+                                  background: "rgba(220,38,38,0.06)",
+                                  border: "1px solid rgba(220,38,38,0.18)",
+                              }}>
+                                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+                                      <circle cx="7" cy="7" r="6.5" stroke="#ef4444" />
+                                      <path d="M7 4v3.5M7 9.5v.5" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" />
+                                  </svg>
+                                  <p style={{ fontSize: 12.5, color: "#dc2626", margin: 0 }}>{authErr}</p>
+                              </div>
+                          )}
+
+                          {/* Remember me */}
+                          <div className="al-4 al-remember">
+                              <input type="checkbox" id="al-remember" />
+                              <label htmlFor="al-remember">Remember me on this device</label>
+                          </div>
+
+                          {/* Submit */}
+                          <div className="al-5">
+                              <button
+                                  type="submit"
+                                  className="al-submit"
+                                  disabled={isPending}
+                                  style={{ opacity: isPending ? 0.6 : 1, cursor: isPending ? "not-allowed" : "pointer" }}
+                              >
+                                  {isPending ? (
+                                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                          <svg style={{ width: 15, height: 15, animation: "spin 1s linear infinite" }} fill="none" viewBox="0 0 24 24">
+                                              <circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                              <path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                          </svg>
+                                          Signing in…
+                                      </span>
+                                  ) : (
+                                      "Access Dashboard"
+                                  )}
+                              </button>
+                          </div>
+                      </form>
+
+                      {/* Security notice */}
+                      <div className="al-6" style={{ marginTop: 24 }}>
+                          <div style={{
+                              display: "flex", alignItems: "flex-start", gap: 10,
+                              padding: "12px 14px", borderRadius: 10,
+                              background: "rgba(220,38,38,0.05)",
+                              border: "1px solid rgba(220,38,38,0.12)",
+                          }}>
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+                                  <path d="M7 1L13 12H1L7 1Z" stroke="#dc2626" strokeWidth="1.4" strokeLinejoin="round" />
+                                  <path d="M7 5.5V8" stroke="#dc2626" strokeWidth="1.4" strokeLinecap="round" />
+                                  <circle cx="7" cy="10" r=".7" fill="#dc2626" />
+                              </svg>
+                              <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.55, margin: 0 }}>
+                                  This is a restricted area. All login attempts are monitored and logged for security purposes.
+                              </p>
+                          </div>
+                      </div>
+
+                      <p className="al-footer-note" style={{ marginTop: 20 }}>
+                          By signing in you agree to GGECL's{" "}
+                          <a href="https://ggecl.com/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+                      </p>
+                  </div>
+              </div>
+          </div>
+          <PageNotifier variant="admin" />
+      </>
+  );
 };
 
 export default AdminLogin;

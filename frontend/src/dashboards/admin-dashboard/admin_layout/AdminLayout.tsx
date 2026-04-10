@@ -1,20 +1,19 @@
 // ═══════════════════════════════════════════════════════════════
 // FILE 1: src/dashboards/admin-dashboard/AdminLayout.tsx
 // ═══════════════════════════════════════════════════════════════
-import { type ReactNode } from "react";
-import { Navigate, Outlet } from "react-router-dom";
 import { motion } from "framer-motion";
-import { useDashboardUser } from "@/hooks/useDashboardUser";
-import { AdminSidebar, AdminSidebarProvider } from "./AdminSidebar";
+import { type ReactNode } from "react";
+import { Outlet } from "react-router-dom";
 import { AdminNavbar } from "./AdminNavbar";
+import { AdminSidebar, AdminSidebarProvider } from "./AdminSidebar";
  
 function Guard({ children }: { children: ReactNode }) {
-  const { user, role } = useDashboardUser();
-  if (!user || !role) return <Navigate to="/admin/login" replace />;
-  if (role !== "admin") {
-    if (role === "instructor") return <Navigate to="/instructor" replace />;
-    if (role === "student") return <Navigate to="/student" replace />;
-  }
+  // const { user, role } = useDashboardUser();
+  // if (!user || !role) return <Navigate to="/admin/login" replace />;
+  // if (role !== "admin") {
+  //   if (role === "instructor") return <Navigate to="/instructor" replace />;
+  //   if (role === "student") return <Navigate to="/student" replace />;
+  // }
   return <>{children}</>;
 }
  

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { ArrowRight } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import PageNotifier from "../PageNotifier";
+import { authClient } from "@/lib/auth-client";
 
 /* ── Keyframe animations injected once ──────────────────────── */
 const ANIM_CSS = `
@@ -211,6 +212,8 @@ const InstructorLogin = () => {
   const [password, setPassword] = useState("");
   const [emailErr, setEmailErr] = useState("");
   const [passwordErr, setPasswordErr] = useState("");
+  const [authErr, setAuthErr] = useState("");
+  const navigate = useNavigate();
 
   const validate = () => {
     let valid = true;
@@ -222,11 +225,34 @@ const InstructorLogin = () => {
     return valid;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+
+    setAuthErr("");
     setIsPending(true);
-    setTimeout(() => setIsPending(false), 2000); // Simulated pending
+
+    const { error } = await authClient.signIn.email({
+      email,
+      password,
+      callbackURL: "/instructor",
+    });
+
+    setIsPending(false);
+
+    if (error) {
+      setAuthErr(error.message ?? "Sign in failed. Please try again.");
+      return;
+    }
+
+    navigate("/instructor");
+  };
+
+  const handleGoogleSignIn = async () => {
+    await authClient.signIn.social({
+      provider: "google",
+      callbackURL: "/instructor",
+    });
   };
 
   return (
@@ -289,7 +315,7 @@ const InstructorLogin = () => {
                   <input
                     type="email"
                     value={email}
-                    onChange={e => setEmail(e.target.value)}
+                    onChange={e => { setEmail(e.target.value); setEmailErr(""); }}
                     placeholder="you@example.com"
                     className="il-input w-full py-[13px] pr-[14px] pl-[44px] rounded-xl border-[1.5px] border-black/10 bg-black/[0.025] text-[14px] dark:text-gray-300 text-slate-900 dark:placeholder:text-slate-400 placeholder:font-light transition-all duration-200"
                     style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
@@ -311,7 +337,7 @@ const InstructorLogin = () => {
                   <input
                     type={showPassword ? "text" : "password"}
                     value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    onChange={e => { setPassword(e.target.value); setPasswordErr(""); }}
                     placeholder="••••••••"
                     className="il-input w-full py-[13px] pl-[44px] pr-[44px] rounded-xl border-[1.5px] border-black/10 bg-black/[0.025] text-[14px] dark:text-gray-300 text-slate-900 dark:placeholder:text-slate-400 placeholder:font-light transition-all duration-200"
                     style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
@@ -326,6 +352,17 @@ const InstructorLogin = () => {
                 </div>
                 {passwordErr && <p className="text-[12px] text-red-500">{passwordErr}</p>}
               </div>
+
+              {/* Auth-level error (wrong credentials etc.) */}
+              {authErr && (
+                <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-100">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0">
+                    <circle cx="7" cy="7" r="6.5" stroke="#ef4444" />
+                    <path d="M7 4v3.5M7 9.5v.5" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" />
+                  </svg>
+                  <p className="text-[12.5px] text-red-600">{authErr}</p>
+                </div>
+              )}
 
               {/* Remember me */}
               <div className="il-4 flex items-center gap-2">
@@ -381,6 +418,7 @@ const InstructorLogin = () => {
             <div className="il-7 mt-3.5">
               <button
                 type="button"
+                onClick={handleGoogleSignIn}
                 className="w-full flex items-center justify-center gap-3 py-[13px] px-5 rounded-xl border-[1.5px] border-slate-200 bg-white text-[14px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 cursor-pointer"
                 style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
               >
@@ -412,7 +450,7 @@ const InstructorLogin = () => {
           </div>
         </div>
       </div>
-        <PageNotifier variant="instructor" />
+      <PageNotifier variant="instructor" />
     </>
   );
 };

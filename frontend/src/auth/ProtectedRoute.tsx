@@ -28,6 +28,8 @@ export function ProtectedRoute({
   redirectTo = "/login",
 }: ProtectedRouteProps) {
   const { user, isLoading } = useAuth();
+
+  console.log('what user auth looks like', user)
   const location = useLocation();
 
   if (isLoading) {

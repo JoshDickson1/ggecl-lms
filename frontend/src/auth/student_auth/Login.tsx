@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from "lucide-react";
 import PageNotifier from "../PageNotifier";
+import { useNavigate } from "react-router-dom";
+import { authClient } from "@/lib/auth-client";
 
 import { Link } from "react-router-dom";
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');`;
@@ -389,10 +391,45 @@ function LeftPanel() {
 }
 
 
-const Login = () => {
-    const [showPassword, setShowPassword] = useState(false);
 
-    return (
+
+const Login = () => {
+  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    const { data, error } = await authClient.signIn.email({
+      email,
+      password,
+      callbackURL: "/student",
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setError(error.message ?? "Sign in failed");
+      return;
+    }
+
+    navigate("/student");
+  };
+
+  const handleGoogleSignIn = async () => {
+    await authClient.signIn.social({
+      provider: "google",
+      callbackURL: "/student",
+    });
+  };
+
+  return (
         <>
             <style>{FONTS + CSS}</style>
 
@@ -424,7 +461,7 @@ const Login = () => {
                         </div>
 
                         <>
-                            <form style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                            <form onSubmit={handleEmailSignIn} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
                                 {/* Email */}
                                 <div className="lg-2">
@@ -453,11 +490,16 @@ const Login = () => {
                                     <div className="lg-input-wrap">
                                         <Lock className="lg-input-icon" size={15} />
                                         <input
-                                            type={showPassword ? "text" : "password"}
-                                            placeholder="••••••••"
-                                            className="lg-input"
-                                            style={{ paddingRight: 44 }}
+                                          type={showPassword ? "text" : "password"}
+                                          placeholder="••••••••"
+                                          className="lg-input"
+                                          value={password}
+                                          onChange={(e) => setPassword(e.target.value)}
+                                          style={{ paddingRight: 44 }}
                                         />
+                                        {error && (
+  <p style={{ color: "#ef4444", fontSize: 13, marginTop: -8 }}>{error}</p>
+)}
                                         <button
                                             type="button"
                                             className="lg-eye"
@@ -475,13 +517,10 @@ const Login = () => {
                                 </div>
 
                                 {/* Submit */}
-                                <div className="lg-5">
-                                    <button type="submit" className="lg-submit">
-
-                                        Sign in to your account
-                                        <span className="lg-submit-arrow"><ArrowRight size={9} /></span>
-                                    </button>
-                                </div>
+                                <button type="submit" className="lg-submit" disabled={loading}>
+                                {loading ? "Signing in..." : "Sign in to your account"}
+                                {!loading && <span className="lg-submit-arrow"><ArrowRight size={9} /></span>}
+                              </button>
                             </form>
                         </>
 
@@ -490,6 +529,7 @@ const Login = () => {
                             <button
                                 type="button"
                                 className="w-full flex items-center justify-center gap-3 py-[13px] px-5 rounded-xl border-[1.5px] border-slate-200 bg-white text-[14px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 cursor-pointer"
+                                onClick={handleGoogleSignIn}
                                 style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
                             >
                                 <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
