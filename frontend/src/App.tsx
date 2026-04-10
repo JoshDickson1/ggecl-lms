@@ -98,6 +98,9 @@ import InstructorResetPassword from "./auth/instructor_auth/InstructorResetPassw
 import AdminResetPassword from "./auth/admin_auth/AdminResetPassword";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 
+import StudentCourseVideoPreview from "./dashboards/student-dashboard/pages/StudentCourseVideoPreview";
+import { InstructorCourseVideoUpload } from "./dashboards/instructor-dashboard/pages/InstructorCourseVideoUpload";
+ 
 const router = createBrowserRouter([
   // ── Landing (public) ──────────────────────────────────────────────────
   {
@@ -264,6 +267,70 @@ const router = createBrowserRouter([
   },
 
   // ── 404 ───────────────────────────────────────────────────────────────
+  path: "/instructor",
+  element: (
+    <DashboardAuthProvider defaultRole="instructor">
+      <InstructorLayout />
+    </DashboardAuthProvider>
+  ),
+  children: [
+    { index: true, element: <InstructorHome /> },
+    { path: "profile", element: <InstructorProfile /> },
+    { path: "Settings", element: <InstructorSettings /> },
+    { path: "instructor-profile", element: <PreviewInstructor /> },
+    { path: "support", element: <InstructorSupport /> },
+    { path: "notifications", element: <InstructorAllNotifications /> },
+    { path: "assignments", element: <InstructorAssignment /> },
+    { path: "assignments/:id/submissions", element: <SingleSubmittedAssignment /> },
+    { path: "grades", element: <InstructorGrades /> },
+    { path: "discussions", element: <InstructorChat /> },
+    { path: "courses", element: <InstructorCourses /> },
+    { path: "courses/:id", element: <InstructorSingleCourse /> },
+    { path: "search", element: <InstructorSearch /> },
+    { path: "courses/:id/upload-video", element: <InstructorCourseVideoUpload /> },
+  ],
+},
+  // ── Student dashboard ─────────────────────────────────────────
+  {
+  path: "/student",
+  element: (
+    <DashboardAuthProvider defaultRole="student">
+      <StudentLayout />
+    </DashboardAuthProvider>
+  ),
+  children: [
+    { index: true, element: <StudentHome /> },
+    { path: "profile", element: <StudentProfile /> },
+    { path: "settings", element: <StudentSettings /> },
+    { path: "instructor-profile", element: <PreviewInstructor /> },
+    { path: "support", element: <StudentSupport /> },
+    { path: "notifications", element: <StudentAllNotifications /> },
+    { path: "certificates", element: <StudentCertificates /> },
+    { path: "progress",     element: <StudentProgress /> },
+    { path: "wishlist",     element: <StudentWishlist /> },
+    { path: "courses",      element: <StudentCourses /> },
+    { path: "courses/:id",   element: <StudentSingleCourse /> },
+    { path: "explore",      element: <StudentExploreCourses /> },
+    { path: "instructors/:id", element: <StudentSingleInstructor /> },
+    // cart/payment routes
+    { path: "cart",         element: <StudentCart /> },
+    { path: "cart/processing",   element: <StudentProcessing /> },
+    { path: "cart/payment",      element: <StudentProvider /> },
+    { path: "cart/order-complete", element: <StudentCartSuccessFailure /> },
+    { path: "cart/checkout",     element: <StudentCheckout /> },
+    { path: "cart/student-info", element: <StudentStudentInfoForm /> },
+    // Assignments and grades routes
+    { path: "assignments", element: <StudentAssignment /> },
+    { path: "grades", element: <StudentGrades /> },
+    { path: "messages", element: <StudentChat /> },
+    { path: "search", element: <StudentSearch /> }, 
+    { path: "categories", element: <StudentCategories /> },
+    { path: "categories/:id", element: <StudentSingleCategory /> },
+    // watch course video route
+    { path: "courses/:id/watch", element: <StudentCourseVideoPreview /> },
+  ],
+},
+  // ── 404 ───────────────────────────────────────────────────────
   { path: "*", element: <NotFound /> },
 ]);
 

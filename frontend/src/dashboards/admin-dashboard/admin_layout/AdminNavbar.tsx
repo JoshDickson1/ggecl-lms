@@ -144,12 +144,12 @@ function ProfileDropdown() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuItem asChild>
-          <Link to="/dashboard" className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[14px] cursor-pointer text-[12.5px]">
+          <Link to="/admin" className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[14px] cursor-pointer text-[12.5px]">
             <div className="w-7 h-7 rounded-xl bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center"><LayoutDashboard className="w-3.5 h-3.5" /></div>Dashboard
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to="/dashboard/profile" className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[14px] cursor-pointer text-[12.5px]">
+          <Link to="/admin/profile" className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[14px] cursor-pointer text-[12.5px]">
             <div className="w-7 h-7 rounded-xl bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center"><User className="w-3.5 h-3.5" /></div>Profile
           </Link>
         </DropdownMenuItem>

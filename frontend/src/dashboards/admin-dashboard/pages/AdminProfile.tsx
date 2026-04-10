@@ -126,7 +126,7 @@ export default function AdminProfile() {
       <Fade>
         <Card>
           {/* Banner */}
-          <div className="h-32 rounded-t-[22px] bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 relative overflow-hidden">
+          <div className="h-32 rounded-t-[22px] bg-gradient-to-br mb-20 from-blue-700 via-blue-600 to-indigo-700 relative overflow-hidden">
             <div className="absolute inset-0 opacity-20"
               style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
             <div className="absolute inset-0"
