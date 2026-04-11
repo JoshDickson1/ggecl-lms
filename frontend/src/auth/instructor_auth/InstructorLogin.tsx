@@ -251,7 +251,7 @@ const InstructorLogin = () => {
   const handleGoogleSignIn = async () => {
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/instructor",
+      callbackURL: `${import.meta.env.VITE_APP_URL}` + "/instructor",
     });
   };
 

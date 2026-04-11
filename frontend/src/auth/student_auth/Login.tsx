@@ -423,7 +423,7 @@ const Login = () => {
   const handleGoogleSignIn = async () => {
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/student",
+      callbackURL: `${import.meta.env.VITE_APP_URL}` + "/student",
     });
   };
 
