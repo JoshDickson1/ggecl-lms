@@ -267,7 +267,8 @@ const router = createBrowserRouter([
   },
 
   // ── 404 ───────────────────────────────────────────────────────────────
-  path: "/instructor",
+  {
+    path: "/instructor",
   element: (
     <DashboardAuthProvider defaultRole="instructor">
       <InstructorLayout />
@@ -333,7 +334,6 @@ const router = createBrowserRouter([
   // ── 404 ───────────────────────────────────────────────────────
   { path: "*", element: <NotFound /> },
 ]);
-
 // AuthProvider wraps everything so useAuth() works in ProtectedRoute
 // and anywhere else in the tree.
 const App = () => (
