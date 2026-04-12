@@ -99,7 +99,7 @@ import AdminResetPassword from "./auth/admin_auth/AdminResetPassword";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 
 import StudentCourseVideoPreview from "./dashboards/student-dashboard/pages/StudentCourseVideoPreview";
-import { InstructorCourseVideoUpload } from "./dashboards/instructor-dashboard/pages/InstructorCourseVideoUpload";
+import InstructorCourseMaterials from "./dashboards/instructor-dashboard/pages/InstructorCourseMaterials";
  
 const router = createBrowserRouter([
   // ── Landing (public) ──────────────────────────────────────────────────
@@ -288,7 +288,7 @@ const router = createBrowserRouter([
     { path: "courses", element: <InstructorCourses /> },
     { path: "courses/:id", element: <InstructorSingleCourse /> },
     { path: "search", element: <InstructorSearch /> },
-    { path: "courses/:id/upload-video", element: <InstructorCourseVideoUpload /> },
+    { path: "course-materials", element: <InstructorCourseMaterials /> },
   ],
 },
   // ── Student dashboard ─────────────────────────────────────────

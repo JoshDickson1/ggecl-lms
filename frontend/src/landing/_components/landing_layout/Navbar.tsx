@@ -280,8 +280,7 @@ const Navbar = ({ showNav }: { showNav?: boolean }) => {
                   </Link>
 
                 {/* Theme toggle */}
-                <button
-                  ><ModeToggle /></button>
+                <div className=""><ModeToggle /></div>
                 
 
                 {/* Hamburger */}

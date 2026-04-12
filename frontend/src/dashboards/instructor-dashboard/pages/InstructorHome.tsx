@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid,
 } from "recharts";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -23,14 +22,6 @@ const INSTRUCTOR = {
   completionRate: 92,
 };
 
-const MONTHLY_REVENUE = [
-  { month: "Oct", revenue: 3200 },
-  { month: "Nov", revenue: 4100 },
-  { month: "Dec", revenue: 3800 },
-  { month: "Jan", revenue: 5200 },
-  { month: "Feb", revenue: 4600 },
-  { month: "Mar", revenue: 6100 },
-];
 
 const STUDENT_ACTIVITY = [
   { day: "Mon", active: 420 },
@@ -99,15 +90,6 @@ function StatCard({ label, value, sub, icon: Icon, color, trend, trendUp }: {
   );
 }
 
-function CustomRevenueTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] rounded-xl px-3 py-2 shadow-lg text-xs">
-      <p className="font-bold text-gray-900 dark:text-white">{label}</p>
-      <p className="text-violet-500">${payload[0].value.toLocaleString()}</p>
-    </div>
-  );
-}
 
 function CustomActivityTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -122,10 +104,6 @@ function CustomActivityTooltip({ active, payload, label }: any) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function InstructorHome() {
-  const currentMonthRevenue = MONTHLY_REVENUE[MONTHLY_REVENUE.length - 1].revenue;
-  const prevMonthRevenue = MONTHLY_REVENUE[MONTHLY_REVENUE.length - 2].revenue;
-  const revenueTrend = `${Math.abs(Math.round(((currentMonthRevenue - prevMonthRevenue) / prevMonthRevenue) * 100))}%`;
-  const revenueUp = currentMonthRevenue > prevMonthRevenue;
 
   return (
     <div className="max-w-[1150px] mx-auto space-y-6 pb-12">
@@ -172,36 +150,6 @@ export default function InstructorHome() {
 
       {/* ── Charts row ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6">
-        {/* Revenue chart */}
-        <Fade delay={0.08}>
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="font-black text-base text-gray-900 dark:text-white">Monthly Revenue</h2>
-              <span className={`flex items-center gap-1 text-xs font-bold ${revenueUp ? "text-emerald-500" : "text-rose-500"}`}>
-                {revenueUp ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                {revenueTrend} vs last month
-              </span>
-            </div>
-            <p className="text-xs text-gray-400 mb-5">Last 6 months earnings ($)</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={MONTHLY_REVENUE} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="violetGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.1)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<CustomRevenueTooltip />} />
-                <Line type="monotone" dataKey="revenue" stroke="#8b5cf6" strokeWidth={2.5}
-                  dot={{ r: 3, fill: "#8b5cf6", strokeWidth: 0 }}
-                  activeDot={{ r: 5, fill: "#8b5cf6", strokeWidth: 0 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-        </Fade>
 
         {/* Student activity */}
         <Fade delay={0.1}>
