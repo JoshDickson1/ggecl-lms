@@ -101,6 +101,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import InstructorCourseMaterials from "./dashboards/instructor-dashboard/pages/InstructorCourseMaterials";
 import StudentViewCourse from "./dashboards/student-dashboard/pages/StudentViewCourse";
 import NotPermitted from "./landing/NotPermitted";
+import InstructorUploadVideo from "./dashboards/instructor-dashboard/pages/InstructorVideoUpload";
  
 const router = createBrowserRouter([
   // ── Landing (public) ──────────────────────────────────────────────────
@@ -289,6 +290,8 @@ const router = createBrowserRouter([
     { path: "courses/:id", element: <InstructorSingleCourse /> },
     { path: "search", element: <InstructorSearch /> },
     { path: "course-materials", element: <InstructorCourseMaterials /> },
+    { path: "course-video-upload", element: <InstructorUploadVideo /> },
+
   ],
 },
   // ── Student dashboard ─────────────────────────────────────────

@@ -5,6 +5,7 @@
 // then adds chapter markers (manually or by importing a text/CSV/YouTube-format file).
 
 import { useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown, ChevronRight, Check, X, Plus, Trash2,
@@ -431,6 +432,7 @@ export default function InstructorUploadVideo() {
   const [chapters, setChapters] = useState<VideoChapter[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [saved, setSaved] = useState(false);
+  const navigate = useNavigate();
 
   const addChapter = () => {
     setChapters(p => [
@@ -489,13 +491,13 @@ export default function InstructorUploadVideo() {
             <p className="text-white/40 text-sm">Main video uploaded · {chapters.length} chapter markers set</p>
           </div>
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setSaved(false)}
-            className="flex items-center gap-2 px-8 py-3.5 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg shadow-blue-900/40 mx-auto transition-all"
-          >
-            Add Sections & Materials <ArrowRight className="w-4 h-4" />
-          </motion.button>
+  whileHover={{ scale: 1.02 }}
+  whileTap={{ scale: 0.98 }}
+  onClick={() => navigate("/instructor/course-materials")}
+  className="flex items-center gap-2 px-8 py-3.5 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg shadow-blue-900/40 mx-auto transition-all"
+>
+  Add Sections & Materials <ArrowRight className="w-4 h-4" />
+</motion.button>
         </motion.div>
       </div>
     );
