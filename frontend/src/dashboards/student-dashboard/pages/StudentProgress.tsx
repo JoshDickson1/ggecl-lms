@@ -225,7 +225,7 @@ function CourseProgressCard({ course, index }: { course: CourseProgress; index: 
             ) : (
               <>
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Continue</span>
-                <Link to={`/courses/${course.id}`}
+                <Link to={`/student/courses/${course.id}/watch`}
                   className="flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
                   Resume <ChevronRight className="w-3 h-3" />
                 </Link>

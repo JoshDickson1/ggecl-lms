@@ -369,7 +369,7 @@ function LockedCard({ course, index }: { course: LockedCourse; index: number }) 
       <div className="text-right flex-shrink-0">
         <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{remaining}</p>
         <p className="text-[10px] text-gray-400">lectures left</p>
-        <Link to={`/courses/${course.id}`}
+        <Link to={`/student/courses/${course.id}/watch`}
           className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
           Continue <ChevronRight className="w-3 h-3" />
         </Link>

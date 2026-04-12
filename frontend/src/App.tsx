@@ -98,8 +98,9 @@ import InstructorResetPassword from "./auth/instructor_auth/InstructorResetPassw
 import AdminResetPassword from "./auth/admin_auth/AdminResetPassword";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 
-import StudentCourseVideoPreview from "./dashboards/student-dashboard/pages/StudentCourseVideoPreview";
 import InstructorCourseMaterials from "./dashboards/instructor-dashboard/pages/InstructorCourseMaterials";
+import StudentViewCourse from "./dashboards/student-dashboard/pages/StudentViewCourse";
+import NotPermitted from "./landing/NotPermitted";
  
 const router = createBrowserRouter([
   // ── Landing (public) ──────────────────────────────────────────────────
@@ -259,9 +260,8 @@ const router = createBrowserRouter([
   {
     path: "/403",
     element: (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: "12px" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700 }}>403</h1>
-        <p style={{ color: "#888" }}>You don't have permission to access this page.</p>
+      <div>
+        <NotPermitted />
       </div>
     ),
   },
@@ -328,7 +328,7 @@ const router = createBrowserRouter([
     { path: "categories", element: <StudentCategories /> },
     { path: "categories/:id", element: <StudentSingleCategory /> },
     // watch course video route
-    { path: "courses/:id/watch", element: <StudentCourseVideoPreview /> },
+    { path: "courses/:id/watch", element: <StudentViewCourse /> },
   ],
 },
   // ── 404 ───────────────────────────────────────────────────────
