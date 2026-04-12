@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Target,
   AlignLeft,
+  Plus,
 } from "lucide-react";
 
 import {
@@ -26,6 +27,7 @@ import {
   LESSON_TYPE_META,
   getManagedCourse,
 } from "@/data/coursesAdminData";
+import { useNavigate } from "react-router-dom";
 
 function cn(...c: (string | false | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -74,6 +76,7 @@ function Fade({
 // }
 
 export function InstructorSingleCourse() {
+  const navigate = useNavigate()
   const {id}=useParams<{id:string}>();
   const [course,_setCourse]=useState<ManagedCourse|undefined>(getManagedCourse(id??"dev-001"));
   const [tab,setTab]=useState<"overview"|"students"|"curriculum">("overview");
@@ -222,6 +225,15 @@ export function InstructorSingleCourse() {
                 </div>
               </Card>
             </Fade>
+            <div className="flex">
+      <button
+        onClick={() => navigate("/course-materials")}
+        className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-200 hover:scale-[1.02] hover:bg-blue-700 active:scale-[0.98]"
+      >
+        <Plus size={18} />
+        Add Course Materials
+      </button>
+    </div>
           </div>
         </div>
       )}

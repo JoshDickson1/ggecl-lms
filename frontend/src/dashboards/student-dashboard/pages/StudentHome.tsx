@@ -186,7 +186,7 @@ export default function StudentHome() {
                 <ProgressBar pct={CONTINUE_COURSE.progress} />
               </div>
             </div>
-            <Link to={`/student/courses/${CONTINUE_COURSE.id}`}
+            <Link to={`/student/courses/${CONTINUE_COURSE.id}/watch`}
               className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:opacity-90 shadow-md transition-all">
               <Play className="w-4 h-4" />Resume
             </Link>

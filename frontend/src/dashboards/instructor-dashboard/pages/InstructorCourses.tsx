@@ -1,169 +1,527 @@
-// InstructorAllCourses.tsx
+// InstructorMyCourses.tsx
+// PAGE 0 of the instructor flow — the first page an instructor sees.
+// Lists all assigned courses with upload status and quick actions.
+// Light / dark mode via Tailwind's `dark:` prefix (respects system preference).
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Link } from "react-router-dom";
 import {
-  BookOpen, Users, Star, DollarSign, Search,
-  ChevronRight,
+  BookOpen, Upload, Eye, Clock, CheckCircle2,
+  ChevronRight, Film, Layers, Users, Search, Filter,
+  MoreHorizontal, Edit3, BarChart2, Sparkles,
 } from "lucide-react";
-import {
-//   MANAGED_COURSES,
-   STATUS_META, fmtRevenue, fmt, totalLessons, totalDuration,
-  getInstructorCourses, type ManagedCourse,
-} from "@/data/coursesAdminData";
+import { ASSIGNED_COURSES, Course } from "@/data/courseTypes";
 
-const INSTRUCTOR_ID = "inst-1"; // Sarah Mitchell — from useDashboardUser in prod
-const myCourses = getInstructorCourses(INSTRUCTOR_ID);
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-function cn(...c:(string|false|undefined)[]) { return c.filter(Boolean).join(" "); }
-function Card({children,className=""}:{children:React.ReactNode;className?:string}) {
-  return <div className={`rounded-[22px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.05)] ${className}`}>{children}</div>;
-}
-function Fade({children,delay=0}:{children:React.ReactNode;delay?:number}) {
-  return <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} transition={{duration:0.36,delay}}>{children}</motion.div>;
+type UploadStatus = "not_started" | "video_uploaded" | "materials_added" | "published";
+
+interface CourseWithStatus extends Course {
+  uploadStatus: UploadStatus;
+  lastUpdated?: string;
+  completionPct: number;
 }
 
-function CourseCard({course,index}:{course:ManagedCourse;index:number}) {
-  const [hovered,setHovered]=useState(false);
-  const lessons=totalLessons(course);
-  const dur=totalDuration(course);
-  const completion=course.enrolledStudents.length
-    ?Math.round(course.enrolledStudents.filter(s=>s.progressPct===100).length/course.enrolledStudents.length*100):0;
+// ─── Mock enriched data ───────────────────────────────────────────────────────
+
+const COURSES_WITH_STATUS: CourseWithStatus[] = [
+  {
+    ...ASSIGNED_COURSES[0],
+    uploadStatus: "materials_added",
+    lastUpdated: "2 days ago",
+    completionPct: 75,
+  },
+  {
+    ...ASSIGNED_COURSES[1],
+    uploadStatus: "video_uploaded",
+    lastUpdated: "5 days ago",
+    completionPct: 40,
+  },
+  {
+    ...ASSIGNED_COURSES[2],
+    uploadStatus: "not_started",
+    lastUpdated: undefined,
+    completionPct: 0,
+  },
+];
+
+// ─── Status config ────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<
+  UploadStatus,
+  { label: string; color: string; bg: string; icon: React.ReactNode; darkColor: string; darkBg: string }
+> = {
+  not_started: {
+    label: "Not started",
+    color: "text-slate-500",
+    darkColor: "dark:text-slate-400",
+    bg: "bg-slate-100",
+    darkBg: "dark:bg-slate-800",
+    icon: <Clock className="w-3.5 h-3.5" />,
+  },
+  video_uploaded: {
+    label: "Video uploaded",
+    color: "text-amber-600",
+    darkColor: "dark:text-amber-400",
+    bg: "bg-amber-50",
+    darkBg: "dark:bg-amber-900/30",
+    icon: <Film className="w-3.5 h-3.5" />,
+  },
+  materials_added: {
+    label: "Materials added",
+    color: "text-blue-600",
+    darkColor: "dark:text-blue-400",
+    bg: "bg-blue-50",
+    darkBg: "dark:bg-blue-900/30",
+    icon: <Layers className="w-3.5 h-3.5" />,
+  },
+  published: {
+    label: "Published",
+    color: "text-emerald-600",
+    darkColor: "dark:text-emerald-400",
+    bg: "bg-emerald-50",
+    darkBg: "dark:bg-emerald-900/30",
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+  },
+};
+
+// ─── Status Badge ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: UploadStatus }) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold
+        ${cfg.color} ${cfg.darkColor} ${cfg.bg} ${cfg.darkBg}`}
+    >
+      {cfg.icon}
+      {cfg.label}
+    </span>
+  );
+}
+
+// ─── Progress Ring ────────────────────────────────────────────────────────────
+
+// function ProgressRing({ pct, size = 44 }: { pct: number; size?: number }) {
+//   const r = (size - 6) / 2;
+//   const circ = 2 * Math.PI * r;
+//   const offset = circ * (1 - pct / 100);
+//   return (
+//     <svg width={size} height={size} className="-rotate-90">
+//       <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+//         className="stroke-slate-200 dark:stroke-slate-700" strokeWidth={3} />
+//       <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+//         stroke={pct === 100 ? "#10b981" : pct > 0 ? "#3b82f6" : "#e2e8f0"}
+//         strokeWidth={3}
+//         strokeDasharray={circ}
+//         strokeDashoffset={offset}
+//         strokeLinecap="round"
+//       />
+//     </svg>
+//   );
+// }
+
+// ─── Course Card ──────────────────────────────────────────────────────────────
+
+function CourseCard({
+  course, onUpload, onView,
+}: {
+  course: CourseWithStatus;
+  onUpload: (id: string) => void;
+  onView: (id: string) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  // const cfg = STATUS_CONFIG[course.uploadStatus];
+
+  const primaryAction =
+    course.uploadStatus === "not_started"
+      ? { label: "Start uploading", icon: <Upload className="w-4 h-4" />, fn: () => onUpload(course.id) }
+      : course.uploadStatus === "published"
+      ? { label: "View course", icon: <Eye className="w-4 h-4" />, fn: () => onView(course.id) }
+      : { label: "Continue setup", icon: <Edit3 className="w-4 h-4" />, fn: () => onUpload(course.id) };
 
   return (
-    <motion.div layout initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} transition={{duration:0.34,delay:index*0.06}}
-      onHoverStart={()=>setHovered(true)} onHoverEnd={()=>setHovered(false)}
-      className="relative rounded-[22px] overflow-hidden bg-white/70 dark:bg-[#020618] backdrop-blur-xl border border-white/80 dark:border-white/[0.08] transition-shadow duration-300"
-      style={{boxShadow:hovered?"0 0 0 1.5px rgba(59,130,246,0.45), 0 12px 40px rgba(59,130,246,0.16)":"0 8px 30px rgba(15,23,42,0.08)"}}>
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="group relative bg-white dark:bg-[#0f1623] border border-slate-200/80 dark:border-white/[0.07]
+        rounded-2xl overflow-hidden hover:border-slate-300 dark:hover:border-white/[0.14]
+        hover:shadow-md dark:hover:shadow-none transition-all duration-200"
+    >
+      {/* Top color strip */}
+      <div className={`h-1.5 w-full bg-gradient-to-r ${course.color}`} />
 
-      {/* Thumbnail */}
-      <div className={cn("h-36 bg-gradient-to-br relative overflow-hidden",course.thumbnail)}>
-        <div className="absolute inset-0 opacity-10" style={{backgroundImage:"radial-gradient(circle,white 1px,transparent 1px)",backgroundSize:"14px 14px"}}/>
-        <motion.div animate={hovered?{scale:1.08}:{scale:1}} transition={{duration:0.4}} className="absolute inset-0 flex items-center justify-center">
-          <course.icon className="w-14 h-14 text-white drop-shadow-xl"/>
-        </motion.div>
-        <div className="absolute top-3 left-3">
-          <span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-bold border backdrop-blur-sm",STATUS_META[course.status].color,STATUS_META[course.status].bg,STATUS_META[course.status].border)}>
-            {STATUS_META[course.status].label}
-          </span>
-        </div>
-        {course.badge&&(
-          <div className="absolute top-3 right-3">
-            <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-400/20 border border-amber-400/40 text-amber-200 backdrop-blur-sm">{course.badge}</span>
+      <div className="p-5">
+        {/* Header row */}
+        <div className="flex items-start gap-4 mb-4">
+          <div
+            className={`w-12 h-12 rounded-xl bg-gradient-to-br ${course.color}
+              flex items-center justify-center text-2xl flex-shrink-0 shadow-sm`}
+          >
+            {course.icon}
           </div>
-        )}
-      </div>
-
-      <div className="p-5 space-y-4">
-        <div>
-          <h3 className="text-sm font-black text-gray-900 dark:text-white line-clamp-2 leading-snug mb-1">{course.title}</h3>
-          <p className="text-xs text-gray-400">{course.categoryName} · {course.level}</p>
-        </div>
-
-        {/* Mini stats */}
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            {icon:Users,  val:fmt(course.students), label:"Students"},
-            {icon:Star,   val:course.rating>0?course.rating.toFixed(1):"—", label:"Rating"},
-            {icon:DollarSign,val:`$${fmtRevenue(course.revenue)}`.replace("$$","$"),label:"Revenue"},
-          ].map(({icon:Icon,val,label})=>(
-            <div key={label} className="text-center py-2.5 px-1 rounded-xl bg-gray-50/80 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
-              <Icon className="w-3.5 h-3.5 text-blue-500 mx-auto mb-1"/>
-              <p className="text-sm font-black text-gray-900 dark:text-white">{val}</p>
-              <p className="text-[9px] text-gray-400">{label}</p>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 mb-0.5">
+                  {course.code} · {course.subject}
+                </p>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                  {course.name}
+                </h3>
+              </div>
+              {/* Menu */}
+              <div className="relative flex-shrink-0">
+                <button
+                  onClick={() => setMenuOpen(p => !p)}
+                  className="p-1.5 rounded-lg text-slate-300 dark:text-slate-600
+                    hover:text-slate-600 dark:hover:text-slate-300
+                    hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-all"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+                <AnimatePresence>
+                  {menuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 4 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-[#1a2235]
+                        border border-slate-200 dark:border-white/10 rounded-xl shadow-lg overflow-hidden z-10"
+                    >
+                      {[
+                        { label: "Edit video",     icon: <Film className="w-3.5 h-3.5" />,     fn: () => onUpload(course.id) },
+                        { label: "Add materials",  icon: <Layers className="w-3.5 h-3.5" />,   fn: () => onUpload(course.id) },
+                      ].map(item => (
+                        <button
+                          key={item.label}
+                          onClick={() => { item.fn(); setMenuOpen(false); }}
+                          className="w-full flex items-center gap-2.5 px-4 py-2.5
+                            text-xs font-medium text-slate-600 dark:text-slate-300
+                            hover:bg-slate-50 dark:hover:bg-white/[0.06] transition-colors"
+                        >
+                          <span className="text-slate-400 dark:text-slate-500">{item.icon}</span>
+                          {item.label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
-          ))}
+          </div>
         </div>
 
-        {/* Progress bar */}
-        <div>
-          <div className="flex justify-between text-[10px] text-gray-400 mb-1.5">
-            <span>Completion rate</span>
-            <span>{completion}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-            <motion.div initial={{width:0}} animate={{width:`${completion}%`}} transition={{duration:0.8,delay:index*0.06+0.3}}
-              className={cn("h-full rounded-full",completion===100?"bg-emerald-500":completion>60?"bg-blue-500":"bg-amber-500")}/>
-          </div>
-          <p className="text-[10px] text-gray-400 mt-1">{lessons} lessons · {dur}</p>
+        {/* Description */}
+        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2 mb-4">
+          {course.description}
+        </p>
+
+        {/* Stats row */}
+        <div className="flex items-center gap-4 mb-4">
+          <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <Users className="w-3.5 h-3.5" />
+            {course.totalStudents} enrolled
+          </span>
+          <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <BarChart2 className="w-3.5 h-3.5" />
+            {course.level}
+          </span>
+          {course.lastUpdated && (
+            <span className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+              <Clock className="w-3.5 h-3.5" />
+              Updated {course.lastUpdated}
+            </span>
+          )}
         </div>
 
-        <Link to={`/instructor/courses/${course.id}`}>
-          <motion.div whileHover={{scale:1.02}} whileTap={{scale:0.97}}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.35)] transition-colors">
-            View Course <ChevronRight className="w-4 h-4"/>
-          </motion.div>
-        </Link>
+        {/* Setup progress */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Setup progress
+            </span>
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+              {course.completionPct}%
+            </span>
+          </div>
+          <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${course.completionPct}%` }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className={`h-full rounded-full ${
+                course.completionPct === 100
+                  ? "bg-emerald-500"
+                  : course.completionPct > 0
+                  ? "bg-blue-500"
+                  : "bg-slate-200 dark:bg-slate-700"
+              }`}
+            />
+          </div>
+        </div>
+
+        {/* Steps indicator */}
+        <div className="flex items-center gap-1.5 mb-4">
+          {(["not_started", "video_uploaded", "materials_added", "published"] as UploadStatus[]).map(
+            (step, i) => {
+              const stepIndex = ["not_started", "video_uploaded", "materials_added", "published"].indexOf(
+                course.uploadStatus
+              );
+              const done = i <= stepIndex;
+              return (
+                <div
+                  key={step}
+                  className={`flex-1 h-1 rounded-full transition-all ${
+                    done ? "bg-blue-500" : "bg-slate-200 dark:bg-slate-700"
+                  }`}
+                />
+              );
+            }
+          )}
+        </div>
+
+        {/* Status + CTA */}
+        <div className="flex items-center justify-between">
+          <StatusBadge status={course.uploadStatus} />
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={primaryAction.fn}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              course.uploadStatus === "not_started"
+                ? "bg-slate-900 dark:bg-blue-600 text-white hover:bg-slate-700 dark:hover:bg-blue-500"
+                : course.uploadStatus === "published"
+                ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                : "bg-blue-600 text-white hover:bg-blue-500"
+            }`}
+          >
+            {primaryAction.icon}
+            {primaryAction.label}
+          </motion.button>
+        </div>
       </div>
     </motion.div>
   );
 }
 
-export function InstructorAllCourses() {
-  const [search,setSearch]=useState("");
-  const filtered=myCourses.filter(c=>!search.trim()||c.title.toLowerCase().includes(search.toLowerCase()));
+// ─── Empty state ──────────────────────────────────────────────────────────────
 
-  const totalStudents=myCourses.reduce((s,c)=>s+c.students,0);
-  const totalRev=myCourses.reduce((s,c)=>s+c.revenue,0);
-  const avgRating=myCourses.filter(c=>c.rating>0).reduce((s,c,_,a)=>s+c.rating/a.length,0);
+function EmptyState() {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="col-span-full flex flex-col items-center gap-4 py-20"
+    >
+      <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+        <BookOpen className="w-8 h-8 text-slate-300 dark:text-slate-600" />
+      </div>
+      <div className="text-center">
+        <p className="font-bold text-slate-400 dark:text-slate-500">No courses match your filter</p>
+        <p className="text-sm text-slate-300 dark:text-slate-600 mt-1">Try adjusting the search or status filter</p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function InstructorCourses() {
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<UploadStatus | "all">("all");
+
+  const filtered = COURSES_WITH_STATUS.filter(c => {
+    const matchSearch =
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.code.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === "all" || c.uploadStatus === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  const stats = {
+    total: COURSES_WITH_STATUS.length,
+    published: COURSES_WITH_STATUS.filter(c => c.uploadStatus === "published").length,
+    inProgress: COURSES_WITH_STATUS.filter(c =>
+      c.uploadStatus === "video_uploaded" || c.uploadStatus === "materials_added"
+    ).length,
+    notStarted: COURSES_WITH_STATUS.filter(c => c.uploadStatus === "not_started").length,
+  };
 
   return (
-    <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
-      <Fade>
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white">
-            My <span className="text-blue-600 dark:text-blue-400">Courses</span>
-          </h1>
-          <p className="text-sm text-gray-400 mt-1">All your published and draft courses</p>
-        </div>
-      </Fade>
+    <div className="min-h-screen bg-slate-50 dark:bg-[#060d18]">
+      {/* Subtle bg detail */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full
+          bg-blue-100/60 dark:bg-blue-900/10 blur-3xl" />
+      </div>
 
-      {/* Summary */}
-      <Fade delay={0.06}>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            {icon:BookOpen,  label:"Courses",          val:String(myCourses.length),   color:"text-blue-600",   bg:"bg-blue-50 dark:bg-blue-950/40"    },
-            {icon:Users,     label:"Total Students",   val:fmt(totalStudents),          color:"text-indigo-600", bg:"bg-indigo-50 dark:bg-indigo-950/40"},
-            {icon:DollarSign,label:"Total Revenue",    val:fmtRevenue(totalRev),        color:"text-emerald-600",bg:"bg-emerald-50 dark:bg-emerald-950/40"},
-            {icon:Star,      label:"Avg. Rating",      val:avgRating.toFixed(1)+"★",   color:"text-amber-600",  bg:"bg-amber-50 dark:bg-amber-950/40"  },
-          ].map(({icon:Icon,label,val,color,bg})=>(
-            <Card key={label} className="p-5 flex items-center gap-3">
-              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0",bg)}>
-                <Icon className={cn("w-5 h-5",color)}/>
-              </div>
-              <div>
-                <p className={cn("text-2xl font-black",color)}>{val}</p>
-                <p className="text-[10px] text-gray-400">{label}</p>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </Fade>
+      <div className="relative max-w-[1100px] mx-auto px-4 py-10">
 
-      {/* Search */}
-      <Fade delay={0.1}>
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"/>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search my courses…"
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm bg-white dark:bg-[#0f1623] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 outline-none transition-all"/>
-        </div>
-      </Fade>
-
-      {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-        <AnimatePresence>
-          {filtered.map((c,i)=><CourseCard key={c.id} course={c} index={i}/>)}
-        </AnimatePresence>
-        {filtered.length===0&&(
-          <div className="col-span-full py-16 text-center">
-            <BookOpen className="w-10 h-10 text-gray-200 dark:text-gray-700 mx-auto mb-3"/>
-            <p className="text-sm text-gray-400">No courses found</p>
+        {/* ── Header ──────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 mb-5">
+            <span>Instructor Portal</span>
+            <ChevronRight className="w-3 h-3" />
+            <span className="text-blue-600 dark:text-blue-400 font-semibold">My Courses</span>
           </div>
-        )}
+
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight mb-2">
+                My Courses
+              </h1>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">
+                Manage your assigned courses — upload videos, add materials, and publish for students.
+              </p>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => navigate("/instructor/upload-video")}
+              className="flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold
+                text-white bg-gradient-to-br from-blue-600 to-blue-700
+                hover:from-blue-500 hover:to-blue-600 shadow-md shadow-blue-200 dark:shadow-blue-900/40
+                transition-all flex-shrink-0"
+            >
+              <Upload className="w-4 h-4" />
+              Upload Video
+            </motion.button>
+          </div>
+        </motion.div>
+
+        {/* ── Stats row ────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="grid grid-cols-4 gap-3 mb-6"
+        >
+          {[
+            { label: "Total Courses",  value: stats.total,       color: "text-slate-700 dark:text-slate-200",   bg: "bg-white dark:bg-[#0f1623]" },
+            { label: "Published",      value: stats.published,   color: "text-emerald-600 dark:text-emerald-400", bg: "bg-white dark:bg-[#0f1623]" },
+            { label: "In Progress",    value: stats.inProgress,  color: "text-blue-600 dark:text-blue-400",     bg: "bg-white dark:bg-[#0f1623]" },
+            { label: "Not Started",    value: stats.notStarted,  color: "text-amber-600 dark:text-amber-400",   bg: "bg-white dark:bg-[#0f1623]" },
+          ].map(s => (
+            <div
+              key={s.label}
+              className={`${s.bg} border border-slate-200 dark:border-white/[0.07] rounded-2xl p-4`}
+            >
+              <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </motion.div>
+
+        {/* ── Filter bar ──────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="flex items-center gap-3 mb-6"
+        >
+          {/* Search */}
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search courses…"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm
+                bg-white dark:bg-[#0f1623]
+                border border-slate-200 dark:border-white/[0.08]
+                text-slate-700 dark:text-white
+                placeholder:text-slate-300 dark:placeholder:text-slate-600
+                focus:outline-none focus:border-blue-400 dark:focus:border-blue-500/60
+                transition-colors"
+            />
+          </div>
+
+          {/* Status filter pills */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {(["all", "not_started", "video_uploaded", "materials_added", "published"] as const).map(
+              status => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold
+                    transition-all ${
+                    statusFilter === status
+                      ? "bg-blue-600 text-white"
+                      : "bg-white dark:bg-[#0f1623] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/[0.07] hover:border-slate-300 dark:hover:border-white/20"
+                  }`}
+                >
+                  {status === "all" ? (
+                    <>
+                      <Filter className="w-3 h-3" /> All
+                    </>
+                  ) : (
+                    <>
+                      {STATUS_CONFIG[status].icon}
+                      {STATUS_CONFIG[status].label}
+                    </>
+                  )}
+                </button>
+              )
+            )}
+          </div>
+        </motion.div>
+
+        {/* ── Course grid ──────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <AnimatePresence mode="popLayout">
+            {filtered.length === 0 ? (
+              <EmptyState />
+            ) : (
+              filtered.map((course, i) => (
+                <motion.div
+                  key={course.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ delay: i * 0.06 }}
+                >
+                  <CourseCard
+                    course={course}
+                    onUpload={() => navigate("/instructor/upload-video")}
+                    onView={() => navigate("/instructor/course-materials")}
+                  />
+                </motion.div>
+              ))
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ── Help banner ──────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mt-8 flex items-center gap-4 px-6 py-4 rounded-2xl
+            bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50"
+        >
+          <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/50
+            flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-blue-800 dark:text-blue-300">
+              New to uploading?
+            </p>
+            <p className="text-xs text-blue-600/70 dark:text-blue-400/60">
+              Select a course above to start the 2-step upload flow: first add your main lecture video
+              and chapter markers, then add supplementary sections, files, and quizzes.
+            </p>
+          </div>
+        </motion.div>
       </div>
     </div>
   );
 }
-
-export default InstructorAllCourses;

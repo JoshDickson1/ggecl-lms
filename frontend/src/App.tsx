@@ -205,6 +205,7 @@ const router = createBrowserRouter([
           { path: "discussions",                  element: <InstructorChat /> },
           { path: "courses",                      element: <InstructorCourses /> },
           { path: "courses/:id",                  element: <InstructorSingleCourse /> },
+          { path: "upload-video", element: <InstructorUploadVideo/> },
           { path: "search",                       element: <InstructorSearch /> },
         ],
       },
@@ -291,6 +292,7 @@ const router = createBrowserRouter([
     { path: "search", element: <InstructorSearch /> },
     { path: "course-materials", element: <InstructorCourseMaterials /> },
     { path: "course-video-upload", element: <InstructorUploadVideo /> },
+
 
   ],
 },
