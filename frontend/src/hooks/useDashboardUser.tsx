@@ -1,8 +1,8 @@
 // src/hooks/useDashboardUser.tsx
-// Pure React context — zero external deps.
-// File must be .tsx (not .ts) because it contains JSX in the Provider.
+import { createContext, useContext, type ReactNode } from "react";
+import { authClient } from "@/lib/auth-client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+const { useSession } = authClient;
 
 export type Role = "admin" | "student" | "instructor";
 
@@ -19,67 +19,56 @@ export type DashboardUser = {
 type DashboardAuthCtx = {
   user: DashboardUser | null;
   role: Role | null;
+  isLoading: boolean;
   isAdmin: boolean;
   isStudent: boolean;
   isInstructor: boolean;
-  login: (user: DashboardUser) => void;
   logout: () => void;
-  switchRole: (role: Role) => void; // dev helper — remove in prod
 };
 
 const Ctx = createContext<DashboardAuthCtx | null>(null);
 
-// ─── Dummy users — swap with your real auth later ─────────────────────────────
-export const MOCK_USERS: Record<Role, DashboardUser> = {
-  admin: {
-    id: "adm-001",
-    firstName: "Emeka",
-    lastName: "Osei",
-    email: "emeka@ggecl.io",
-    role: "admin",
-    isSuperAdmin: true,
-  },
-  instructor: {
-    id: "inst-1",
-    firstName: "Sarah",
-    lastName: "Mitchell",
-    email: "sarah@ggecl.io",
-    role: "instructor",
-  },
-  student: {
-    id: "stu-001",
-    firstName: "Zara",
-    lastName: "Adeyemi",
-    email: "zara@example.com",
-    role: "student",
-  },
-};
-
 // ─── Provider ─────────────────────────────────────────────────────────────────
-export function DashboardAuthProvider({
-  children,
-  defaultRole = "student",
-}: {
-  children: ReactNode;
-  defaultRole?: Role;
-}) {
-  const [user, setUser] = useState<DashboardUser | null>(MOCK_USERS[defaultRole]);
 
-  const login      = (u: DashboardUser) => setUser(u);
-  const logout     = ()                 => setUser(null);
-  const switchRole = (r: Role)          => setUser(MOCK_USERS[r]); // dev only
+export function DashboardAuthProvider({ children }: { children: ReactNode }) {
+  const { data: session, isPending } = useSession();
+
+  // better-auth session.user shape:
+  // { id, name, email, image, role, ... }
+  const raw = session?.user as
+    | { id: string; name: string; email: string; image?: string | null; role?: string }
+    | undefined;
+
+  // Split "First Last" → firstName / lastName
+  const nameParts  = (raw?.name ?? "").trim().split(" ");
+  const firstName  = nameParts[0] ?? "";
+  const lastName   = nameParts.slice(1).join(" ") || "";
+
+  const rawRole    = (raw?.role ?? "student").toLowerCase() as Role;
+
+  const user: DashboardUser | null = raw
+    ? {
+        id:        raw.id,
+        firstName,
+        lastName,
+        email:     raw.email,
+        role:      rawRole,
+        avatarUrl: raw.image ?? undefined,
+      }
+    : null;
+
+  const logout = () => authClient.signOut();
 
   return (
     <Ctx.Provider
       value={{
         user,
         role:         user?.role ?? null,
+        isLoading:    isPending,
         isAdmin:      user?.role === "admin",
         isStudent:    user?.role === "student",
         isInstructor: user?.role === "instructor",
-        login,
         logout,
-        switchRole,
       }}
     >
       {children}
@@ -88,6 +77,7 @@ export function DashboardAuthProvider({
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
+
 export function useDashboardUser(): DashboardAuthCtx {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useDashboardUser must be inside <DashboardAuthProvider>");
@@ -95,9 +85,12 @@ export function useDashboardUser(): DashboardAuthCtx {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
 export function getInitials(user: DashboardUser | null): string {
   if (!user) return "??";
-  return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
+  const f = user.firstName?.[0] ?? "";
+  const l = user.lastName?.[0]  ?? "";
+  return `${f}${l}`.toUpperCase() || "??";
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

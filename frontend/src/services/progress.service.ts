@@ -2,134 +2,91 @@ import { APIConfig } from "@/lib/api.config";
 
 // ==================== TYPES ====================
 
-// ─── LESSON PROGRESS ─────────────────────────────────────────────────────────
-
-export interface LessonProgress {
-  lessonId: string;
+export interface UpdateLessonProgressPayload {
+  /** Current playback position in seconds */
   watchedSeconds: number;
-  duration: number;
-  percentWatched: number;
-  isCompleted: boolean;
-  completedAt: Date | null;
-  lastWatchedAt: Date;
-}
-
-// ─── COURSE PROGRESS ─────────────────────────────────────────────────────────
-
-export interface CourseProgress {
-  courseId: string;
-  completedLessons: number;
-  totalLessons: number;
-  percentComplete: number;
-  totalTimeSpent: number;
-  isCompleted: boolean;
-  completedAt: Date | null;
-  lastActivityAt: Date;
-  lastLessonId: string | null;
-}
-
-// ─── DASHBOARD ───────────────────────────────────────────────────────────────
-
-export interface LearningStreak {
-  currentStreak: number;
-  longestStreak: number;
-  totalActiveDays: number;
-  lastActiveDate: Date | null;
-}
-
-export interface WeeklyActivityDay {
-  date: string;
-  label: string;
-  minutes: number;
-}
-
-export interface WeeklyActivity {
-  days: WeeklyActivityDay[];
-  totalThisWeek: number;
-  dailyAverage: number;
-  mostActiveDay: string | null;
-}
-
-export interface DashboardStats {
-  totalTimeSpentThisMonth: number;
-  streak: LearningStreak;
-  completedCourses: number;
-  avgCompletionPercent: number;
-  weeklyActivity: WeeklyActivity;
-}
-
-export interface InstructorSummary {
-  name: string;
-  image: string | null;
-}
-
-export interface CourseProgressSummary {
-  courseId: string;
-  courseTitle: string;
-  courseImg: string;
-  instructor: InstructorSummary;
-  completedLessons: number;
-  totalLessons: number;
-  percentComplete: number;
-  totalTimeSpent: number;
-  isCompleted: boolean;
-  lastActivityAt: Date;
-  lastLessonId: string | null;
-  lastLessonTitle: string | null;
-}
-
-export interface FullDashboard {
-  stats: DashboardStats;
-  courses: CourseProgressSummary[];
+  /** Total duration of the lesson in seconds */
+  totalSeconds: number;
 }
 
 // ==================== SERVICE ====================
 
 export default class ProgressService {
+  // ─── STUDENT ─────────────────────────────────────────────────────────────────
+
   /**
-   * Get the full student learning dashboard.
-   * Includes monthly time stats, streak, weekly activity, and per-course progress.
+   * Get the student's full learning dashboard —
+   * enrolled courses, streak, weekly activity, stats.
+   * STUDENT only.
    */
-  static async getDashboard(): Promise<FullDashboard> {
+  static async getDashboard(): Promise<unknown> {
     const response = await APIConfig.fetch("/progress/dashboard");
     return response.json();
   }
 
   /**
-   * Get course progress detail with per-lesson progress state.
-   * Used to render the course-player sidebar / lesson list.
+   * Get enrolled courses sorted by relevance (in-progress first, then recent).
+   * STUDENT only.
+   */
+  static async getTopCourses(): Promise<unknown> {
+    const response = await APIConfig.fetch("/progress/top-courses");
+    return response.json();
+  }
+
+  /**
+   * Get the student's current XP total and level state.
+   * STUDENT only.
+   */
+  static async getXP(): Promise<unknown> {
+    const response = await APIConfig.fetch("/progress/xp");
+    return response.json();
+  }
+
+  /**
+   * Get the student's watch time analytics (by day / week / month).
+   * STUDENT only.
+   */
+  static async getWatchTime(): Promise<unknown> {
+    const response = await APIConfig.fetch("/progress/watch-time");
+    return response.json();
+  }
+
+  /**
+   * Get full progress detail for a specific course —
+   * sections, lessons, completion percentages.
+   * STUDENT only.
    * @param courseId - Course ID
    */
-  static async getCourseDetail(courseId: string): Promise<unknown> {
+  static async getCourseProgress(courseId: string): Promise<unknown> {
     const response = await APIConfig.fetch(`/progress/courses/${courseId}`);
     return response.json();
   }
 
   /**
-   * Update lesson watch progress (video-player ping).
-   * Call every ~10–15 seconds with the current playback position.
-   * Auto-completes the lesson when ≥ 80% is watched.
+   * Ping the backend with the student's current video playback position.
+   * Called periodically by the video player.
+   * STUDENT only.
    * @param lessonId - Lesson ID
-   * @param watchedSeconds - Current playback position in seconds
+   * @param payload  - Current watch position and total duration
    */
   static async updateLessonProgress(
     lessonId: string,
-    watchedSeconds: number
-  ): Promise<LessonProgress> {
+    payload: UpdateLessonProgressPayload
+  ): Promise<unknown> {
     const response = await APIConfig.fetch(`/progress/lessons/${lessonId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lessonId, watchedSeconds }),
+      body: JSON.stringify(payload),
     });
     return response.json();
   }
 
   /**
    * Manually mark a lesson as complete.
-   * Credits full duration as watched and recomputes course progress.
+   * STUDENT only.
    * @param lessonId - Lesson ID
    */
-  static async markLessonComplete(lessonId: string): Promise<LessonProgress> {
+  static async completeLesson(lessonId: string): Promise<unknown> {
     const response = await APIConfig.fetch(
       `/progress/lessons/${lessonId}/complete`,
       { method: "POST" }
@@ -138,15 +95,26 @@ export default class ProgressService {
   }
 
   /**
-   * Manually mark a course as complete.
-   * Idempotency-safe — throws 400 if already marked complete.
+   * Manually mark an entire course as complete.
+   * STUDENT only.
    * @param courseId - Course ID
    */
-  static async markCourseComplete(courseId: string): Promise<CourseProgress> {
+  static async completeCourse(courseId: string): Promise<unknown> {
     const response = await APIConfig.fetch(
       `/progress/courses/${courseId}/complete`,
       { method: "POST" }
     );
+    return response.json();
+  }
+
+  // ─── INSTRUCTOR / ADMIN ───────────────────────────────────────────────────────
+
+  /**
+   * Get watch time analytics broken down by course and student.
+   * INSTRUCTOR (own courses) / ADMIN (all courses).
+   */
+  static async getInstructorWatchTime(): Promise<unknown> {
+    const response = await APIConfig.fetch("/progress/instructor/watch-time");
     return response.json();
   }
 }

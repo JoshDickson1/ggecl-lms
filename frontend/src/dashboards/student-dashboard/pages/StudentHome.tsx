@@ -1,64 +1,184 @@
 // src/dashboards/student-dashboard/pages/StudentHome.tsx
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import {
   Play, BookOpen, Award, TrendingUp, Clock, CheckCircle2,
-  Flame, Star, ChevronRight, BarChart3, Target, Zap,
+  Flame, Star, ChevronRight, BarChart3, Target, Zap, Bell,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
+import ProgressService from "@/services/progress.service";
+import ActivityService from "@/services/activity.service";
+import EnrollmentService from "@/services/enrollment.service";
+import { useAuth } from "@/context/AuthProvider";
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
+// ─── API Response Types ───────────────────────────────────────────────────────
 
-const STUDENT = {
-  name: "Emeka Okonkwo",
-  avatar: "EO",
-  streak: 14,
-  xp: 2840,
-  level: 7,
-  nextLevelXp: 3500,
-};
+interface WeeklyDay {
+  date: string;
+  label: string;
+  minutes: number;
+}
 
-const CONTINUE_COURSE = {
-  id: "dev-001",
-  title: "The Complete React & TypeScript Bootcamp 2024",
-  instructor: "Sarah Mitchell",
-  thumbnail: "from-blue-600 to-blue-700",
-  progress: 78,
-  nextLesson: "Module 9 — Custom Hooks Deep Dive",
-  duration: "34 min",
-};
+interface WeeklyActivity {
+  days: WeeklyDay[];
+  totalThisWeek: number;
+  dailyAverage: number;
+  mostActiveDay: string | null;
+}
 
-const WEEKLY_PROGRESS = [
-  { day: "Mon", minutes: 45 },
-  { day: "Tue", minutes: 90 },
-  { day: "Wed", minutes: 30 },
-  { day: "Thu", minutes: 120 },
-  { day: "Fri", minutes: 75 },
-  { day: "Sat", minutes: 0 },
-  { day: "Sun", minutes: 60 },
-];
+interface Streak {
+  currentStreak: number;
+  longestStreak: number;
+  totalActiveDays: number;
+  lastActiveDate: string | null;
+}
 
-const ENROLLED_COURSES = [
-  { id: "dev-001", title: "React & TypeScript Bootcamp", thumbnail: "from-blue-500 to-blue-600", progress: 78, instructor: "Sarah Mitchell" },
-  { id: "ds-001",  title: "Python for Data Science",      thumbnail: "from-amber-500 to-orange-500", progress: 62, instructor: "Kwame Asante" },
-  { id: "dev-002", title: "Node.js Backend Masterclass",  thumbnail: "from-emerald-500 to-teal-600", progress: 45, instructor: "James Okafor" },
-];
+interface DashboardStats {
+  totalTimeSpentThisMonth: number;
+  streak: Streak;
+  completedCourses: number;
+  avgCompletionPercent: number;
+  weeklyActivity: WeeklyActivity;
+}
 
-const RECENT_ACTIVITY = [
-  { icon: "🎯", text: "Completed quiz in React Bootcamp — 92%", time: "2h ago" },
-  { icon: "📝", text: "Submitted Weather Dashboard assignment", time: "Yesterday" },
-  { icon: "⭐", text: "Earned 'Consistent Learner' badge", time: "3 days ago" },
-  { icon: "💬", text: "New reply from Sarah Mitchell in Alpha Squad", time: "3 days ago" },
-];
+interface DashboardCourse {
+  courseId: string;
+  title: string;
+  img?: string;
+  instructor: { name: string };
+  progressPercent: number;
+  completedLessons: number;
+  totalLessons: number;
+  lastAccessedAt?: string;
+  lastLessonTitle?: string;
+  completed: boolean;
+  myRating?: number;
+}
 
-const ANNOUNCEMENTS = [
-  { title: "Live Q&A Session this Saturday 10am WAT", course: "React & TypeScript Bootcamp", color: "bg-blue-500" },
-  { title: "Assignment 3 — Weather Dashboard is due April 5", course: "React & TypeScript Bootcamp", color: "bg-amber-500" },
-];
+interface DashboardResponse {
+  stats: DashboardStats;
+  courses: DashboardCourse[];
+}
+
+interface XPResponse {
+  totalXp: number;
+  currentLevel: number;
+  xpToNextLevel: number;
+  xpIntoCurrentLevel: number;
+  currentLevelSpan: number;
+  maxLevel: number;
+  recentAwards: unknown[];
+}
+
+interface ActivityItem {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  courseId?: string;
+  createdAt: string;
+}
+
+interface ActivityResponse {
+  data: ActivityItem[];
+  meta: { total: number; unreadCount: number };
+}
+
+interface EnrollmentCourse {
+  id: string;
+  title: string;
+  img: string;
+  price: number;
+  level: string;
+  instructorId: string;
+}
+
+interface Enrollment {
+  id: string;
+  enrolledAt: string;
+  course: EnrollmentCourse;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const THUMBNAIL_GRADIENTS = [
+  "from-blue-500 to-blue-600",
+  "from-amber-500 to-orange-500",
+  "from-emerald-500 to-teal-600",
+  "from-violet-500 to-purple-600",
+  "from-rose-500 to-pink-600",
+  "from-cyan-500 to-blue-500",
+];
+
+function gradientFor(index: number) {
+  return THUMBNAIL_GRADIENTS[index % THUMBNAIL_GRADIENTS.length];
+}
+
+/** Activity type → emoji */
+function activityIcon(type: string): string {
+  const map: Record<string, string> = {
+    LESSON_COMPLETED:   "🎯",
+    COURSE_COMPLETED:   "🏆",
+    WISHLIST_ITEM_ADDED:"❤️",
+    WISHLIST_TO_CART:   "🛒",
+    CART_ITEM_ADDED:    "🛒",
+    ENROLLED:           "📚",
+    REVIEW_SUBMITTED:   "⭐",
+    ACHIEVEMENT_EARNED: "🏅",
+  };
+  return map[type] ?? "🔔";
+}
+
+/** ISO → relative label */
+function fmtRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins  = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days  = Math.floor(diff / 86_400_000);
+  if (mins  < 60)  return `${mins}m ago`;
+  if (hours < 24)  return `${hours}h ago`;
+  if (days  === 1) return "Yesterday";
+  if (days  < 7)   return `${days} days ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+/** Get time-of-day greeting */
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function Sk({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded-xl bg-gray-100 dark:bg-white/[0.06] ${className}`} />;
+}
+
+function HomeSkeleton() {
+  return (
+    <div className="max-w-[1100px] mx-auto space-y-6 pb-12">
+      <Sk className="h-52 rounded-3xl" />
+      <Sk className="h-32 rounded-2xl" />
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+        <Sk className="h-56 rounded-2xl" />
+        <Sk className="h-56 rounded-2xl" />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Sk className="h-40 rounded-2xl" />
+        <Sk className="h-40 rounded-2xl" />
+        <Sk className="h-40 rounded-2xl" />
+      </div>
+    </div>
+  );
+}
+
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -69,21 +189,29 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 }
 
 const Fade = ({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) => (
-  <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay, ease: "easeOut" }} className={className}>
+  <motion.div
+    initial={{ opacity: 0, y: 14 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.4, delay, ease: "easeOut" }}
+    className={className}
+  >
     {children}
   </motion.div>
 );
 
-function ProgressBar({ pct, color = "from-blue-500 to-blue-500" }: { pct: number; color?: string }) {
+function ProgressBar({ pct, color = "from-blue-500 to-blue-600" }: { pct: number; color?: string }) {
   return (
     <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-      <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, ease: "easeOut" }}
-        className={`h-full rounded-full bg-gradient-to-r ${color}`} />
+      <motion.div
+        initial={{ width: 0 }}
+        animate={{ width: `${pct}%` }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className={`h-full rounded-full bg-gradient-to-r ${color}`}
+      />
     </div>
   );
 }
 
-// Custom tooltip for chart
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -97,8 +225,68 @@ function CustomTooltip({ active, payload, label }: any) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function StudentHome() {
-  const xpPct = Math.round((STUDENT.xp / STUDENT.nextLevelXp) * 100);
-  const totalMinutes = WEEKLY_PROGRESS.reduce((a, d) => a + d.minutes, 0);
+  const { user } = useAuth();
+
+  const { data: dashboard, isLoading: dashLoading } = useQuery<DashboardResponse>({
+    queryKey: ["progress-dashboard"],
+    queryFn: () => ProgressService.getDashboard() as Promise<DashboardResponse>,
+  });
+
+  const { data: xp, isLoading: xpLoading } = useQuery<XPResponse>({
+    queryKey: ["progress-xp"],
+    queryFn: () => ProgressService.getXP() as Promise<XPResponse>,
+  });
+
+  const { data: activityRes, isLoading: activityLoading } = useQuery<ActivityResponse>({
+    queryKey: ["activities", 5],
+    queryFn: () => ActivityService.getFeed({ limit: 5 }) as Promise<ActivityResponse>,
+  });
+
+  const { data: enrollments, isLoading: enrollLoading } = useQuery<Enrollment[]>({
+    queryKey: ["enrollments-mine"],
+    queryFn: () => EnrollmentService.getMine() as Promise<Enrollment[]>,
+  });
+
+  const isLoading = dashLoading || xpLoading || activityLoading || enrollLoading;
+  if (isLoading) return <HomeSkeleton />;
+
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const stats        = dashboard?.stats;
+  const courses      = dashboard?.courses ?? [];
+  const weeklyDays   = stats?.weeklyActivity.days ?? [];
+  const totalMinutes = stats?.weeklyActivity.totalThisWeek ?? 0;
+  const dailyAvg     = stats?.weeklyActivity.dailyAverage ?? 0;
+  const mostActive   = stats?.weeklyActivity.mostActiveDay ?? "—";
+  const streak       = stats?.streak.currentStreak ?? 0;
+  const completed    = stats?.completedCourses ?? 0;
+
+  // Top in-progress course for "Continue Learning"
+  const topCourse = courses.find(c => !c.completed) ?? courses[0];
+
+  // XP
+  const xpTotal     = xp?.totalXp ?? 0;
+  const xpNext      = xp?.xpToNextLevel ?? 450;
+  const xpLevel     = xp?.currentLevel ?? 0;
+  const xpSpan      = xp?.currentLevelSpan ?? 450;
+  const xpInto      = xp?.xpIntoCurrentLevel ?? 0;
+  const xpPct       = xpSpan > 0 ? Math.round((xpInto / xpSpan) * 100) : 0;
+
+  // Activities
+  const activities   = activityRes?.data ?? [];
+
+  // Enrolled courses (top 3 for "My Courses")
+  const myEnrollments = (enrollments ?? []).slice(0, 3);
+
+  // Avatar initials
+  const initials = user?.name
+    ? user.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
+    : "??";
+
+  const firstName = user?.name?.split(" ")[0] ?? "there";
+
+  // Chart data: map to { day, minutes }
+  const chartData = weeklyDays.map(d => ({ day: d.label, minutes: d.minutes }));
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6 pb-12">
@@ -106,7 +294,6 @@ export default function StudentHome() {
       {/* ── Greeting hero ──────────────────────────────────────── */}
       <Fade>
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-blue-500 to-blue-700 p-8">
-          {/* Texture */}
           <div className="absolute inset-0 opacity-10 pointer-events-none"
             style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
           <div className="absolute right-0 top-0 w-64 h-64 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/4" />
@@ -115,22 +302,32 @@ export default function StudentHome() {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Flame className="w-5 h-5 text-amber-300" />
-                <span className="text-amber-200 text-sm font-bold">{STUDENT.streak}-day streak 🔥</span>
+                <span className="text-amber-200 text-sm font-bold">
+                  {streak > 0 ? `${streak}-day streak 🔥` : "Start your streak today! 🔥"}
+                </span>
               </div>
               <h1 className="text-3xl font-black text-white leading-tight">
-                Good morning,<br />{STUDENT.name.split(" ")[0]} 👋
+                {greeting()},<br />{firstName} 👋
               </h1>
-              <p className="text-blue-200 text-sm mt-2">You're {100 - CONTINUE_COURSE.progress}% away from completing your top course.</p>
+              <p className="text-blue-200 text-sm mt-2">
+                {topCourse
+                  ? `You're ${Math.round(100 - topCourse.progressPercent)}% away from completing your top course.`
+                  : "Explore courses and start learning today."}
+              </p>
 
               {/* XP Bar */}
               <div className="mt-4 max-w-xs">
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-blue-200 font-semibold">Level {STUDENT.level}</span>
-                  <span className="text-blue-200">{STUDENT.xp.toLocaleString()} / {STUDENT.nextLevelXp.toLocaleString()} XP</span>
+                  <span className="text-blue-200 font-semibold">Level {xpLevel}</span>
+                  <span className="text-blue-200">{xpTotal.toLocaleString()} XP · Next: {xpNext.toLocaleString()}</span>
                 </div>
                 <div className="h-2 w-full rounded-full bg-white/20 overflow-hidden">
-                  <motion.div initial={{ width: 0 }} animate={{ width: `${xpPct}%` }} transition={{ duration: 1, delay: 0.3, ease: "easeOut" }}
-                    className="h-full rounded-full bg-gradient-to-r from-amber-300 to-yellow-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${xpPct}%` }}
+                    transition={{ duration: 1, delay: 0.3, ease: "easeOut" }}
+                    className="h-full rounded-full bg-gradient-to-r from-amber-300 to-yellow-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]"
+                  />
                 </div>
               </div>
             </div>
@@ -138,13 +335,13 @@ export default function StudentHome() {
             {/* Avatar + stats */}
             <div className="flex items-center md:justify-end justify-between gap-4">
               <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-sm border-2 border-white/30 flex items-center justify-center text-3xl font-black text-white shadow-xl">
-                {STUDENT.avatar}
+                {initials}
               </div>
               <div className="flex md:flex-col flex-row gap-2">
                 {[
-                  { label: "Courses", value: 6 },
-                  { label: "Completed", value: 2 },
-                  { label: "Certificates", value: 2 },
+                  { label: "Enrolled",   value: enrollments?.length ?? 0 },
+                  { label: "Completed",  value: completed },
+                  { label: "Streak",     value: `${streak}d` },
                 ].map(s => (
                   <div key={s.label} className="text-center px-3 py-1 rounded-xl bg-white/15 border border-white/20">
                     <p className="text-white font-black text-sm leading-none">{s.value}</p>
@@ -158,41 +355,60 @@ export default function StudentHome() {
       </Fade>
 
       {/* ── Continue Learning ──────────────────────────────────── */}
-      <Fade delay={0.06}>
-        <Card className="p-6 overflow-hidden relative">
-          <div className="flex items-center gap-2 mb-4">
-            <Zap className="w-4 h-4 text-blue-500" />
-            <h2 className="font-black text-base text-gray-900 dark:text-white">Continue Learning</h2>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-5 items-start">
-            {/* Thumbnail */}
-            <div className={`w-full sm:w-36 h-20 rounded-2xl flex-shrink-0 bg-gradient-to-br ${CONTINUE_COURSE.thumbnail} flex items-center justify-center shadow-lg`}>
-              <Play className="w-8 h-8 text-white drop-shadow" />
+      {topCourse ? (
+        <Fade delay={0.06}>
+          <Card className="p-6 overflow-hidden relative">
+            <div className="flex items-center gap-2 mb-4">
+              <Zap className="w-4 h-4 text-blue-500" />
+              <h2 className="font-black text-base text-gray-900 dark:text-white">Continue Learning</h2>
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-1">{CONTINUE_COURSE.title}</h3>
-              <p className="text-xs text-gray-400 mt-0.5">by {CONTINUE_COURSE.instructor}</p>
-              <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-500">
-                <BookOpen className="w-3.5 h-3.5" />
-                <span className="truncate">{CONTINUE_COURSE.nextLesson}</span>
-                <span className="flex items-center gap-1 flex-shrink-0">
-                  <Clock className="w-3 h-3" />{CONTINUE_COURSE.duration}
-                </span>
+            <div className="flex flex-col sm:flex-row gap-5 items-start">
+              {/* Thumbnail */}
+              <div className={`w-full sm:w-36 h-20 rounded-2xl flex-shrink-0 bg-gradient-to-br ${gradientFor(0)} flex items-center justify-center shadow-lg overflow-hidden`}>
+                {topCourse.img ? (
+                  <img src={topCourse.img} alt={topCourse.title} className="w-full h-full object-cover" />
+                ) : (
+                  <Play className="w-8 h-8 text-white drop-shadow" />
+                )}
               </div>
-              <div className="mt-3">
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-gray-400">{CONTINUE_COURSE.progress}% complete</span>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-1">{topCourse.title}</h3>
+                <p className="text-xs text-gray-400 mt-0.5">by {topCourse.instructor.name}</p>
+                {topCourse.lastLessonTitle && (
+                  <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-500">
+                    <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{topCourse.lastLessonTitle}</span>
+                  </div>
+                )}
+                <div className="mt-3">
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-gray-400">{Math.round(topCourse.progressPercent)}% complete</span>
+                    <span className="text-gray-400">{topCourse.completedLessons}/{topCourse.totalLessons} lessons</span>
+                  </div>
+                  <ProgressBar pct={Math.round(topCourse.progressPercent)} />
                 </div>
-                <ProgressBar pct={CONTINUE_COURSE.progress} />
               </div>
+              <Link
+                to={`/student/courses/${topCourse.courseId}/watch`}
+                className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:opacity-90 shadow-md transition-all"
+              >
+                <Play className="w-4 h-4" />Resume
+              </Link>
             </div>
-            <Link to={`/student/courses/${CONTINUE_COURSE.id}/watch`}
-              className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:opacity-90 shadow-md transition-all">
-              <Play className="w-4 h-4" />Resume
+          </Card>
+        </Fade>
+      ) : (
+        <Fade delay={0.06}>
+          <Card className="p-6 flex flex-col items-center gap-3 text-center py-10">
+            <BookOpen className="w-8 h-8 text-blue-400 opacity-60" />
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">You're not enrolled in any courses yet.</p>
+            <Link to="/student/explore"
+              className="text-xs font-bold text-blue-500 hover:underline flex items-center gap-1">
+              Explore courses <ChevronRight className="w-3.5 h-3.5" />
             </Link>
-          </div>
-        </Card>
-      </Fade>
+          </Card>
+        </Fade>
+      )}
 
       {/* ── Middle row: chart + activity ─────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
@@ -211,41 +427,86 @@ export default function StudentHome() {
               </div>
             </div>
             <p className="text-xs text-gray-400 mb-5">Daily learning time (minutes)</p>
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={WEEKLY_PROGRESS} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="minutes" stroke="#3b82f6" strokeWidth={2.5}
-                  fill="url(#blueGrad)" dot={{ r: 3, fill: "#3b82f6", strokeWidth: 0 }}
-                  activeDot={{ r: 5, fill: "#3b82f6", strokeWidth: 0 }} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="minutes" stroke="#3b82f6" strokeWidth={2.5}
+                    fill="url(#blueGrad)"
+                    dot={{ r: 3, fill: "#3b82f6", strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: "#3b82f6", strokeWidth: 0 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-40 flex items-center justify-center text-sm text-gray-400">No activity this week yet.</div>
+            )}
+            {/* Legend */}
+            <div className="flex items-center gap-6 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
+              {[
+                { label: "Daily avg",    value: `${dailyAvg} min` },
+                { label: "Most active",  value: mostActive },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{label}</p>
+                  <p className="text-sm font-black text-gray-800 dark:text-white">{value}</p>
+                </div>
+              ))}
+            </div>
           </Card>
         </Fade>
 
         {/* Recent Activity */}
         <Fade delay={0.11}>
           <Card className="p-6">
-            <h2 className="font-black text-base text-gray-900 dark:text-white mb-4">Recent Activity</h2>
-            <div className="space-y-3">
-              {RECENT_ACTIVITY.map((a, i) => (
-                <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + i * 0.05 }}
-                  className="flex items-start gap-3">
-                  <span className="text-lg flex-shrink-0 mt-0.5">{a.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{a.text}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{a.time}</p>
-                  </div>
-                </motion.div>
-              ))}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-black text-base text-gray-900 dark:text-white">Recent Activity</h2>
+              {(activityRes?.meta.unreadCount ?? 0) > 0 && (
+                <span className="flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full">
+                  <Bell className="w-3 h-3" />{activityRes?.meta.unreadCount} new
+                </span>
+              )}
             </div>
+            {activities.length > 0 ? (
+              <div className="space-y-3">
+                {activities.map((a, i) => (
+                  <motion.div
+                    key={a.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.15 + i * 0.05 }}
+                    className="flex items-start gap-3"
+                  >
+                    <span className="text-lg flex-shrink-0 mt-0.5">{activityIcon(a.type)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{a.message}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{fmtRelative(a.createdAt)}</p>
+                    </div>
+                    {!a.isRead && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 flex flex-col items-center gap-2 text-gray-400">
+                <Bell className="w-6 h-6 opacity-30" />
+                <p className="text-xs">No recent activity yet.</p>
+              </div>
+            )}
+            {activities.length > 0 && (
+              <Link to="/student/notifications"
+                className="mt-4 flex items-center justify-center gap-1 text-xs font-semibold text-blue-500 hover:underline">
+                View all <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            )}
           </Card>
         </Fade>
       </div>
@@ -259,43 +520,80 @@ export default function StudentHome() {
               View all <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {ENROLLED_COURSES.map((c, i) => (
-              <motion.div key={c.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 + i * 0.06 }}>
-                <Link to={`/student/courses/${c.id}`}>
-                  <Card className="p-4 hover:shadow-md transition-shadow group cursor-pointer">
-                    <div className={`w-full h-20 rounded-xl bg-gradient-to-br ${c.thumbnail} flex items-center justify-center mb-3`}>
-                      <Play className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
-                    </div>
-                    <h3 className="text-xs font-bold text-gray-900 dark:text-white line-clamp-2 mb-1 group-hover:text-blue-500 transition-colors">{c.title}</h3>
-                    <p className="text-[10px] text-gray-400 mb-2">by {c.instructor}</p>
-                    <ProgressBar pct={c.progress} />
-                    <div className="flex justify-between mt-1.5 text-[10px] text-gray-400">
-                      <span>{c.progress}%</span>
-                      {c.progress === 100 && <span className="text-emerald-500 font-semibold flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" />Done</span>}
-                    </div>
-                  </Card>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
+
+          {myEnrollments.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {myEnrollments.map((enr, i) => {
+                // Find matching progress from dashboard courses
+                const prog = courses.find(c => c.courseId === enr.course.id);
+                const pct  = Math.round(prog?.progressPercent ?? 0);
+                return (
+                  <motion.div
+                    key={enr.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.16 + i * 0.06 }}
+                  >
+                    <Link to={`/student/courses/${enr.course.id}`}>
+                      <Card className="p-4 hover:shadow-md transition-shadow group cursor-pointer">
+                        <div className={`w-full h-20 rounded-xl bg-gradient-to-br ${gradientFor(i)} flex items-center justify-center mb-3 overflow-hidden`}>
+                          {enr.course.img ? (
+                            <img src={enr.course.img} alt={enr.course.title} className="w-full h-full object-cover" />
+                          ) : (
+                            <Play className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
+                          )}
+                        </div>
+                        <h3 className="text-xs font-bold text-gray-900 dark:text-white line-clamp-2 mb-1 group-hover:text-blue-500 transition-colors">
+                          {enr.course.title}
+                        </h3>
+                        <p className="text-[10px] text-gray-400 mb-2 capitalize">{enr.course.level.toLowerCase()}</p>
+                        <ProgressBar pct={pct} />
+                        <div className="flex justify-between mt-1.5 text-[10px] text-gray-400">
+                          <span>{pct}%</span>
+                          {pct === 100 && (
+                            <span className="text-emerald-500 font-semibold flex items-center gap-0.5">
+                              <CheckCircle2 className="w-3 h-3" />Done
+                            </span>
+                          )}
+                        </div>
+                      </Card>
+                    </Link>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <Card className="p-8 flex flex-col items-center gap-3 text-center">
+              <BookOpen className="w-8 h-8 text-blue-400 opacity-40" />
+              <p className="text-sm font-bold text-gray-600 dark:text-gray-400">No courses enrolled yet.</p>
+              <Link to="/student/explore" className="text-xs font-bold text-blue-500 hover:underline">
+                Browse courses →
+              </Link>
+            </Card>
+          )}
         </div>
       </Fade>
 
-      {/* ── Bottom row: announcements + quick actions ─────────── */}
+      {/* ── Bottom row: stats + quick actions ─────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {/* Announcements */}
+
+        {/* Learning stats summary */}
         <Fade delay={0.16}>
           <Card className="p-6">
-            <h2 className="font-black text-base text-gray-900 dark:text-white mb-4">Announcements</h2>
+            <h2 className="font-black text-base text-gray-900 dark:text-white mb-4">Learning Stats</h2>
             <div className="space-y-3">
-              {ANNOUNCEMENTS.map((a, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
-                  <span className={`w-2 h-2 rounded-full ${a.color} flex-shrink-0 mt-1.5`} />
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800 dark:text-white">{a.title}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{a.course}</p>
+              {[
+                { icon: Clock,        label: "Time this month",  value: `${stats?.totalTimeSpentThisMonth ?? 0} min`,       color: "text-blue-500"    },
+                { icon: Flame,        label: "Current streak",   value: `${streak} day${streak !== 1 ? "s" : ""}`,          color: "text-amber-500"   },
+                { icon: CheckCircle2, label: "Courses completed", value: String(completed),                                  color: "text-emerald-500" },
+                { icon: Star,         label: "Avg completion",   value: `${Math.round(stats?.avgCompletionPercent ?? 0)}%`, color: "text-violet-500"  },
+              ].map(({ icon: Icon, label, value, color }) => (
+                <div key={label} className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-white/[0.04] last:border-0">
+                  <div className="flex items-center gap-2">
+                    <Icon className={`w-4 h-4 ${color}`} />
+                    <span className="text-xs text-gray-600 dark:text-gray-400">{label}</span>
                   </div>
+                  <span className="text-xs font-black text-gray-900 dark:text-white">{value}</span>
                 </div>
               ))}
             </div>
@@ -308,10 +606,10 @@ export default function StudentHome() {
             <h2 className="font-black text-base text-gray-900 dark:text-white mb-4">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Explore Courses", icon: BookOpen, to: "/student/explore", color: "from-blue-500 to-blue-600" },
-                { label: "My Assignments", icon: Target, to: "/student/assignments", color: "from-violet-500 to-purple-600" },
-                { label: "View Grades",    icon: Star,     to: "/student/grades",     color: "from-amber-500 to-orange-500" },
-                { label: "My Certificates",icon: Award,    to: "/student/certificates",color: "from-emerald-500 to-teal-600" },
+                { label: "Explore Courses",  icon: BookOpen, to: "/student/explore",      color: "from-blue-500 to-blue-600"     },
+                { label: "My Assignments",   icon: Target,   to: "/student/assignments",  color: "from-violet-500 to-purple-600" },
+                { label: "View Grades",      icon: Star,     to: "/student/grades",        color: "from-amber-500 to-orange-500"  },
+                { label: "My Certificates",  icon: Award,    to: "/student/certificates",  color: "from-emerald-500 to-teal-600"  },
               ].map(({ label, icon: Ic, to, color }) => (
                 <Link key={label} to={to}
                   className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-br ${color} text-white hover:opacity-90 transition-all shadow-md group`}>

@@ -3,108 +3,108 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthProvider";
 import { DashboardAuthProvider } from "@/hooks/useDashboardUser";
 // ── Layouts ──────────────────────────────────────────────────
-import LandingLayout from "./landing/_components/landing_layout/Layout";
-import { AdminLayout }      from "./dashboards/admin-dashboard/admin_layout/AdminLayout";
-import { InstructorLayout } from "./dashboards/instructor-dashboard/instructor_layout/InstructorLayout";
-import { StudentLayout }    from "./dashboards/student-dashboard/student_layout/StudentLayout";
-// ── Student payment routes ─────────────────────────────────────────
+import LandingLayout            from "./landing/_components/landing_layout/Layout";
+import { AdminLayout }          from "./dashboards/admin-dashboard/admin_layout/AdminLayout";
+import { InstructorLayout }     from "./dashboards/instructor-dashboard/instructor_layout/InstructorLayout";
+import { StudentLayout }        from "./dashboards/student-dashboard/student_layout/StudentLayout";
+// ── Student payment routes ────────────────────────────────────
 import StudentCartSuccessFailure from "./dashboards/student-dashboard/pages/StudentCartSuccessFailure";
-import StudentProcessing from "./dashboards/student-dashboard/pages/StudentProcessing";
-import StudentCheckout from "./dashboards/student-dashboard/pages/StudentCheckout";
-import StudentProvider from "./dashboards/student-dashboard/pages/StudentProvider";
+import StudentProcessing         from "./dashboards/student-dashboard/pages/StudentProcessing";
+import StudentCheckout           from "./dashboards/student-dashboard/pages/StudentCheckout";
+import StudentProvider           from "./dashboards/student-dashboard/pages/StudentProvider";
 // ── Landing pages ─────────────────────────────────────────────
-import Home              from "./landing/pages/Home";
-import Search            from "./landing/pages/Search";
-import AllCategories     from "./landing/pages/AllCategories";
-import SingleCategory    from "./landing/pages/SingleCategory";
-import AllCourses        from "./landing/pages/AllCourses";
-import SingleCourse      from "./landing/pages/SingleCourse";
-import AllInstructors    from "./landing/pages/AllInstructors";
-import SingleInstructor  from "./landing/pages/SingleInstructor";
-import Cart              from "./landing/pages/Cart";
-import Processing        from "./landing/pages/Processing";
-import Checkout          from "./landing/pages/Checkout";
-import Provider          from "./landing/pages/Provider";
-import StudentInfoForm   from "./landing/pages/StudentInfoForm";
+import Home             from "./landing/pages/Home";
+import Search           from "./landing/pages/Search";
+import AllCategories    from "./landing/pages/AllCategories";
+import SingleCategory   from "./landing/pages/SingleCategory";
+import AllCourses       from "./landing/pages/AllCourses";
+import SingleCourse     from "./landing/pages/SingleCourse";
+import AllInstructors   from "./landing/pages/AllInstructors";
+import SingleInstructor from "./landing/pages/SingleInstructor";
+import Cart             from "./landing/pages/Cart";
+import Processing       from "./landing/pages/Processing";
+import Checkout         from "./landing/pages/Checkout";
+import Provider         from "./landing/pages/Provider";
+import StudentInfoForm  from "./landing/pages/StudentInfoForm";
 import CartSuccessFailure from "./landing/pages/CartSuccessFailure";
+import About            from "./landing/pages/About";
 // ── Auth pages ────────────────────────────────────────────────
-import Login               from "./auth/student_auth/Login";
-import Forgotten           from "./auth/student_auth/Forgotten";
-import AdminLogin          from "./auth/admin_auth/AdminLogin";
-import AdminForgotten      from "./auth/admin_auth/AdminForgotten";
-import InstructorLogin     from "./auth/instructor_auth/InstructorLogin";
-import InstructorForgotten from "./auth/instructor_auth/InstructorForgotten";
-// ── Admin pages ───────────────────────────────────────────────
-import AdminHome        from "./dashboards/admin-dashboard/pages/AdminHome";
-// ── Instructor pages ──────────────────────────────────────────
-import InstructorHome from "./dashboards/instructor-dashboard/pages/InstructorHome";
-// ── Student pages ─────────────────────────────────────────────
-import StudentHome from "./dashboards/student-dashboard/pages/StudentHome";
-// ── Shared ────────────────────────────────────────────────────
-import NotFound from "./landing/_components/NotFound";
-import InstructorProfile from "./dashboards/instructor-dashboard/pages/InstructorProfile";
-import InstructorSettings from "./dashboards/instructor-dashboard/pages/InstructorSettings";
-import StudentProfile from "./dashboards/student-dashboard/pages/StudentProfile";
-import AdminProfile from "./dashboards/admin-dashboard/pages/AdminProfile";
-import StudentSettings from "./dashboards/student-dashboard/pages/StudentSettings";
-import PreviewInstructor from "./dashboards/commons/PreviewInstructor";
-import AdminStudentManagement from "./dashboards/admin-dashboard/pages/AdminStudentManagement";
-import AdminInstructorManagement from "./dashboards/admin-dashboard/pages/AdminInstructorManagement";
-import AdminAdminManagement from "./dashboards/admin-dashboard/pages/AdminAdminManagement";
-import StudentSupport from "./dashboards/student-dashboard/pages/StudentSupport";
-import InstructorSupport from "./dashboards/instructor-dashboard/pages/InstructorSupport";
-import AdminSupport from "./dashboards/admin-dashboard/pages/AdminSupport";
-import AdminSettings from "./dashboards/admin-dashboard/pages/AdminSettings";
-import AdminAllNotifications from "./dashboards/admin-dashboard/pages/AdminAllNotifications";
-import { InstructorAllNotifications } from "./dashboards/instructor-dashboard/pages/InstructorAllNotifications";
-import StudentAllNotifications from "./dashboards/student-dashboard/pages/StudentAllNotifications";
-import StudentCertificates from "./dashboards/student-dashboard/pages/StudentCertificates";
-import StudentProgress from "./dashboards/student-dashboard/pages/StudentProgress";
-import StudentWishlist from "./dashboards/student-dashboard/pages/StudentWishlist";
-import StudentCart from "./dashboards/student-dashboard/pages/StudentCart";
-import StudentStudentInfoForm from "./dashboards/student-dashboard/pages/StudentStudentInfoForm";
-import StudentCourses from "./dashboards/student-dashboard/pages/StudentCourses";
-import StudentExploreCourses from "./dashboards/student-dashboard/pages/StudentExploreCourses";
-import StudentSingleCourse from "./dashboards/student-dashboard/pages/StudentSingleCourse";
-import StudentSingleInstructor from "./dashboards/student-dashboard/pages/StudentSingleInstructor";
-import StudentGrades from "./dashboards/student-dashboard/pages/StudentGrades";
-import InstructorGrades from "./dashboards/instructor-dashboard/pages/InstructorGrades";
-import AdminGrades from "./dashboards/admin-dashboard/pages/AdminGrades";
-import InstructorAssignment from "./dashboards/instructor-dashboard/pages/InstructorAssignment";
-import AdminAssignment from "./dashboards/admin-dashboard/pages/AdminAssignment";
-import StudentAssignment from "./dashboards/student-dashboard/pages/StudentAssignment";
-import SingleSubmittedAssignment from "./dashboards/commons/SingleSubmittedAssignment";
-import AdminCreateAssignment from "./dashboards/admin-dashboard/pages/AdminCreateAssignment";
-import AdminTransactions from "./dashboards/admin-dashboard/pages/AdminTransactions";
-import AdminAnnouncements from "./dashboards/admin-dashboard/pages/AdminAnnouncements";
-import StudentChat from "./dashboards/student-dashboard/pages/StudentChat";
-import InstructorChat from "./dashboards/instructor-dashboard/pages/InstructorChat";
-import AdminChat from "./dashboards/admin-dashboard/pages/AdminChat";
-import AdminCreateCourse from "./dashboards/admin-dashboard/pages/AdminCreateCourse";
-import AdminManageCourses from "./dashboards/admin-dashboard/pages/AdminManageCourses";
-import AdminSingleCourse from "./dashboards/admin-dashboard/pages/AdminSingleCourse";
-import { InstructorSingleCourse } from "./dashboards/instructor-dashboard/pages/InstructorSingleCourse";
-import InstructorCourses from "./dashboards/instructor-dashboard/pages/InstructorCourses";
-import PreviewAdmin from "./dashboards/commons/PreviewAdmin";
-import PreviewStudent from "./dashboards/commons/PreviewStudent";
-import AdminSearch from "./dashboards/admin-dashboard/pages/AdminSearch";
-import InstructorSearch from "./dashboards/instructor-dashboard/pages/InstructorSearch";
-import StudentSearch from "./dashboards/student-dashboard/pages/StudentSearch";
-import StudentCategories from "./dashboards/student-dashboard/pages/StudentCategories";
-import StudentSingleCategory from "./dashboards/student-dashboard/pages/StudentSingleCategory";
-import About from "./landing/pages/About";
-import ResetPassword from "./auth/student_auth/ResetPassword";
+import Login                from "./auth/student_auth/Login";
+import Forgotten            from "./auth/student_auth/Forgotten";
+import ResetPassword        from "./auth/student_auth/ResetPassword";
+import AdminLogin           from "./auth/admin_auth/AdminLogin";
+import AdminForgotten       from "./auth/admin_auth/AdminForgotten";
+import AdminResetPassword   from "./auth/admin_auth/AdminResetPassword";
+import InstructorLogin      from "./auth/instructor_auth/InstructorLogin";
+import InstructorForgotten  from "./auth/instructor_auth/InstructorForgotten";
 import InstructorResetPassword from "./auth/instructor_auth/InstructorResetPassword";
-import AdminResetPassword from "./auth/admin_auth/AdminResetPassword";
-import { ProtectedRoute } from "./auth/ProtectedRoute";
+// ── Admin pages ───────────────────────────────────────────────
+import AdminHome                 from "./dashboards/admin-dashboard/pages/AdminHome";
+import AdminAdminManagement      from "./dashboards/admin-dashboard/pages/AdminAdminManagement";
+import AdminInstructorManagement from "./dashboards/admin-dashboard/pages/AdminInstructorManagement";
+import AdminStudentManagement    from "./dashboards/admin-dashboard/pages/AdminStudentManagement";
+import AdminProfile              from "./dashboards/admin-dashboard/pages/AdminProfile";
+import AdminSupport              from "./dashboards/admin-dashboard/pages/AdminSupport";
+import AdminSettings             from "./dashboards/admin-dashboard/pages/AdminSettings";
+import AdminAllNotifications     from "./dashboards/admin-dashboard/pages/AdminAllNotifications";
+import AdminGrades               from "./dashboards/admin-dashboard/pages/AdminGrades";
+import AdminAssignment           from "./dashboards/admin-dashboard/pages/AdminAssignment";
+import AdminCreateAssignment     from "./dashboards/admin-dashboard/pages/AdminCreateAssignment";
+import AdminTransactions         from "./dashboards/admin-dashboard/pages/AdminTransactions";
+import AdminAnnouncements        from "./dashboards/admin-dashboard/pages/AdminAnnouncements";
+import AdminChat                 from "./dashboards/admin-dashboard/pages/AdminChat";
+import AdminCreateCourse         from "./dashboards/admin-dashboard/pages/AdminCreateCourse";
+import AdminManageCourses        from "./dashboards/admin-dashboard/pages/AdminManageCourses";
+import AdminSingleCourse         from "./dashboards/admin-dashboard/pages/AdminSingleCourse";
+import AdminSearch               from "./dashboards/admin-dashboard/pages/AdminSearch";
+// ── Instructor pages ──────────────────────────────────────────
+import InstructorHome             from "./dashboards/instructor-dashboard/pages/InstructorHome";
+import InstructorProfile          from "./dashboards/instructor-dashboard/pages/InstructorProfile";
+import InstructorSettings         from "./dashboards/instructor-dashboard/pages/InstructorSettings";
+import { InstructorAllNotifications } from "./dashboards/instructor-dashboard/pages/InstructorAllNotifications";
+import InstructorAssignment       from "./dashboards/instructor-dashboard/pages/InstructorAssignment";
+import InstructorGrades           from "./dashboards/instructor-dashboard/pages/InstructorGrades";
+import InstructorChat             from "./dashboards/instructor-dashboard/pages/InstructorChat";
+import InstructorCourses          from "./dashboards/instructor-dashboard/pages/InstructorCourses";
+import { InstructorSingleCourse } from "./dashboards/instructor-dashboard/pages/InstructorSingleCourse";
+import InstructorSearch           from "./dashboards/instructor-dashboard/pages/InstructorSearch";
+import InstructorCourseMaterials  from "./dashboards/instructor-dashboard/pages/InstructorCourseMaterials";
+import InstructorSupport          from "./dashboards/instructor-dashboard/pages/InstructorSupport";
+import InstructorUploadVideo      from "./dashboards/instructor-dashboard/pages/InstructorVideoUpload";
+// ── Student pages ─────────────────────────────────────────────
+import StudentHome            from "./dashboards/student-dashboard/pages/StudentHome";
+import StudentProfile         from "./dashboards/student-dashboard/pages/StudentProfile";
+import StudentSettings        from "./dashboards/student-dashboard/pages/StudentSettings";
+import StudentSupport         from "./dashboards/student-dashboard/pages/StudentSupport";
+import StudentAllNotifications from "./dashboards/student-dashboard/pages/StudentAllNotifications";
+import StudentCertificates    from "./dashboards/student-dashboard/pages/StudentCertificates";
+import StudentProgress        from "./dashboards/student-dashboard/pages/StudentProgress";
+import StudentWishlist        from "./dashboards/student-dashboard/pages/StudentWishlist";
+import StudentCart            from "./dashboards/student-dashboard/pages/StudentCart";
+import StudentCourses         from "./dashboards/student-dashboard/pages/StudentCourses";
+import StudentExploreCourses  from "./dashboards/student-dashboard/pages/StudentExploreCourses";
+import StudentSingleCourse    from "./dashboards/student-dashboard/pages/StudentSingleCourse";
+import StudentSingleInstructor from "./dashboards/student-dashboard/pages/StudentSingleInstructor";
+import StudentGrades          from "./dashboards/student-dashboard/pages/StudentGrades";
+import StudentAssignment      from "./dashboards/student-dashboard/pages/StudentAssignment";
+import StudentChat            from "./dashboards/student-dashboard/pages/StudentChat";
+import StudentSearch          from "./dashboards/student-dashboard/pages/StudentSearch";
+import StudentCategories      from "./dashboards/student-dashboard/pages/StudentCategories";
+import StudentSingleCategory  from "./dashboards/student-dashboard/pages/StudentSingleCategory";
+import StudentViewCourse      from "./dashboards/student-dashboard/pages/StudentViewCourse";
+import StudentStudentInfoForm from "./dashboards/student-dashboard/pages/StudentStudentInfoForm";
+// ── Shared ────────────────────────────────────────────────────
+import NotFound                  from "./landing/_components/NotFound";
+import NotPermitted              from "./landing/NotPermitted";
+import PreviewInstructor         from "./dashboards/commons/PreviewInstructor";
+import PreviewAdmin              from "./dashboards/commons/PreviewAdmin";
+import PreviewStudent            from "./dashboards/commons/PreviewStudent";
+import SingleSubmittedAssignment from "./dashboards/commons/SingleSubmittedAssignment";
+import { ProtectedRoute }        from "./auth/ProtectedRoute";
 
-import InstructorCourseMaterials from "./dashboards/instructor-dashboard/pages/InstructorCourseMaterials";
-import StudentViewCourse from "./dashboards/student-dashboard/pages/StudentViewCourse";
-import NotPermitted from "./landing/NotPermitted";
-import InstructorUploadVideo from "./dashboards/instructor-dashboard/pages/InstructorVideoUpload";
- 
 const router = createBrowserRouter([
-  // ── Landing (public) ──────────────────────────────────────────────────
+
+  // ── Landing (public) ─────────────────────────────────────────────────
   {
     path: "/",
     element: <LandingLayout />,
@@ -124,7 +124,7 @@ const router = createBrowserRouter([
       { path: "checkout",           element: <Checkout /> },
       { path: "student-info",       element: <StudentInfoForm /> },
       { path: "about",              element: <About /> },
-      // ── Auth ──────────────────────────────────────────────────────────
+      // ── Auth ────────────────────────────────────────────────────────
       { path: "login",                         element: <Login /> },
       { path: "forgotten-password",            element: <Forgotten /> },
       { path: "reset-password",                element: <ResetPassword /> },
@@ -137,16 +137,14 @@ const router = createBrowserRouter([
     ],
   },
 
-  // ── Admin dashboard (ADMIN only) ──────────────────────────────────────
+  // ── Admin dashboard (ADMIN only) ─────────────────────────────────────
   {
     path: "/admin",
-    element: (
-      <ProtectedRoute allowedRoles={["ADMIN"]} redirectTo="/admin/login" />
-    ),
+    element: <ProtectedRoute allowedRoles={["ADMIN"]} redirectTo="/admin/login" />,
     children: [
       {
         element: (
-          <DashboardAuthProvider defaultRole="admin">
+          <DashboardAuthProvider>
             <AdminLayout />
           </DashboardAuthProvider>
         ),
@@ -182,20 +180,18 @@ const router = createBrowserRouter([
   // ── Instructor dashboard (INSTRUCTOR only) ────────────────────────────
   {
     path: "/instructor",
-    element: (
-      <ProtectedRoute allowedRoles={["INSTRUCTOR"]} redirectTo="/instructor/login" />
-    ),
+    element: <ProtectedRoute allowedRoles={["INSTRUCTOR"]} redirectTo="/instructor/login" />,
     children: [
       {
         element: (
-          <DashboardAuthProvider defaultRole="instructor">
+          <DashboardAuthProvider>
             <InstructorLayout />
           </DashboardAuthProvider>
         ),
         children: [
           { index: true,                          element: <InstructorHome /> },
           { path: "profile",                      element: <InstructorProfile /> },
-          { path: "Settings",                     element: <InstructorSettings /> },
+          { path: "settings",                     element: <InstructorSettings /> },
           { path: "instructor-profile",           element: <PreviewInstructor /> },
           { path: "support",                      element: <InstructorSupport /> },
           { path: "notifications",                element: <InstructorAllNotifications /> },
@@ -205,7 +201,9 @@ const router = createBrowserRouter([
           { path: "discussions",                  element: <InstructorChat /> },
           { path: "courses",                      element: <InstructorCourses /> },
           { path: "courses/:id",                  element: <InstructorSingleCourse /> },
-          { path: "upload-video", element: <InstructorUploadVideo/> },
+          { path: "upload-video",                 element: <InstructorUploadVideo /> },
+          { path: "course-materials",             element: <InstructorCourseMaterials /> },
+          { path: "course-video-upload",          element: <InstructorUploadVideo /> },
           { path: "search",                       element: <InstructorSearch /> },
         ],
       },
@@ -215,13 +213,11 @@ const router = createBrowserRouter([
   // ── Student dashboard (STUDENT only) ─────────────────────────────────
   {
     path: "/student",
-    element: (
-      <ProtectedRoute allowedRoles={["STUDENT"]} redirectTo="/login" />
-    ),
+    element: <ProtectedRoute allowedRoles={["STUDENT"]} redirectTo="/login" />,
     children: [
       {
         element: (
-          <DashboardAuthProvider defaultRole="student">
+          <DashboardAuthProvider>
             <StudentLayout />
           </DashboardAuthProvider>
         ),
@@ -237,16 +233,15 @@ const router = createBrowserRouter([
           { path: "wishlist",                     element: <StudentWishlist /> },
           { path: "courses",                      element: <StudentCourses /> },
           { path: "courses/:id",                  element: <StudentSingleCourse /> },
+          { path: "courses/:id/watch",            element: <StudentViewCourse /> },
           { path: "explore",                      element: <StudentExploreCourses /> },
           { path: "instructors/:id",              element: <StudentSingleInstructor /> },
-          // ── Cart / payment ───────────────────────────────────────────
           { path: "cart",                         element: <StudentCart /> },
           { path: "cart/processing",              element: <StudentProcessing /> },
           { path: "cart/payment",                 element: <StudentProvider /> },
           { path: "cart/order-complete",          element: <StudentCartSuccessFailure /> },
           { path: "cart/checkout",                element: <StudentCheckout /> },
           { path: "cart/student-info",            element: <StudentStudentInfoForm /> },
-          // ── Assignments & grades ─────────────────────────────────────
           { path: "assignments",                  element: <StudentAssignment /> },
           { path: "grades",                       element: <StudentGrades /> },
           { path: "messages",                     element: <StudentChat /> },
@@ -258,89 +253,13 @@ const router = createBrowserRouter([
     ],
   },
 
-  // ── 403 Forbidden ─────────────────────────────────────────────────────
-  {
-    path: "/403",
-    element: (
-      <div>
-        <NotPermitted />
-      </div>
-    ),
-  },
+  // ── 403 ──────────────────────────────────────────────────────────────
+  { path: "/403", element: <NotPermitted /> },
 
-  // ── 404 ───────────────────────────────────────────────────────────────
-  {
-    path: "/instructor",
-  element: (
-    <DashboardAuthProvider defaultRole="instructor">
-      <InstructorLayout />
-    </DashboardAuthProvider>
-  ),
-  children: [
-    { index: true, element: <InstructorHome /> },
-    { path: "profile", element: <InstructorProfile /> },
-    { path: "Settings", element: <InstructorSettings /> },
-    { path: "instructor-profile", element: <PreviewInstructor /> },
-    { path: "support", element: <InstructorSupport /> },
-    { path: "notifications", element: <InstructorAllNotifications /> },
-    { path: "assignments", element: <InstructorAssignment /> },
-    { path: "assignments/:id/submissions", element: <SingleSubmittedAssignment /> },
-    { path: "grades", element: <InstructorGrades /> },
-    { path: "discussions", element: <InstructorChat /> },
-    { path: "courses", element: <InstructorCourses /> },
-    { path: "courses/:id", element: <InstructorSingleCourse /> },
-    { path: "search", element: <InstructorSearch /> },
-    { path: "course-materials", element: <InstructorCourseMaterials /> },
-    { path: "course-video-upload", element: <InstructorUploadVideo /> },
-
-
-  ],
-},
-  // ── Student dashboard ─────────────────────────────────────────
-  {
-  path: "/student",
-  element: (
-    <DashboardAuthProvider defaultRole="student">
-      <StudentLayout />
-    </DashboardAuthProvider>
-  ),
-  children: [
-    { index: true, element: <StudentHome /> },
-    { path: "profile", element: <StudentProfile /> },
-    { path: "settings", element: <StudentSettings /> },
-    { path: "instructor-profile", element: <PreviewInstructor /> },
-    { path: "support", element: <StudentSupport /> },
-    { path: "notifications", element: <StudentAllNotifications /> },
-    { path: "certificates", element: <StudentCertificates /> },
-    { path: "progress",     element: <StudentProgress /> },
-    { path: "wishlist",     element: <StudentWishlist /> },
-    { path: "courses",      element: <StudentCourses /> },
-    { path: "courses/:id",   element: <StudentSingleCourse /> },
-    { path: "explore",      element: <StudentExploreCourses /> },
-    { path: "instructors/:id", element: <StudentSingleInstructor /> },
-    // cart/payment routes
-    { path: "cart",         element: <StudentCart /> },
-    { path: "cart/processing",   element: <StudentProcessing /> },
-    { path: "cart/payment",      element: <StudentProvider /> },
-    { path: "cart/order-complete", element: <StudentCartSuccessFailure /> },
-    { path: "cart/checkout",     element: <StudentCheckout /> },
-    { path: "cart/student-info", element: <StudentStudentInfoForm /> },
-    // Assignments and grades routes
-    { path: "assignments", element: <StudentAssignment /> },
-    { path: "grades", element: <StudentGrades /> },
-    { path: "messages", element: <StudentChat /> },
-    { path: "search", element: <StudentSearch /> }, 
-    { path: "categories", element: <StudentCategories /> },
-    { path: "categories/:id", element: <StudentSingleCategory /> },
-    // watch course video route
-    { path: "courses/:id/watch", element: <StudentViewCourse /> },
-  ],
-},
-  // ── 404 ───────────────────────────────────────────────────────
+  // ── 404 ──────────────────────────────────────────────────────────────
   { path: "*", element: <NotFound /> },
 ]);
-// AuthProvider wraps everything so useAuth() works in ProtectedRoute
-// and anywhere else in the tree.
+
 const App = () => (
   <AuthProvider>
     <RouterProvider router={router} />

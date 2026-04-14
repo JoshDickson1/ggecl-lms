@@ -1,25 +1,40 @@
 // src/dashboards/student-dashboard/pages/StudentSettings.tsx
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera, User, Mail, Phone, MapPin,
   Lock, Eye, EyeOff, CheckCircle2, AlertTriangle,
   Save, Loader2, Trash2, Shield, ChevronRight, X,
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import UserService from "@/services/user.service";
+import { useAuth } from "@/context/AuthProvider";
+import { authClient } from "@/lib/auth-client";
 
-// ─── Dummy data ───────────────────────────────────────────────────────────────
-const STUDENT = {
-  name:     "Emeka Okonkwo",
-  avatar:   "EO",
-  avatarBg: "bg-blue-500",
-  email:    "emeka@ggecl.io",
-};
+// ─── API Types ────────────────────────────────────────────────────────────────
+
+interface UserResponse {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  location: string | null;
+  gender: string | null;
+  role: string;
+  studentProfile: {
+    matricNumber: string;
+    learningGoals: string[];
+  } | null;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function cn(...classes: (string | false | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
+
 function Toast({ message, type, onClose }: {
   message: string; type: "success" | "error"; onClose: () => void;
 }) {
@@ -35,7 +50,9 @@ function Toast({ message, type, onClose }: {
           ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-300"
           : "bg-red-50 dark:bg-red-950/60 border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300"
       )}>
-      {type === "success" ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
+      {type === "success"
+        ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+        : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
       <span className="text-sm font-semibold">{message}</span>
       <button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100 transition-opacity">
         <X className="w-3.5 h-3.5" />
@@ -45,6 +62,7 @@ function Toast({ message, type, onClose }: {
 }
 
 // ─── Section card ─────────────────────────────────────────────────────────────
+
 function Section({ title, description, icon: Icon, children, delay = 0 }: {
   title: string; description?: string; icon: React.ElementType;
   children: React.ReactNode; delay?: number;
@@ -58,7 +76,7 @@ function Section({ title, description, icon: Icon, children, delay = 0 }: {
         shadow-[0_4px_24px_rgba(0,0,0,0.05)] overflow-hidden">
       <div className="flex items-start gap-3 px-6 py-5 border-b border-gray-100 dark:border-white/[0.06]">
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-900
-          flex items-center justify-center shadow-[0_3px_10px_rgba(6,182,212,0.35)] flex-shrink-0 mt-0.5">
+          flex items-center justify-center shadow-[0_3px_10px_rgba(59,130,246,0.35)] flex-shrink-0 mt-0.5">
           <Icon className="w-4 h-4 text-white" />
         </div>
         <div>
@@ -72,6 +90,7 @@ function Section({ title, description, icon: Icon, children, delay = 0 }: {
 }
 
 // ─── Field ────────────────────────────────────────────────────────────────────
+
 function Field({ label, placeholder, icon: Icon, type = "text", value, onChange, hint, error, required, disabled }: {
   label: string; placeholder: string; icon: React.ElementType;
   type?: string; value: string; onChange?: (v: string) => void;
@@ -81,7 +100,7 @@ function Field({ label, placeholder, icon: Icon, type = "text", value, onChange,
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-bold text-gray-600 dark:text-gray-400 flex items-center gap-1">
-        {label} {required && <span className="text-blue-900">*</span>}
+        {label} {required && <span className="text-blue-500">*</span>}
       </label>
       <div className={cn(
         "relative rounded-xl border transition-all duration-200",
@@ -93,9 +112,13 @@ function Field({ label, placeholder, icon: Icon, type = "text", value, onChange,
         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
           <Icon className="w-4 h-4" />
         </div>
-        <input type={type} value={value} onChange={e => onChange?.(e.target.value)}
-          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-          placeholder={placeholder} disabled={disabled}
+        <input
+          type={type} value={value}
+          onChange={e => onChange?.(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          disabled={disabled}
           className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm
             bg-gray-50/80 dark:bg-white/[0.04]
             text-gray-800 dark:text-white placeholder:text-gray-400
@@ -108,6 +131,7 @@ function Field({ label, placeholder, icon: Icon, type = "text", value, onChange,
 }
 
 // ─── Textarea ─────────────────────────────────────────────────────────────────
+
 function Textarea({ label, placeholder, value, onChange, hint, rows = 3 }: {
   label: string; placeholder: string; value: string; onChange: (v: string) => void;
   hint?: string; rows?: number;
@@ -116,9 +140,11 @@ function Textarea({ label, placeholder, value, onChange, hint, rows = 3 }: {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-bold text-gray-600 dark:text-gray-400">{label}</label>
-      <textarea value={value} rows={rows}
+      <textarea
+        value={value} rows={rows}
         onChange={e => onChange(e.target.value)}
-        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder={placeholder}
         className={cn(
           "w-full px-4 py-2.5 rounded-xl text-sm resize-none",
@@ -133,14 +159,15 @@ function Textarea({ label, placeholder, value, onChange, hint, rows = 3 }: {
 }
 
 // ─── Password strength ────────────────────────────────────────────────────────
+
 function PasswordStrength({ password }: { password: string }) {
   const checks = [
-    { label: "8+ characters",     pass: password.length >= 8             },
-    { label: "Uppercase letter",  pass: /[A-Z]/.test(password)           },
-    { label: "Number",            pass: /[0-9]/.test(password)           },
-    { label: "Special character", pass: /[^a-zA-Z0-9]/.test(password)   },
+    { label: "8+ characters",     pass: password.length >= 8           },
+    { label: "Uppercase letter",  pass: /[A-Z]/.test(password)         },
+    { label: "Number",            pass: /[0-9]/.test(password)         },
+    { label: "Special character", pass: /[^a-zA-Z0-9]/.test(password)  },
   ];
-  const score = checks.filter(c => c.pass).length;
+  const score  = checks.filter(c => c.pass).length;
   const colors = ["bg-red-400","bg-orange-400","bg-yellow-400","bg-emerald-400"];
   const labels = ["Weak","Fair","Good","Strong"];
   if (!password) return null;
@@ -168,6 +195,7 @@ function PasswordStrength({ password }: { password: string }) {
 }
 
 // ─── Save button ──────────────────────────────────────────────────────────────
+
 function SaveBtn({ loading, onClick, label = "Save Changes" }: {
   loading: boolean; onClick: () => void; label?: string;
 }) {
@@ -175,12 +203,13 @@ function SaveBtn({ loading, onClick, label = "Save Changes" }: {
     <motion.button
       whileHover={!loading ? { scale: 1.02 } : {}}
       whileTap={!loading ? { scale: 0.97 } : {}}
-      onClick={onClick} disabled={loading}
+      onClick={onClick}
+      disabled={loading}
       className={cn(
         "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all",
         loading
-          ? "bg-blue-900 cursor-wait text-white"
-          : "bg-gradient-to-br from-blue-500 to-blue-900 hover:bg-blue-900 text-white shadow-blue-900"
+          ? "bg-blue-400 cursor-wait text-white"
+          : "bg-gradient-to-br from-blue-500 to-blue-700 hover:opacity-90 text-white shadow-md"
       )}>
       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
       {loading ? "Saving…" : label}
@@ -188,19 +217,73 @@ function SaveBtn({ loading, onClick, label = "Save Changes" }: {
   );
 }
 
-// ─── Nav sections (student-specific) ─────────────────────────────────────────
+// ─── Nav sections ─────────────────────────────────────────────────────────────
+
 const NAV_SECTIONS = [
-  { id: "avatar",        label: "Photo & Avatar",       icon: Camera   },
-  { id: "personal",      label: "Personal Info",         icon: User     },
-//   { id: "learning",      label: "Learning Preferences",  icon: BookOpen },
-  { id: "password",      label: "Password & Security",   icon: Lock     },
-  { id: "danger",        label: "Danger Zone",           icon: Trash2   },
+  { id: "avatar",   label: "Photo & Avatar",     icon: Camera },
+  { id: "personal", label: "Personal Info",       icon: User   },
+  { id: "password", label: "Password & Security", icon: Lock   },
+  { id: "danger",   label: "Danger Zone",         icon: Trash2 },
 ];
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+
 export default function StudentSettings() {
-  const fileRef = useRef<HTMLInputElement>(null);
+  const { user: authUser } = useAuth();
+  const queryClient        = useQueryClient();
+  const fileRef            = useRef<HTMLInputElement>(null);
+
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState("avatar");
+  const [toast, setToast]   = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [pwd, setPwd]       = useState({ current: "", next: "", confirm: "" });
+  const [showPwd, setShowPwd] = useState({ current: false, next: false, confirm: false });
+  const [pwdErrors, setPwdErrors] = useState<Record<string, string>>({});
+
+  const [personal, setPersonal] = useState({
+    firstName: "", lastName: "", email: "",
+    phone: "", location: "", bio: "",
+  });
+
+  // ── Fetch user ──────────────────────────────────────────────────────────────
+
+  const { data: userData, isLoading } = useQuery<UserResponse>({
+    queryKey: ["user-mine"],
+    queryFn:  () => UserService.getMe() as Promise<UserResponse>,
+  });
+
+  // Populate form once user data arrives
+  useEffect(() => {
+    if (!userData) return;
+    const parts = userData.name.split(" ");
+    setPersonal({
+      firstName: parts[0] ?? "",
+      lastName:  parts.slice(1).join(" ") ?? "",
+      email:     userData.email,
+      phone:     "",
+      location:  userData.location ?? "",
+      bio:       "",
+    });
+  }, [userData]);
+
+  // ── Update user mutation ────────────────────────────────────────────────────
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: { name?: string; location?: string }) =>
+      UserService.update(authUser!.id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-mine"] });
+      showToast("Changes saved successfully!");
+    },
+    onError: () => showToast("Failed to save changes.", "error"),
+  });
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -210,48 +293,54 @@ export default function StudentSettings() {
     reader.readAsDataURL(file);
   };
 
-  const [personal, setPersonal] = useState({
-    firstName: STUDENT.name.split(" ")[0],
-    lastName:  STUDENT.name.split(" ")[1] ?? "",
-    email:     STUDENT.email,
-    phone:     "+234 800 000 0000",
-    location:  "Lagos, Nigeria",
-    bio:       "Passionate about web development and machine learning. Currently transitioning from accounting into tech.",
-  });
-
-  const [pwd, setPwd] = useState({ current: "", next: "", confirm: "" });
-  const [showPwd, setShowPwd] = useState({ current: false, next: false, confirm: false });
-  const [pwdErrors, setPwdErrors] = useState<Record<string, string>>({});
-
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [activeSection, setActiveSection] = useState("avatar");
-
-  const showToast = (message: string, type: "success" | "error" = "success") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
+  const handlePersonalSave = () => {
+    const name = `${personal.firstName} ${personal.lastName}`.trim();
+    updateMutation.mutate({ name, location: personal.location || undefined });
   };
 
-  const simulateSave = (key: string) => {
-    setSaving(p => ({ ...p, [key]: true }));
-    setTimeout(() => {
-      setSaving(p => ({ ...p, [key]: false }));
-      showToast("Changes saved successfully!");
-    }, 1400);
-  };
-
-  const handlePasswordSave = () => {
+  const handlePasswordSave = async () => {
     const errs: Record<string, string> = {};
-    if (!pwd.current) errs.current = "Required";
-    if (pwd.next.length < 8) errs.next = "Must be at least 8 characters";
+    if (!pwd.current)          errs.current  = "Required";
+    if (pwd.next.length < 8)   errs.next     = "Must be at least 8 characters";
     if (pwd.next !== pwd.confirm) errs.confirm = "Passwords don't match";
     setPwdErrors(errs);
     if (Object.keys(errs).length) return showToast("Please fix the errors above", "error");
-    simulateSave("password");
-    setPwd({ current: "", next: "", confirm: "" });
+
+    try {
+      await authClient.changePassword({
+        currentPassword: pwd.current,
+        newPassword: pwd.next,
+        revokeOtherSessions: false,
+      });
+      showToast("Password updated successfully!");
+      setPwd({ current: "", next: "", confirm: "" });
+    } catch {
+      showToast("Failed to update password.", "error");
+    }
   };
 
-  const setP = (k: keyof typeof personal) => (v: string) => setPersonal(p => ({ ...p, [k]: v }));
+  const setP = (k: keyof typeof personal) => (v: string) =>
+    setPersonal(p => ({ ...p, [k]: v }));
+
+  // ── Initials for avatar ─────────────────────────────────────────────────────
+
+  const nameParts = (userData?.name ?? "").split(" ");
+  const initials  = nameParts.map(p => p[0]).join("").slice(0, 2).toUpperCase() || "??";
+
+  if (isLoading) {
+    return (
+      <div className="max-w-[1000px] mx-auto pb-10 space-y-6">
+        <div className="h-9 w-64 animate-pulse rounded-xl bg-gray-100 dark:bg-white/[0.06]" />
+        <div className="flex gap-6">
+          <div className="w-52 h-64 animate-pulse rounded-[20px] bg-gray-100 dark:bg-white/[0.06]" />
+          <div className="flex-1 space-y-4">
+            <div className="h-40 animate-pulse rounded-[22px] bg-gray-100 dark:bg-white/[0.06]" />
+            <div className="h-64 animate-pulse rounded-[22px] bg-gray-100 dark:bg-white/[0.06]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1000px] mx-auto pb-10">
@@ -260,14 +349,15 @@ export default function StudentSettings() {
           Account <span className="text-blue-600 dark:text-blue-400">Settings</span>
         </h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
-          Manage your profile, and security.
+          Manage your profile and security.
         </p>
       </motion.div>
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">
 
         {/* Sidebar nav */}
-        <motion.div initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
+        <motion.div
+          initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.38 }}
           className="w-full lg:w-52 flex-shrink-0 lg:sticky lg:top-24">
           <div className="rounded-[20px] bg-white dark:bg-[#0f1623]
@@ -282,7 +372,7 @@ export default function StudentSettings() {
                 className={cn(
                   "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-semibold transition-all duration-200 text-left",
                   activeSection === id
-                    ? "bg-gradient-to-br from-blue-500 to-blue-900 text-white shadow-[0_4px_12px_rgba(6,182,212,0.3)]"
+                    ? "bg-gradient-to-br from-blue-500 to-blue-900 text-white shadow-[0_4px_12px_rgba(59,130,246,0.3)]"
                     : id === "danger"
                       ? "text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20"
                       : "text-gray-600 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 hover:text-blue-600 dark:hover:text-blue-400"
@@ -298,21 +388,25 @@ export default function StudentSettings() {
         {/* Main content */}
         <div className="flex-1 min-w-0 flex flex-col gap-6">
 
-          {/* Photo */}
+          {/* ── Photo ─────────────────────────────────────────────── */}
           <div id="section-avatar">
             <Section title="Photo & Avatar" description="Your public profile photo" icon={Camera} delay={0.05}>
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
                 <div className="relative flex-shrink-0">
-                  <div className="w-24 h-24 rounded-[20px] overflow-hidden ring-4 ring-blue-100 dark:ring-blue-900/40 shadow-[0_4px_16px_rgba(6,182,212,0.2)]">
+                  <div className="w-24 h-24 rounded-[20px] overflow-hidden ring-4 ring-blue-100 dark:ring-blue-900/40">
                     {avatarPreview
                       ? <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
-                      : <div className={`w-full h-full flex items-center justify-center text-3xl font-black text-white ${STUDENT.avatarBg}`}>{STUDENT.avatar}</div>
+                      : userData?.image
+                        ? <img src={userData.image} alt={userData.name} className="w-full h-full object-cover" />
+                        : <div className="w-full h-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-3xl font-black text-white">
+                            {initials}
+                          </div>
                     }
                   </div>
                   <button onClick={() => fileRef.current?.click()}
                     className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full
                       bg-blue-600 hover:bg-blue-500 flex items-center justify-center
-                      shadow-[0_3px_10px_rgba(6,182,212,0.45)] transition-all">
+                      shadow-[0_3px_10px_rgba(59,130,246,0.45)] transition-all">
                     <Camera className="w-3.5 h-3.5 text-white" />
                   </button>
                   <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
@@ -330,7 +424,7 @@ export default function StudentSettings() {
                   </button>
                   {avatarPreview && (
                     <div className="flex gap-2 mt-3">
-                      <SaveBtn loading={!!saving.avatar} onClick={() => simulateSave("avatar")} label="Save Photo" />
+                      <SaveBtn loading={false} onClick={() => showToast("Avatar upload coming soon!", "error")} label="Save Photo" />
                       <button onClick={() => setAvatarPreview(null)}
                         className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.08]
                           text-gray-600 dark:text-gray-400 hover:border-red-300 hover:text-red-500 transition-all">
@@ -343,31 +437,32 @@ export default function StudentSettings() {
             </Section>
           </div>
 
-          {/* Personal */}
+          {/* ── Personal ──────────────────────────────────────────── */}
           <div id="section-personal">
             <Section title="Personal Information" description="Your basic account details" icon={User} delay={0.1}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-                <Field label="First Name" placeholder="Emeka" icon={User} value={personal.firstName} onChange={setP("firstName")} required />
-                <Field label="Last Name" placeholder="Okonkwo" icon={User} value={personal.lastName} onChange={setP("lastName")} required />
-                <Field label="Email Address" placeholder="you@ggecl.io" icon={Mail} type="email" value={personal.email} onChange={setP("email")} required hint="Changes require email verification" />
-                <Field label="Phone Number" placeholder="+234 800 000 0000" icon={Phone} type="tel" value={personal.phone} onChange={setP("phone")} />
-                <Field label="Location" placeholder="City, Country" icon={MapPin} value={personal.location} onChange={setP("location")} />
+                <Field label="First Name"     placeholder="First name"       icon={User}  value={personal.firstName} onChange={setP("firstName")} required />
+                <Field label="Last Name"      placeholder="Last name"        icon={User}  value={personal.lastName}  onChange={setP("lastName")}  required />
+                <Field label="Email Address"  placeholder="you@example.com"  icon={Mail}  type="email" value={personal.email} onChange={setP("email")} required
+                  hint="Contact support to change your email address" disabled />
+                <Field label="Phone Number"   placeholder="+234 800 000 0000" icon={Phone} type="tel"  value={personal.phone}    onChange={setP("phone")}    />
+                <Field label="Location"       placeholder="City, Country"     icon={MapPin}            value={personal.location} onChange={setP("location")} />
                 <div className="sm:col-span-2">
                   <Textarea label="Bio" placeholder="Tell others about yourself…"
                     value={personal.bio} onChange={setP("bio")}
                     hint="Shown on your profile. Max 300 characters." rows={3} />
                 </div>
               </div>
-              <SaveBtn loading={!!saving.personal} onClick={() => simulateSave("personal")} />
+              <SaveBtn loading={updateMutation.isPending} onClick={handlePersonalSave} />
             </Section>
           </div>
 
-          {/* Password */}
+          {/* ── Password ──────────────────────────────────────────── */}
           <div id="section-password">
             <Section title="Password & Security" description="Keep your account safe" icon={Lock} delay={0.3}>
               <div className="flex flex-col gap-4 mb-5">
-                {(["current","next","confirm"] as const).map((field) => {
-                  const labels = { current: "Current Password", next: "New Password", confirm: "Confirm New Password" };
+                {(["current","next","confirm"] as const).map(field => {
+                  const labels      = { current: "Current Password", next: "New Password", confirm: "Confirm New Password" };
                   const placeholders = { current: "Enter current password", next: "Enter new password", confirm: "Confirm new password" };
                   return (
                     <div key={field} className="flex flex-col gap-1.5">
@@ -375,16 +470,25 @@ export default function StudentSettings() {
                       <div className={cn(
                         "relative rounded-xl border transition-all duration-200",
                         pwdErrors[field] ? "border-red-300 dark:border-red-700"
-                          : field === "confirm" && pwd.confirm && pwd.confirm === pwd.next ? "border-emerald-400 ring-2 ring-emerald-500/15"
+                          : field === "confirm" && pwd.confirm && pwd.confirm === pwd.next
+                            ? "border-emerald-400 ring-2 ring-emerald-500/15"
                           : pwd[field] ? "border-blue-400 ring-2 ring-blue-500/15"
                           : "border-gray-200 dark:border-white/[0.08]"
                       )}>
-                        {field === "confirm" ? <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" /> : <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />}
-                        <input type={showPwd[field] ? "text" : "password"} value={pwd[field]}
+                        {field === "confirm"
+                          ? <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                          : <Lock   className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        }
+                        <input
+                          type={showPwd[field] ? "text" : "password"}
+                          value={pwd[field]}
                           onChange={e => setPwd(p => ({ ...p, [field]: e.target.value }))}
                           placeholder={placeholders[field]}
-                          className="w-full pl-10 pr-10 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] text-gray-800 dark:text-white placeholder:text-gray-400 outline-none" />
-                        <button onClick={() => setShowPwd(p => ({ ...p, [field]: !p[field] }))}
+                          className="w-full pl-10 pr-10 py-2.5 rounded-xl text-sm
+                            bg-gray-50/80 dark:bg-white/[0.04]
+                            text-gray-800 dark:text-white placeholder:text-gray-400 outline-none" />
+                        <button
+                          onClick={() => setShowPwd(p => ({ ...p, [field]: !p[field] }))}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
                           {showPwd[field] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
@@ -400,13 +504,14 @@ export default function StudentSettings() {
                   );
                 })}
               </div>
-              <SaveBtn loading={!!saving.password} onClick={handlePasswordSave} label="Update Password" />
+              <SaveBtn loading={false} onClick={handlePasswordSave} label="Update Password" />
             </Section>
           </div>
 
-          {/* Danger Zone */}
+          {/* ── Danger Zone ───────────────────────────────────────── */}
           <div id="section-danger">
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.38, delay: 0.35 }}
               className="rounded-[22px] bg-white dark:bg-[#0f1623]
                 border border-red-200 dark:border-red-900/40
@@ -430,8 +535,7 @@ export default function StudentSettings() {
                     </p>
                   </div>
                   <button className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold
-                    border border-red-200 dark:border-red-800/50
-                    text-red-600 dark:text-red-400
+                    border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400
                     hover:bg-red-100 dark:hover:bg-red-950/40 transition-all">
                     Pause
                   </button>
@@ -444,9 +548,11 @@ export default function StudentSettings() {
                       Permanently delete your account. You will lose access to all enrolled courses and certificates.
                     </p>
                   </div>
-                  <button className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold
-                    bg-red-600 hover:bg-red-700 text-white
-                    shadow-[0_3px_10px_rgba(239,68,68,0.35)] transition-all">
+                  <button
+                    onClick={() => UserService.remove(authUser!.id).then(() => authClient.signOut())}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold
+                      bg-red-600 hover:bg-red-700 text-white
+                      shadow-[0_3px_10px_rgba(239,68,68,0.35)] transition-all">
                     <Trash2 className="w-3 h-3" /> Delete
                   </button>
                 </div>

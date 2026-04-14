@@ -1,11 +1,104 @@
+// src/landing/_components/InstructorsPreview.tsx
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import { instructors } from "@/data/Instructors";
+import { useQuery } from "@tanstack/react-query";
 import { InstructorCard } from "@/landing/_components/InstructorCard";
+import { type Instructor } from "@/data/Instructors";
+import UserService from "@/services/user.service";
+
+// ─── API Types ────────────────────────────────────────────────────────────────
+
+interface PublicInstructor {
+  id: string;
+  name: string;
+  image: string | null;
+  role: string;
+  createdAt: string;
+  instructorProfile: {
+    bio: string | null;
+    description: string | null;
+    tags: string[];
+    areasOfExpertise: string[];
+    teachingCategories: string[];
+    specialization: string | null;
+    website: string | null;
+  } | null;
+}
+
+// ─── Map API → Instructor shape expected by InstructorCard ───────────────────
+
+const AVATAR_COLORS = [
+  "bg-blue-500", "bg-violet-500", "bg-emerald-500",
+  "bg-rose-500",  "bg-amber-500",  "bg-cyan-500",
+];
+
+function mapToInstructor(u: PublicInstructor, i: number): Instructor {
+  const profile   = u.instructorProfile;
+  const nameParts = u.name.trim().split(" ");
+  const initials  = nameParts.map(p => p[0]).join("").slice(0, 2).toUpperCase();
+
+  return {
+    id:          u.id,
+    name:        u.name,
+    avatar:      initials,
+    avatarBg:    AVATAR_COLORS[i % AVATAR_COLORS.length],
+    photo:       u.image ?? undefined,
+    title:       profile?.specialization ?? profile?.teachingCategories?.[0] ?? "Instructor",
+    bio:         profile?.bio ?? profile?.description ?? "Instructor at GGECL LMS.",
+    bio2:        undefined,
+    experience:  "",
+    experience2: undefined,
+    expertise:   profile?.areasOfExpertise ?? [],
+    categoryIds: profile?.teachingCategories ?? [],
+    rating:      0,
+    reviews:     0,
+    students:    0,
+    courses:     0,
+    badges:      [],
+    socials:     profile?.website ? [{ platform: "website", url: profile.website }] : [],
+    courseSnippets:  [],
+    ratingBreakdown: [
+      { star: 5, pct: 0 },
+      { star: 4, pct: 0 },
+      { star: 3, pct: 0 },
+      { star: 2, pct: 0 },
+      { star: 1, pct: 0 },
+    ],
+  };
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function CardSkeleton({ index }: { index: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05 }}
+      className="rounded-[24px] overflow-hidden bg-white/70 dark:bg-[#020618]
+        border border-white/80 dark:border-white/[0.08]
+        shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
+      <div className="h-48 animate-pulse bg-gray-100 dark:bg-white/[0.05]" />
+      <div className="px-5 py-4 space-y-2">
+        <div className="h-3 w-1/2 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+        <div className="h-3 w-1/3 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+        <div className="h-8 animate-pulse rounded-xl bg-gray-100 dark:bg-white/[0.06] mt-3" />
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function InstructorsPreview() {
-  const preview = instructors.slice(0, 4);
+  const { data, isLoading } = useQuery<PublicInstructor[]>({
+    queryKey: ["instructors-public-preview"],
+    queryFn:  () => UserService.findAllPublic({ limit: 4 }) as Promise<PublicInstructor[]>,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const preview = (data ?? []).slice(0, 4).map(mapToInstructor);
 
   return (
     <section className="relative py-20 overflow-hidden bg-white dark:bg-[#080c17]">
@@ -60,9 +153,12 @@ export default function InstructorsPreview() {
 
         {/* 4-col grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {preview.map((inst, i) => (
-            <InstructorCard key={inst.id} instructor={inst} index={i} />
-          ))}
+          {isLoading
+            ? Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} index={i} />)
+            : preview.map((inst, i) => (
+                <InstructorCard key={inst.id} instructor={inst} index={i} />
+              ))
+          }
         </div>
       </div>
     </section>

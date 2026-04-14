@@ -1,266 +1,337 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
-import {
-  ArrowRight,
-  Star,
-  Clock,
-  BookOpen,
-  ShoppingCart,
-  Users,
-} from "lucide-react";
-import { courses, type Course } from "@/data/courses";
+// src/landing/_components/CategoriesPreview.tsx
+import { motion, useAnimationFrame } from "framer-motion";
+import { ArrowRight } from "lucide-react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Cloud, Code2, Container, Globe, Server, Database,
+  Layers, Terminal, Braces, Box, Workflow,
+} from "lucide-react";
+import CoursesService from "@/services/course.service";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function formatStudents(n: number) {
+// ─── API Types ────────────────────────────────────────────────────────────────
+
+interface PublicCourse {
+  id: string;
+  title: string;
+  price: number;
+  level: string;
+  tags: string[];
+  _count: { enrollments: number };
+  averageRating: number;
+}
+
+interface PublicCoursesResponse {
+  items: PublicCourse[];
+}
+
+// ─── Derive categories from tags ─────────────────────────────────────────────
+
+const TAG_META: Record<string, {
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  gradient: string;
+}> = {
+  gcp:            { label: "Google Cloud",    icon: Cloud,      color: "from-blue-500 to-cyan-400",      gradient: "from-blue-500/10 to-cyan-400/5"      },
+  cloud:          { label: "Cloud",           icon: Cloud,      color: "from-sky-500 to-blue-400",       gradient: "from-sky-500/10 to-blue-400/5"       },
+  certification:  { label: "Certification",  icon: Layers,     color: "from-violet-500 to-purple-400",  gradient: "from-violet-500/10 to-purple-400/5"  },
+  devops:         { label: "DevOps",         icon: Workflow,   color: "from-orange-500 to-amber-400",   gradient: "from-orange-500/10 to-amber-400/5"   },
+  docker:         { label: "Docker",         icon: Container,  color: "from-cyan-500 to-teal-400",      gradient: "from-cyan-500/10 to-teal-400/5"      },
+  kubernetes:     { label: "Kubernetes",     icon: Box,        color: "from-indigo-500 to-blue-400",    gradient: "from-indigo-500/10 to-blue-400/5"    },
+  react:          { label: "React",          icon: Braces,     color: "from-cyan-400 to-blue-500",      gradient: "from-cyan-400/10 to-blue-500/5"      },
+  javascript:     { label: "JavaScript",     icon: Code2,      color: "from-yellow-400 to-amber-500",   gradient: "from-yellow-400/10 to-amber-500/5"   },
+  frontend:       { label: "Frontend",       icon: Globe,      color: "from-pink-500 to-rose-400",      gradient: "from-pink-500/10 to-rose-400/5"      },
+  aws:            { label: "AWS",            icon: Cloud,      color: "from-amber-500 to-orange-400",   gradient: "from-amber-500/10 to-orange-400/5"   },
+  nestjs:         { label: "NestJS",         icon: Server,     color: "from-red-500 to-rose-400",       gradient: "from-red-500/10 to-rose-400/5"       },
+  typescript:     { label: "TypeScript",     icon: Code2,      color: "from-blue-600 to-blue-400",      gradient: "from-blue-600/10 to-blue-400/5"      },
+  backend:        { label: "Backend",        icon: Database,   color: "from-emerald-500 to-teal-400",   gradient: "from-emerald-500/10 to-teal-400/5"   },
+};
+
+const FALLBACK_META = {
+  icon: Terminal,
+  color: "from-gray-500 to-slate-400",
+  gradient: "from-gray-500/10 to-slate-400/5",
+};
+
+const AVATAR_COLORS = ["bg-blue-500","bg-violet-500","bg-emerald-500","bg-rose-500","bg-amber-500"];
+
+interface DerivedCategory {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  gradient: string;
+  courseCount: number;
+  totalEnrollments: number;
+  tags: string[];
+}
+
+function deriveCategories(courses: PublicCourse[]): DerivedCategory[] {
+  const tagMap = new Map<string, PublicCourse[]>();
+
+  courses.forEach(course => {
+    course.tags.forEach(tag => {
+      if (!tagMap.has(tag)) tagMap.set(tag, []);
+      tagMap.get(tag)!.push(course);
+    });
+  });
+
+  return Array.from(tagMap.entries())
+    .map(([tag, tagCourses]) => {
+      const meta = TAG_META[tag] ?? { label: tag.charAt(0).toUpperCase() + tag.slice(1), ...FALLBACK_META };
+      return {
+        id:               tag,
+        label:            meta.label,
+        icon:             meta.icon,
+        color:            meta.color,
+        gradient:         meta.gradient,
+        courseCount:      tagCourses.length,
+        totalEnrollments: tagCourses.reduce((s, c) => s + c._count.enrollments, 0),
+        tags:             [...new Set(tagCourses.flatMap(c => c.tags))].filter(t => t !== tag).slice(0, 2),
+      };
+    })
+    .sort((a, b) => b.courseCount - a.courseCount);
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmt(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
 }
 
-function formatReviews(n: number) {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
-}
+// ─── Category Card ────────────────────────────────────────────────────────────
 
-// ─── Badge ────────────────────────────────────────────────────────────────────
-function CourseBadge({ badge }: { badge: Course["badge"] }) {
-  if (!badge) return null;
-  const styles: Record<string, string> = {
-    Bestseller:
-      "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60",
-    "Hot & New":
-      "bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60",
-    New: "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60",
-  };
-  return (
-    <span
-      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide ${styles[badge]}`}
-    >
-      {badge}
-    </span>
-  );
-}
-
-// ─── Course Card ──────────────────────────────────────────────────────────────
-function CourseCard({ course, index }: { course: Course; index: number }) {
+function CategoryCard({ category, index }: { category: DerivedCategory; index: number }) {
+  const Icon    = category.icon;
   const [hovered, setHovered] = useState(false);
-  const Icon = course.icon;
-  const discount = Math.round(
-    ((course.originalPrice - course.price) / course.originalPrice) * 100
-  );
+
+  // Fake avatar initials for visual interest
+  const avatars = AVATAR_COLORS.slice(0, 3).map((bg, i) => ({
+    bg,
+    initials: String.fromCharCode(65 + ((index * 3 + i) % 26)),
+  }));
 
   return (
-    <div className="flex flex-col">
-      {/* Card */}
+    <motion.div
+      onHoverStart={() => setHovered(true)}
+      onHoverEnd={() => setHovered(false)}
+      className="relative flex-shrink-0 w-[320px] rounded-[22px] p-6 flex flex-col gap-4 cursor-pointer
+        bg-white/70 dark:bg-[#020618] backdrop-blur-xl
+        border border-white/80 dark:border-white/[0.08] transition-shadow duration-300"
+      style={{
+        boxShadow: hovered
+          ? "0 0 0 1.5px rgba(59,130,246,0.45), 0 12px 40px rgba(59,130,246,0.16)"
+          : "0 8px 30px rgba(15,23,42,0.08)",
+      }}
+      whileHover={{ y: -4 }}
+      transition={{ type: "spring", stiffness: 300, damping: 24 }}
+    >
+      {/* Hover glow */}
       <motion.div
-        layout
-        initial={{ opacity: 0, y: 28 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.38, delay: index * 0.06, ease: "easeOut" }}
-        onHoverStart={() => setHovered(true)}
-        onHoverEnd={() => setHovered(false)}
-        className="relative flex flex-col rounded-[22px] overflow-hidden cursor-pointer
-          bg-white dark:bg-[#0f1623]
-          border border-gray-100 dark:border-white/[0.07]
-          transition-shadow duration-300"
-        style={{
-          boxShadow: hovered
-            ? "0 0 0 1.5px rgba(59,130,246,0.42), 0 10px 44px rgba(59,130,246,0.16)"
-            : "0 2px 16px rgba(0,0,0,0.06)",
-        }}
-      >
-        {/* Hover glow */}
+        className="pointer-events-none absolute inset-0 rounded-[22px] z-0"
+        animate={{ opacity: hovered ? 1 : 0 }}
+        transition={{ duration: 0.3 }}
+        style={{ background: "radial-gradient(circle at 50% 0%, rgba(59,130,246,0.09) 0%, transparent 70%)" }}
+      />
+
+      {/* Icon */}
+      <div className="relative z-10 w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center">
         <motion.div
-          className="pointer-events-none absolute inset-0 z-0 rounded-[22px]"
-          animate={{ opacity: hovered ? 1 : 0 }}
-          transition={{ duration: 0.3 }}
-          style={{
-            background:
-              "radial-gradient(circle at 50% 0%, rgba(59,130,246,0.09) 0%, transparent 65%)",
-          }}
-        />
+          animate={hovered ? { rotate: 360 } : { rotate: 0 }}
+          transition={{ duration: 0.6, ease: "easeInOut" }}>
+          <Icon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+        </motion.div>
+      </div>
 
-        {/* Thumbnail */}
-        <div
-          className={`relative w-full h-44 bg-gradient-to-br ${course.thumbnail} flex items-center justify-center overflow-hidden`}
-        >
-          <motion.div
-            animate={hovered ? { scale: 1.12, rotate: 6 } : { scale: 1, rotate: 0 }}
-            transition={{ duration: 0.45, ease: "easeInOut" }}
-            className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center"
-          >
-            <Icon className="w-8 h-8 text-white drop-shadow-lg" />
-          </motion.div>
+      {/* Title + count */}
+      <div className="relative z-10">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{category.label}</h3>
+        <p className="text-sm mt-0.5">
+          <span className="text-blue-600 dark:text-blue-400 font-semibold">{category.courseCount}</span>
+          <span className="text-gray-400 dark:text-gray-500"> courses available</span>
+        </p>
+      </div>
 
-          {/* Badge overlay */}
-          {course.badge && (
-            <div className="absolute top-3 left-3">
-              <CourseBadge badge={course.badge} />
-            </div>
-          )}
-
-          {/* Discount pill */}
-          <div className="absolute top-3 right-3 px-2 py-1 rounded-lg bg-black/30 backdrop-blur-sm text-white text-[11px] font-bold">
-            -{discount}%
-          </div>
-
-          {/* Level pill */}
-          <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/25 backdrop-blur-sm text-white text-[11px] font-semibold">
-            {course.level}
-          </div>
+      {/* Tags */}
+      {category.tags.length > 0 && (
+        <div className="relative z-10 flex flex-wrap gap-2">
+          {category.tags.map(tag => (
+            <span key={tag}
+              className="px-3 py-1 rounded-full text-xs font-semibold
+                border border-gray-200 dark:border-white/[0.10]
+                text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-white/[0.04]">
+              {tag}
+            </span>
+          ))}
         </div>
+      )}
 
-        {/* Body */}
-        <div className="relative z-10 flex flex-col gap-3 p-5">
-          {/* Instructor */}
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-6 h-6 rounded-full text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0 ${course.instructor.avatarBg}`}
-            >
-              {course.instructor.avatar}
-            </span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {course.instructor.name}
-            </span>
-          </div>
+      <div className="relative z-10 h-px bg-gray-100 dark:bg-white/[0.06]" />
 
-          {/* Title */}
-          <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2">
-            {course.title}
-          </h3>
-
-          {/* Rating */}
-          <div className="flex items-center gap-1.5">
-            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-            <span className="text-xs font-bold text-gray-800 dark:text-white">
-              {course.rating}
-            </span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">
-              ({formatReviews(course.reviews)})
-            </span>
-          </div>
-
-          {/* Meta row */}
-          <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
-            <span className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {course.duration}
-            </span>
-            <span className="flex items-center gap-1">
-              <BookOpen className="w-3 h-3" />
-              {course.lectures} lectures
-            </span>
-            <span className="flex items-center gap-1">
-              <Users className="w-3 h-3" />
-              {formatStudents(course.students)}
-            </span>
-          </div>
-
-          {/* Tags */}
-          <div className="flex flex-wrap gap-1.5">
-            {course.tags.slice(0, 2).map((tag) => (
-              <span
-                key={tag}
-                className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold
-                  border border-gray-200 dark:border-white/[0.10]
-                  text-gray-500 dark:text-gray-400
-                  bg-gray-50 dark:bg-white/[0.03]"
-              >
-                {tag}
+      {/* Bottom: students + arrow */}
+      <div className="relative z-10 flex items-center gap-3 mt-auto">
+        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-2xl
+          bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.07]">
+          <div className="flex -space-x-2">
+            {avatars.map((av, i) => (
+              <span key={i}
+                className={`w-6 h-6 rounded-full text-[10px] font-bold text-white
+                  flex items-center justify-center border-2 border-white dark:border-[#020618] ${av.bg}`}>
+                {av.initials}
               </span>
             ))}
           </div>
-        </div>
-      </motion.div>
-
-      {/* Price + Add button — OUTSIDE the card */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.38, delay: index * 0.06 + 0.1, ease: "easeOut" }}
-        className="flex items-center justify-between px-1 pt-3 pb-1"
-      >
-        {/* Pricing */}
-        <div className="flex items-baseline gap-2">
-          <span className="text-lg font-black text-gray-900 dark:text-white">
-            ${course.price.toFixed(2)}
-          </span>
-          <span className="text-sm text-gray-400 dark:text-gray-500 line-through">
-            ${course.originalPrice.toFixed(2)}
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+            {fmt(category.totalEnrollments)} students
           </span>
         </div>
 
-        {/* Add button */}
-        <Link to={`/courses/${course.id}`}>
-          <motion.button
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold
-              bg-blue-600 hover:bg-blue-500 text-white
-              shadow-[0_4px_14px_rgba(59,130,246,0.35)]
-              transition-colors duration-200"
-          >
-            <ShoppingCart className="w-3.5 h-3.5" />
-            Add
-          </motion.button>
+        <Link to={`/categories/${category.id}`} onClick={e => e.stopPropagation()}>
+          <motion.div
+            whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.94 }}
+            className="w-10 h-10 rounded-2xl bg-blue-600 hover:bg-blue-500
+              transition-colors flex items-center justify-center flex-shrink-0
+              shadow-[0_4px_14px_rgba(59,130,246,0.4)]">
+            <ArrowRight className="w-4 h-4 text-white" />
+          </motion.div>
         </Link>
-      </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Skeleton Card ────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <div className="flex-shrink-0 w-[320px] rounded-[22px] p-6 flex flex-col gap-4
+      bg-white/70 dark:bg-[#020618] border border-white/80 dark:border-white/[0.08]">
+      <div className="w-14 h-14 rounded-2xl animate-pulse bg-gray-100 dark:bg-white/[0.06]" />
+      <div className="space-y-2">
+        <div className="h-5 w-2/3 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+        <div className="h-3 w-1/2 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+      </div>
+      <div className="h-px bg-gray-100 dark:bg-white/[0.06]" />
+      <div className="h-10 animate-pulse rounded-2xl bg-gray-100 dark:bg-white/[0.06]" />
+    </div>
+  );
+}
+
+// ─── Marquee Row ─────────────────────────────────────────────────────────────
+
+function MarqueeRow({
+  items, reverse = false, speed = 28, isLoading,
+}: {
+  items: DerivedCategory[]; reverse?: boolean; speed?: number; isLoading: boolean;
+}) {
+  const x      = useRef(0);
+  const [pos, setPos] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const doubled = [...items, ...items];
+  const cardW   = 320 + 20;
+  const totalW  = items.length * cardW;
+
+  useAnimationFrame((_, delta) => {
+    if (paused || isLoading || items.length === 0) return;
+    const dir = reverse ? 1 : -1;
+    x.current += dir * (speed / 1000) * delta;
+    if (x.current <= -totalW) x.current += totalW;
+    if (x.current >= 0) x.current -= totalW;
+    setPos(x.current);
+  });
+
+  if (isLoading) {
+    return (
+      <div className="overflow-hidden w-full py-4">
+        <div className="flex gap-5 px-6">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden w-full py-4"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}>
+      <div className="flex gap-5"
+        style={{ transform: `translateX(${pos}px)`, willChange: "transform" }}>
+        {doubled.map((cat, i) => (
+          <CategoryCard key={`${cat.id}-${i}`} category={cat} index={i} />
+        ))}
+      </div>
     </div>
   );
 }
 
 // ─── Main Section ─────────────────────────────────────────────────────────────
-const PREVIEW_COUNT = 8;
 
-export default function CoursesPreview() {
-  const preview = courses.slice(0, PREVIEW_COUNT);
+export default function CategoriesPreview() {
+  const { data, isLoading } = useQuery<PublicCoursesResponse>({
+    queryKey: ["courses-public-all"],
+    queryFn:  () => CoursesService.findAllPublic() as Promise<PublicCoursesResponse>,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const categories = deriveCategories(data?.items ?? []);
+  const row1 = categories.slice(0, Math.ceil(categories.length / 2));
+  const row2 = categories.slice(Math.ceil(categories.length / 2));
 
   return (
-    <section className="py-20 bg-white dark:bg-[#080d18]">
-      <div className="max-w-[1400px] mx-auto px-6">
-        {/* Header */}
+    <section className="relative py-20 overflow-hidden bg-gray-50/50 dark:bg-[#080d18]">
+      {/* Background */}
+      <div className="absolute inset-0 z-0 pointer-events-none" style={{
+        backgroundImage: `
+          linear-gradient(to right, rgba(59,130,246,0.035) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(59,130,246,0.035) 1px, transparent 1px),
+          radial-gradient(circle 600px at 0% 10%, rgba(59,130,246,0.08), transparent 60%),
+          radial-gradient(circle 500px at 100% 0%, rgba(96,165,250,0.07), transparent 55%)
+        `,
+        backgroundSize: "48px 48px, 48px 48px, 100% 100%, 100% 100%",
+      }} />
+
+      {/* Fade masks */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-20"
+        style={{ width: "20%", background: "linear-gradient(to right, var(--section-bg, #f9fafb) 20%, transparent 100%)" }} />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-20"
+        style={{ width: "20%", background: "linear-gradient(to left, var(--section-bg, #f9fafb) 20%, transparent 100%)" }} />
+
+      {/* Header */}
+      <div className="relative z-30 max-w-[1200px] mx-auto px-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-14">
           <div>
-            <div
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-              border border-blue-200 dark:border-blue-900/60
-              bg-blue-50 dark:bg-blue-950/30 mb-4"
-            >
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
+              border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/30 mb-4">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span className="text-[11px] font-bold tracking-widest text-blue-600 dark:text-blue-400 uppercase">
-                Curated for you
-              </span>
+              <span className="text-[11px] font-bold tracking-widest text-blue-600 dark:text-blue-400 uppercase">Browse by field</span>
             </div>
-
             <h2 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white leading-tight">
-              Top{" "}
-              <span className="text-blue-600 dark:text-blue-400">Courses</span>
+              Top <span className="text-blue-600 dark:text-blue-400">Categories</span>
             </h2>
             <p className="mt-3 text-gray-500 dark:text-gray-400 text-base max-w-sm">
-              Hand-picked by our instructors to kickstart your learning journey.
+              Find your perfect learning path across our most popular disciplines.
             </p>
           </div>
-
           <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
-            <Link
-              to="/courses"
+            <Link to="/categories"
               className="self-start md:self-auto inline-flex items-center gap-2 px-5 py-3 rounded-full
-                bg-blue-600 hover:bg-blue-500
-                text-white text-sm font-semibold
-                shadow-[0_4px_20px_rgba(59,130,246,0.4)]
-                transition-colors duration-200"
-            >
-              Browse all courses
-              <ArrowRight className="w-4 h-4" />
+                bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold
+                shadow-[0_4px_20px_rgba(59,130,246,0.4)] transition-colors duration-200">
+              Explore all categories <ArrowRight className="w-4 h-4" />
             </Link>
           </motion.div>
         </div>
-
-        {/* Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-6">
-          {preview.map((course, i) => (
-            <CourseCard key={course.id} course={course} index={i} />
-          ))}
-        </div>
       </div>
+
+      {/* Marquee rows */}
+      <div className="relative z-10 flex flex-col gap-5">
+        <MarqueeRow items={row1} reverse={false} speed={28} isLoading={isLoading} />
+        {row2.length > 0 && <MarqueeRow items={row2} reverse={true} speed={22} isLoading={isLoading} />}
+      </div>
+
+      <style>{`:root { --section-bg: #f9fafb; } .dark { --section-bg: #080d18; }`}</style>
     </section>
   );
 }

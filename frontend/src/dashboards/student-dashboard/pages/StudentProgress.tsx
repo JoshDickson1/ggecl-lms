@@ -2,108 +2,130 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { Clock, CheckCircle2,
-  Play, Flame, Target, BarChart3, Calendar,
-  ChevronRight, Star, Zap,
+import { useQuery } from "@tanstack/react-query";
+import {
+  Clock, CheckCircle2, Play, Flame, Target, BarChart3,
+  Calendar, ChevronRight, Star, Zap, Loader2,
 } from "lucide-react";
+import ProgressService from "@/services/progress.service";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface CourseProgress {
-  id: string;
-  title: string;
-  instructor: string;
-  instructorBg: string;
-  thumbnail: string;
-  progress: number;
-  lecturesCompleted: number;
-  totalLectures: number;
-  timeSpent: string;
-  totalDuration: string;
-  lastWatched: string;
-  lastLecture: string;
-  rating?: number;
-  completed: boolean;
+// ─── API Types (exact backend shape) ─────────────────────────────────────────
+
+interface WeeklyDay {
+  date: string;
+  label: string;
+  minutes: number;
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const COURSES: CourseProgress[] = [
-  {
-    id: "dev-001",
-    title: "The Complete React & TypeScript Bootcamp 2024",
-    instructor: "Sarah Mitchell",
-    instructorBg: "bg-blue-500",
-    thumbnail: "from-blue-500 to-cyan-400",
-    progress: 78,
-    lecturesCompleted: 244,
-    totalLectures: 312,
-    timeSpent: "32h 15m",
-    totalDuration: "42h 15m",
-    lastWatched: "Today, 2h ago",
-    lastLecture: "Lesson 47: React Query v5 Deep Dive",
-    completed: false,
-  },
-  {
-    id: "mkt-001",
-    title: "Digital Marketing Masterclass: SEO, Ads & Social",
-    instructor: "Amara Nwosu",
-    instructorBg: "bg-pink-500",
-    thumbnail: "from-violet-500 to-purple-400",
-    progress: 100,
-    lecturesCompleted: 228,
-    totalLectures: 228,
-    timeSpent: "31h 20m",
-    totalDuration: "31h 20m",
-    lastWatched: "Jan 14, 2024",
-    lastLecture: "Course completed!",
-    rating: 5,
-    completed: true,
-  },
-  {
-    id: "dev-002",
-    title: "Node.js, Express & MongoDB: Backend Masterclass",
-    instructor: "James Okafor",
-    instructorBg: "bg-emerald-500",
-    thumbnail: "from-green-500 to-emerald-400",
-    progress: 45,
-    lecturesCompleted: 119,
-    totalLectures: 264,
-    timeSpent: "16h 40m",
-    totalDuration: "36h 40m",
-    lastWatched: "Yesterday",
-    lastLecture: "Lesson 28: JWT Authentication",
-    completed: false,
-  },
-  {
-    id: "biz-001",
-    title: "The Complete Entrepreneurship & Startup Playbook",
-    instructor: "Priya Sharma",
-    instructorBg: "bg-rose-500",
-    thumbnail: "from-sky-500 to-blue-400",
-    progress: 20,
-    lecturesCompleted: 66,
-    totalLectures: 328,
-    timeSpent: "8h 50m",
-    totalDuration: "44h 10m",
-    lastWatched: "3 days ago",
-    lastLecture: "Lesson 12: Validating Your Idea",
-    completed: false,
-  },
+interface WeeklyActivity {
+  days: WeeklyDay[];
+  totalThisWeek: number;
+  dailyAverage: number;
+  mostActiveDay: string | null;
+}
+
+interface Streak {
+  currentStreak: number;
+  longestStreak: number;
+  totalActiveDays: number;
+  lastActiveDate: string | null;
+}
+
+interface DashboardStats {
+  totalTimeSpentThisMonth: number;
+  streak: Streak;
+  completedCourses: number;
+  avgCompletionPercent: number;
+  weeklyActivity: WeeklyActivity;
+}
+
+interface DashboardCourse {
+  courseId: string;
+  title: string;
+  img?: string;
+  instructor: { name: string };
+  progressPercent: number;
+  completedLessons: number;
+  totalLessons: number;
+  watchTimeSeconds: number;
+  lastAccessedAt?: string;
+  lastLessonTitle?: string;
+  completed: boolean;
+  myRating?: number;
+}
+
+interface DashboardResponse {
+  stats: DashboardStats;
+  courses: DashboardCourse[];
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const INSTRUCTOR_COLORS = [
+  "bg-blue-500", "bg-pink-500", "bg-emerald-500",
+  "bg-rose-500",  "bg-violet-500", "bg-amber-500",
 ];
 
-// Weekly activity data (minutes per day)
-const WEEKLY_ACTIVITY = [
-  { day: "Mon", minutes: 45  },
-  { day: "Tue", minutes: 90  },
-  { day: "Wed", minutes: 0   },
-  { day: "Thu", minutes: 120 },
-  { day: "Fri", minutes: 60  },
-  { day: "Sat", minutes: 75  },
-  { day: "Sun", minutes: 30  },
+const THUMBNAIL_GRADIENTS = [
+  "from-blue-500 to-cyan-400",
+  "from-violet-500 to-purple-400",
+  "from-green-500 to-emerald-400",
+  "from-sky-500 to-blue-400",
+  "from-rose-500 to-pink-400",
+  "from-amber-500 to-orange-400",
 ];
 
-const MAX_MINUTES = Math.max(...WEEKLY_ACTIVITY.map(d => d.minutes));
+function colorFor<T>(arr: T[], i: number): T {
+  return arr[i % arr.length];
+}
+
+function fmtSeconds(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h === 0) return `${m}m`;
+  return `${h}h ${m}m`;
+}
+
+function fmtRelative(iso?: string): string {
+  if (!iso) return "—";
+  const diff  = Date.now() - new Date(iso).getTime();
+  const hours = Math.floor(diff / 3_600_000);
+  const days  = Math.floor(diff / 86_400_000);
+  if (hours < 1)  return "Just now";
+  if (hours < 24) return `Today, ${hours}h ago`;
+  if (days === 1) return "Yesterday";
+  if (days < 7)   return `${days} days ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const todayAbbr = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date().getDay()];
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function Sk({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded-xl bg-gray-100 dark:bg-white/[0.06] ${className}`} />;
+}
+
+function PageSkeleton() {
+  return (
+    <div className="max-w-[1100px] mx-auto pb-10 space-y-8">
+      <div className="space-y-2">
+        <Sk className="h-9 w-64" />
+        <Sk className="h-4 w-80" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => <Sk key={i} className="h-28 rounded-2xl" />)}
+      </div>
+      <Sk className="h-56 rounded-[22px]" />
+      <div className="space-y-4">
+        {Array.from({ length: 3 }).map((_, i) => <Sk key={i} className="h-44 rounded-[20px]" />)}
+      </div>
+    </div>
+  );
+}
 
 // ─── Progress bar ─────────────────────────────────────────────────────────────
+
 function ProgressBar({ pct, color = "blue" }: { pct: number; color?: "blue" | "emerald" | "cyan" }) {
   const gradients: Record<string, string> = {
     blue:    "from-blue-500 to-cyan-400",
@@ -122,9 +144,11 @@ function ProgressBar({ pct, color = "blue" }: { pct: number; color?: "blue" | "e
   );
 }
 
-// ─── Course row card ──────────────────────────────────────────────────────────
-function CourseProgressCard({ course, index }: { course: CourseProgress; index: number }) {
-  const remaining = course.totalLectures - course.lecturesCompleted;
+// ─── Course card ──────────────────────────────────────────────────────────────
+
+function CourseProgressCard({ course, index }: { course: DashboardCourse; index: number }) {
+  const pct       = Math.round(course.progressPercent);
+  const remaining = course.totalLessons - course.completedLessons;
 
   return (
     <motion.div
@@ -141,7 +165,7 @@ function CourseProgressCard({ course, index }: { course: CourseProgress; index: 
       <div className="h-1 w-full bg-gray-100 dark:bg-white/[0.07]">
         <motion.div
           initial={{ width: 0 }}
-          animate={{ width: `${course.progress}%` }}
+          animate={{ width: `${pct}%` }}
           transition={{ duration: 1, ease: "easeOut", delay: index * 0.06 }}
           className={`h-full bg-gradient-to-r ${course.completed ? "from-emerald-500 to-emerald-400" : "from-blue-500 to-cyan-400"}`}
         />
@@ -150,19 +174,21 @@ function CourseProgressCard({ course, index }: { course: CourseProgress; index: 
       <div className="p-5">
         <div className="flex items-start gap-4">
           {/* Thumbnail */}
-          <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br ${course.thumbnail}
-            flex items-center justify-center flex-shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.12)]`}>
-            {course.completed ? (
-              <CheckCircle2 className="w-6 h-6 text-white" />
-            ) : (
-              <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
-            )}
+          <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br ${colorFor(THUMBNAIL_GRADIENTS, index)}
+            flex items-center justify-center flex-shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.12)] overflow-hidden`}>
+            {course.img
+              ? <img src={course.img} alt={course.title} className="w-full h-full object-cover" />
+              : course.completed
+                ? <CheckCircle2 className="w-6 h-6 text-white" />
+                : <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
+            }
           </div>
 
           {/* Main info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
-              <Link to={`/courses/${course.id}`}
+              <Link
+                to={`/student/courses/${course.courseId}`}
                 className="text-sm font-black text-gray-900 dark:text-white line-clamp-1
                   hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                 {course.title}
@@ -172,27 +198,26 @@ function CourseProgressCard({ course, index }: { course: CourseProgress; index: 
                   ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400"
                   : "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400"
                 }`}>
-                {course.progress}%
+                {pct}%
               </span>
             </div>
 
             <div className="flex items-center gap-1.5 mb-3">
-              <span className={`w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center flex-shrink-0 ${course.instructorBg}`}>
-                {course.instructor[0]}
+              <span className={`w-5 h-5 rounded-full text-[9px] font-bold text-white
+                flex items-center justify-center flex-shrink-0 ${colorFor(INSTRUCTOR_COLORS, index)}`}>
+                {course.instructor.name[0]}
               </span>
-              <span className="text-xs text-gray-400">{course.instructor}</span>
+              <span className="text-xs text-gray-400">{course.instructor.name}</span>
             </div>
 
-            <ProgressBar pct={course.progress} color={course.completed ? "emerald" : "blue"} />
+            <ProgressBar pct={pct} color={course.completed ? "emerald" : "blue"} />
 
             <div className="flex items-center justify-between mt-2">
               <span className="text-[11px] text-gray-400">
-                {course.lecturesCompleted}/{course.totalLectures} lectures
+                {course.completedLessons}/{course.totalLessons} lessons
               </span>
               {!course.completed && (
-                <span className="text-[11px] text-gray-400">
-                  {remaining} remaining
-                </span>
+                <span className="text-[11px] text-gray-400">{remaining} remaining</span>
               )}
             </div>
           </div>
@@ -203,21 +228,23 @@ function CourseProgressCard({ course, index }: { course: CourseProgress; index: 
           <div className="flex flex-col gap-0.5">
             <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Time Spent</span>
             <span className="text-xs font-black text-gray-800 dark:text-white flex items-center gap-1">
-              <Clock className="w-3 h-3 text-blue-500" />{course.timeSpent}
+              <Clock className="w-3 h-3 text-blue-500" />
+              {fmtSeconds(course.watchTimeSeconds)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Last Watched</span>
             <span className="text-xs font-bold text-gray-600 dark:text-gray-400 flex items-center gap-1">
-              <Calendar className="w-3 h-3 text-blue-500" />{course.lastWatched}
+              <Calendar className="w-3 h-3 text-blue-500" />
+              {fmtRelative(course.lastAccessedAt)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5 items-end text-right">
-            {course.completed && course.rating ? (
+            {course.completed && course.myRating ? (
               <>
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Your Rating</span>
                 <span className="flex items-center gap-0.5">
-                  {Array.from({ length: course.rating }, (_, i) => (
+                  {Array.from({ length: course.myRating }, (_, i) => (
                     <Star key={i} className="w-3 h-3 text-amber-400 fill-amber-400" />
                   ))}
                 </span>
@@ -225,7 +252,8 @@ function CourseProgressCard({ course, index }: { course: CourseProgress; index: 
             ) : (
               <>
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Continue</span>
-                <Link to={`/student/courses/${course.id}/watch`}
+                <Link
+                  to={`/student/courses/${course.courseId}/watch`}
                   className="flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
                   Resume <ChevronRight className="w-3 h-3" />
                 </Link>
@@ -234,12 +262,12 @@ function CourseProgressCard({ course, index }: { course: CourseProgress; index: 
           </div>
         </div>
 
-        {/* Last lecture */}
-        {!course.completed && (
+        {/* Last lesson */}
+        {!course.completed && course.lastLessonTitle && (
           <div className="mt-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
             <p className="text-[11px] text-gray-400 font-medium">
               <span className="font-bold text-gray-600 dark:text-gray-300">Last: </span>
-              {course.lastLecture}
+              {course.lastLessonTitle}
             </p>
           </div>
         )}
@@ -249,24 +277,51 @@ function CourseProgressCard({ course, index }: { course: CourseProgress; index: 
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function StudentProgress() {
   const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
 
-  const totalTime  = "57h 25m";
-  const streak     = 14;
-  const completed  = COURSES.filter(c => c.completed).length;
-  const inProgress = COURSES.filter(c => !c.completed).length;
-  const avgProgress = Math.round(COURSES.reduce((a, c) => a + c.progress, 0) / COURSES.length);
-
-  const filtered = COURSES.filter(c => {
-    if (filter === "active")    return !c.completed;
-    if (filter === "completed") return c.completed;
-    return true;
-  }).sort((a, b) => {
-    // completed last, then by progress desc
-    if (a.completed !== b.completed) return a.completed ? 1 : -1;
-    return b.progress - a.progress;
+  const { data: dashboard, isLoading, isError } = useQuery<DashboardResponse>({
+    queryKey: ["progress-dashboard"],
+    queryFn:  () => ProgressService.getDashboard() as Promise<DashboardResponse>,
   });
+
+  if (isLoading) return <PageSkeleton />;
+
+  if (isError) {
+    return (
+      <div className="max-w-[1100px] mx-auto py-20 flex flex-col items-center gap-3">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        <p className="text-sm text-gray-400">Failed to load progress data. Please try again.</p>
+      </div>
+    );
+  }
+
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const stats      = dashboard?.stats;
+  const courses    = dashboard?.courses ?? [];
+  const weeklyDays = stats?.weeklyActivity.days ?? [];
+  const maxMinutes = Math.max(...weeklyDays.map(d => d.minutes), 1);
+  const streak     = stats?.streak.currentStreak ?? 0;
+  const completed  = stats?.completedCourses ?? 0;
+  const inProgress = courses.filter(c => !c.completed).length;
+  const avgProgress = Math.round(stats?.avgCompletionPercent ?? 0);
+  const totalTime  = fmtSeconds(stats?.totalTimeSpentThisMonth ?? 0);
+  const weekTotal  = stats?.weeklyActivity.totalThisWeek ?? 0;
+  const dailyAvg   = stats?.weeklyActivity.dailyAverage ?? 0;
+  const mostActive = stats?.weeklyActivity.mostActiveDay ?? "—";
+
+  const filtered = courses
+    .filter(c => {
+      if (filter === "active")    return !c.completed;
+      if (filter === "completed") return c.completed;
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      return b.progressPercent - a.progressPercent;
+    });
 
   return (
     <div className="max-w-[1100px] mx-auto pb-10 space-y-8">
@@ -280,13 +335,14 @@ export default function StudentProgress() {
       </motion.div>
 
       {/* Top stats */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
         className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: Clock,        value: totalTime,            label: "Total Time Spent",  sub: "this month",     color: "blue"    },
-          { icon: Flame,        value: `${streak}d`,         label: "Learning Streak",   sub: "keep it going!", color: "amber"   },
-          { icon: CheckCircle2, value: String(completed),    label: "Completed",         sub: "courses",        color: "emerald" },
-          { icon: Target,       value: `${avgProgress}%`,    label: "Avg Completion",    sub: "across courses", color: "cyan"    },
+          { icon: Clock,        value: totalTime,          label: "Total Time Spent", sub: "this month",     color: "blue"    },
+          { icon: Flame,        value: `${streak}d`,       label: "Learning Streak",  sub: "keep it going!", color: "amber"   },
+          { icon: CheckCircle2, value: String(completed),  label: "Completed",        sub: "courses",        color: "emerald" },
+          { icon: Target,       value: `${avgProgress}%`,  label: "Avg Completion",   sub: "across courses", color: "cyan"    },
         ].map(({ icon: Icon, value, label, sub, color }) => {
           const palette: Record<string, string> = {
             blue:    "bg-blue-50/60 dark:bg-blue-950/20 border-blue-100/60 dark:border-blue-900/20 [&_div]:bg-blue-100 dark:[&_div]:bg-blue-900/40 [&_svg]:text-blue-600 dark:[&_svg]:text-blue-400",
@@ -308,7 +364,8 @@ export default function StudentProgress() {
       </motion.div>
 
       {/* Weekly activity chart */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
         className="rounded-[22px] bg-white dark:bg-[#0f1623]
           border border-gray-100 dark:border-white/[0.07]
           shadow-[0_4px_24px_rgba(0,0,0,0.05)] p-6">
@@ -331,11 +388,11 @@ export default function StudentProgress() {
         </div>
 
         <div className="flex items-end gap-3 h-28">
-          {WEEKLY_ACTIVITY.map((day, i) => {
-            const pct = MAX_MINUTES > 0 ? (day.minutes / MAX_MINUTES) * 100 : 0;
-            const isToday = day.day === "Sun"; // mock
+          {weeklyDays.map((day, i) => {
+            const pct     = (day.minutes / maxMinutes) * 100;
+            const isToday = day.label === todayAbbr;
             return (
-              <div key={day.day} className="flex-1 flex flex-col items-center gap-2">
+              <div key={day.date} className="flex-1 flex flex-col items-center gap-2">
                 <div className="w-full flex flex-col justify-end" style={{ height: "80px" }}>
                   {day.minutes > 0 ? (
                     <motion.div
@@ -353,7 +410,7 @@ export default function StudentProgress() {
                   )}
                 </div>
                 <span className={`text-[10px] font-bold ${isToday ? "text-blue-600 dark:text-blue-400" : "text-gray-400"}`}>
-                  {day.day}
+                  {day.label}
                 </span>
               </div>
             );
@@ -363,9 +420,9 @@ export default function StudentProgress() {
         {/* Legend */}
         <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-100 dark:border-white/[0.06]">
           {[
-            { label: "Total this week",  value: `${WEEKLY_ACTIVITY.reduce((a, d) => a + d.minutes, 0)} min` },
-            { label: "Daily average",    value: `${Math.round(WEEKLY_ACTIVITY.reduce((a, d) => a + d.minutes, 0) / 7)} min` },
-            { label: "Most active",      value: "Thursday" },
+            { label: "Total this week", value: `${weekTotal} min` },
+            { label: "Daily average",   value: `${dailyAvg} min`  },
+            { label: "Most active",     value: mostActive          },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{label}</p>
@@ -383,7 +440,7 @@ export default function StudentProgress() {
             Course Progress
           </h2>
           <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05]">
-            {(["all","active","completed"] as const).map(f => (
+            {(["all", "active", "completed"] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold capitalize transition-all duration-200
                   ${filter === f
@@ -398,11 +455,20 @@ export default function StudentProgress() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-4">
-          {filtered.map((course, i) => (
-            <CourseProgressCard key={course.id} course={course} index={i} />
-          ))}
-        </div>
+        {filtered.length === 0 ? (
+          <div className="py-16 flex flex-col items-center gap-2 text-gray-400">
+            <CheckCircle2 className="w-8 h-8 opacity-30" />
+            <p className="text-sm font-medium">
+              {filter === "completed" ? "No completed courses yet." : "No courses in progress."}
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {filtered.map((course, i) => (
+              <CourseProgressCard key={course.courseId} course={course} index={i} />
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

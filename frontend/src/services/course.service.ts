@@ -21,11 +21,10 @@ export enum CertificationType {
 }
 
 export enum MaterialType {
-  VIDEO      = "VIDEO",
-  DOCUMENT   = "DOCUMENT",
-  AUDIO      = "AUDIO",
-  LINK       = "LINK",
-  // Extend to match your Prisma MaterialType enum
+  VIDEO    = "VIDEO",
+  DOCUMENT = "DOCUMENT",
+  AUDIO    = "AUDIO",
+  LINK     = "LINK",
 }
 
 // ==================== TYPES ====================
@@ -45,7 +44,7 @@ export interface CreateCoursePayload {
   includes?: string[];
   tags?: string[];
   badge?: string;
-  instructorId?: string; // Required when ADMIN creates a course
+  instructorId?: string;
 }
 
 export type UpdateCoursePayload = Partial<CreateCoursePayload>;
@@ -59,6 +58,20 @@ export interface CourseQuery {
   minPrice?: number;
   maxPrice?: number;
   instructorId?: string;
+  cursor?: string;
+  limit?: number;
+  sortBy?: "createdAt" | "price" | "totalRating" | "publishedAt" | "title";
+  sortOrder?: "asc" | "desc";
+}
+
+/** Query params for the public (unauthenticated) courses endpoint */
+export interface PublicCourseQuery {
+  search?: string;
+  level?: CourseLevel;
+  certification?: CertificationType;
+  tags?: string[];
+  minPrice?: number;
+  maxPrice?: number;
   cursor?: string;
   limit?: number;
   sortBy?: "createdAt" | "price" | "totalRating" | "publishedAt" | "title";
@@ -101,6 +114,30 @@ export interface AddMaterialPayload {
 // ==================== SERVICE ====================
 
 export default class CoursesService {
+
+  // ─── PUBLIC (no auth required) ───────────────────────────────────────────────
+
+  /**
+   * Browse published courses — no auth required.
+   * Used on the landing page, AllCourses page, and previews.
+   * @param query - Optional filters and pagination
+   */
+  static async findAllPublic(query?: PublicCourseQuery): Promise<unknown> {
+    const response = await APIConfig.fetch(
+      `/courses/public${this.toPublicQueryString(query)}`
+    );
+    return response.json();
+  }
+
+  /**
+   * Get a single published course landing page — no auth required.
+   * @param id - Course ID
+   */
+  static async findOnePublic(id: string): Promise<unknown> {
+    const response = await APIConfig.fetch(`/courses/public/${id}`);
+    return response.json();
+  }
+
   // ─── COURSE CRUD ─────────────────────────────────────────────────────────────
 
   /**
@@ -171,9 +208,7 @@ export default class CoursesService {
    * @param id - Course ID
    */
   static async publish(id: string): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${id}/publish`, {
-      method: "PATCH",
-    });
+    const response = await APIConfig.fetch(`/courses/${id}/publish`, { method: "PATCH" });
     return response.json();
   }
 
@@ -182,43 +217,7 @@ export default class CoursesService {
    * @param id - Course ID
    */
   static async archive(id: string): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${id}/archive`, {
-      method: "PATCH",
-    });
-    return response.json();
-  }
-
-  // ─── ENROLLMENT ──────────────────────────────────────────────────────────────
-
-  /**
-   * Enroll the current student in a course (STUDENT only).
-   * @param id - Course ID
-   */
-  static async enroll(id: string): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${id}/enroll`, {
-      method: "POST",
-    });
-    return response.json();
-  }
-
-  /**
-   * Unenroll the current student from a course (STUDENT only).
-   * @param id - Course ID
-   */
-  static async unenroll(id: string): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${id}/enroll`, {
-      method: "DELETE",
-    });
-    return response.json();
-  }
-
-  /**
-   * Get all enrollments for a course (ADMIN / INSTRUCTOR only).
-   * INSTRUCTOR can only view their own course's enrollments.
-   * @param id - Course ID
-   */
-  static async getEnrollments(id: string): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${id}/enrollments`);
+    const response = await APIConfig.fetch(`/courses/${id}/archive`, { method: "PATCH" });
     return response.json();
   }
 
@@ -226,13 +225,8 @@ export default class CoursesService {
 
   /**
    * Add a section to a course.
-   * @param courseId - Course ID
-   * @param payload - Section data
    */
-  static async createSection(
-    courseId: string,
-    payload: CreateSectionPayload
-  ): Promise<unknown> {
+  static async createSection(courseId: string, payload: CreateSectionPayload): Promise<unknown> {
     const response = await APIConfig.fetch(`/courses/${courseId}/sections`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -243,36 +237,21 @@ export default class CoursesService {
 
   /**
    * Update a section.
-   * @param courseId - Course ID
-   * @param sectionId - Section ID
-   * @param payload - Fields to update
    */
-  static async updateSection(
-    courseId: string,
-    sectionId: string,
-    payload: UpdateSectionPayload
-  ): Promise<unknown> {
-    const response = await APIConfig.fetch(
-      `/courses/${courseId}/sections/${sectionId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
+  static async updateSection(courseId: string, sectionId: string, payload: UpdateSectionPayload): Promise<unknown> {
+    const response = await APIConfig.fetch(`/courses/${courseId}/sections/${sectionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
     return response.json();
   }
 
   /**
    * Remove a section and all its lessons.
-   * @param courseId - Course ID
-   * @param sectionId - Section ID
    */
   static async removeSection(courseId: string, sectionId: string): Promise<unknown> {
-    const response = await APIConfig.fetch(
-      `/courses/${courseId}/sections/${sectionId}`,
-      { method: "DELETE" }
-    );
+    const response = await APIConfig.fetch(`/courses/${courseId}/sections/${sectionId}`, { method: "DELETE" });
     return response.json();
   }
 
@@ -280,15 +259,8 @@ export default class CoursesService {
 
   /**
    * Add a lesson to a section.
-   * @param courseId - Course ID
-   * @param sectionId - Section ID
-   * @param payload - Lesson data
    */
-  static async createLesson(
-    courseId: string,
-    sectionId: string,
-    payload: CreateLessonPayload
-  ): Promise<unknown> {
+  static async createLesson(courseId: string, sectionId: string, payload: CreateLessonPayload): Promise<unknown> {
     const response = await APIConfig.fetch(
       `/courses/${courseId}/sections/${sectionId}/lessons`,
       {
@@ -302,17 +274,8 @@ export default class CoursesService {
 
   /**
    * Update a lesson.
-   * @param courseId - Course ID
-   * @param sectionId - Section ID
-   * @param lessonId - Lesson ID
-   * @param payload - Fields to update
    */
-  static async updateLesson(
-    courseId: string,
-    sectionId: string,
-    lessonId: string,
-    payload: UpdateLessonPayload
-  ): Promise<unknown> {
+  static async updateLesson(courseId: string, sectionId: string, lessonId: string, payload: UpdateLessonPayload): Promise<unknown> {
     const response = await APIConfig.fetch(
       `/courses/${courseId}/sections/${sectionId}/lessons/${lessonId}`,
       {
@@ -326,15 +289,8 @@ export default class CoursesService {
 
   /**
    * Remove a lesson.
-   * @param courseId - Course ID
-   * @param sectionId - Section ID
-   * @param lessonId - Lesson ID
    */
-  static async removeLesson(
-    courseId: string,
-    sectionId: string,
-    lessonId: string
-  ): Promise<unknown> {
+  static async removeLesson(courseId: string, sectionId: string, lessonId: string): Promise<unknown> {
     const response = await APIConfig.fetch(
       `/courses/${courseId}/sections/${sectionId}/lessons/${lessonId}`,
       { method: "DELETE" }
@@ -346,17 +302,8 @@ export default class CoursesService {
 
   /**
    * Add a material to a lesson.
-   * @param courseId - Course ID
-   * @param sectionId - Section ID
-   * @param lessonId - Lesson ID
-   * @param payload - Material data
    */
-  static async addMaterial(
-    courseId: string,
-    sectionId: string,
-    lessonId: string,
-    payload: AddMaterialPayload
-  ): Promise<unknown> {
+  static async addMaterial(courseId: string, sectionId: string, lessonId: string, payload: AddMaterialPayload): Promise<unknown> {
     const response = await APIConfig.fetch(
       `/courses/${courseId}/sections/${sectionId}/lessons/${lessonId}/materials`,
       {
@@ -370,17 +317,8 @@ export default class CoursesService {
 
   /**
    * Remove a material from a lesson.
-   * @param courseId - Course ID
-   * @param sectionId - Section ID
-   * @param lessonId - Lesson ID
-   * @param materialId - Material ID
    */
-  static async removeMaterial(
-    courseId: string,
-    sectionId: string,
-    lessonId: string,
-    materialId: string
-  ): Promise<unknown> {
+  static async removeMaterial(courseId: string, sectionId: string, lessonId: string, materialId: string): Promise<unknown> {
     const response = await APIConfig.fetch(
       `/courses/${courseId}/sections/${sectionId}/lessons/${lessonId}/materials/${materialId}`,
       { method: "DELETE" }
@@ -390,6 +328,29 @@ export default class CoursesService {
 
   // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
+  /** Query string for the public endpoint (no status filter) */
+  private static toPublicQueryString(query?: PublicCourseQuery): string {
+    if (!query) return "";
+    const params = new URLSearchParams();
+
+    if (query.search)        params.append("search",       query.search);
+    if (query.level)         params.append("level",        query.level);
+    if (query.certification) params.append("certification", query.certification);
+    // if (query.instructorId)  params.append("instructorId",  (query as any).instructorId);
+    if (query.cursor)        params.append("cursor",        query.cursor);
+    if (query.sortBy)        params.append("sortBy",        query.sortBy);
+    if (query.sortOrder)     params.append("sortOrder",     query.sortOrder);
+    if (query.minPrice !== undefined) params.append("minPrice", String(query.minPrice));
+    if (query.maxPrice !== undefined) params.append("maxPrice", String(query.maxPrice));
+    if (query.limit !== undefined)    params.append("limit",    String(query.limit));
+    if (query.tags?.length)
+      query.tags.forEach(t => params.append("tags", t));
+
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  }
+
+  /** Query string for the authenticated endpoint */
   private static toQueryString(query?: CourseQuery): string {
     if (!query) return "";
     const params = new URLSearchParams();
@@ -397,16 +358,16 @@ export default class CoursesService {
     if (query.search)        params.append("search",       query.search);
     if (query.level)         params.append("level",        query.level);
     if (query.status)        params.append("status",       query.status);
-    if (query.certification) params.append("certification",query.certification);
-    if (query.instructorId)  params.append("instructorId", query.instructorId);
-    if (query.cursor)        params.append("cursor",       query.cursor);
-    if (query.sortBy)        params.append("sortBy",       query.sortBy);
-    if (query.sortOrder)     params.append("sortOrder",    query.sortOrder);
+    if (query.certification) params.append("certification", query.certification);
+    if (query.instructorId)  params.append("instructorId",  query.instructorId);
+    if (query.cursor)        params.append("cursor",        query.cursor);
+    if (query.sortBy)        params.append("sortBy",        query.sortBy);
+    if (query.sortOrder)     params.append("sortOrder",     query.sortOrder);
     if (query.minPrice !== undefined) params.append("minPrice", String(query.minPrice));
     if (query.maxPrice !== undefined) params.append("maxPrice", String(query.maxPrice));
     if (query.limit !== undefined)    params.append("limit",    String(query.limit));
     if (query.tags?.length)
-      query.tags.forEach((t) => params.append("tags", t));
+      query.tags.forEach(t => params.append("tags", t));
 
     const qs = params.toString();
     return qs ? `?${qs}` : "";

@@ -1,37 +1,88 @@
+// src/landing/pages/SingleInstructor.tsx
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
- ArrowRight, Star, Users, BookOpen,
-  Globe, Briefcase, Mail, Award, CheckCircle,
-//   Youtube, Linkedin, Twitter, Github, Play,
+  ArrowRight, Globe,
+  Briefcase, Mail, CheckCircle, Loader2,
 } from "lucide-react";
-import { getInstructorById, instructors, fmt, type Instructor } from "@/data/Instructors";
 import { PageHeroBg } from "@/landing/pages/SingleCategory";
+import UserService from "@/services/user.service";
+import CoursesService from "@/services/course.service";
 
-// ─── Font import (kept as CSS per your request) ───────────────────────────────
+// ─── Fonts ────────────────────────────────────────────────────────────────────
+
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&display=swap');
 .font-syne { font-family: 'Syne', system-ui, sans-serif; }
-.font-dm { font-family: 'DM Sans', system-ui, sans-serif; }`;
-// Deterministic placeholder photos from UI Faces / DiceBear
-const PHOTO_MAP: Record<string, string> = {
-  "inst-1": "https://i.pinimg.com/736x/b5/ca/9b/b5ca9b6c98616c7d8465aae596917c76.jpg",
-  "inst-2": "https://i.pinimg.com/736x/49/c3/65/49c365435c2566ef0c937d8290a8c034.jpg",
-  "inst-3": "https://i.pinimg.com/736x/c2/4d/0d/c24d0d7542ee6be66bf4270123c15df4.jpg",
-  "inst-4": "https://api.dicebear.com/9.x/personas/svg?seed=DavidChen&backgroundColor=d1d4f9",
-  "inst-5": "https://api.dicebear.com/9.x/personas/svg?seed=FatimaAlHassan&backgroundColor=ffdfbf",
-  "inst-6": "https://api.dicebear.com/9.x/personas/svg?seed=LucaRomano&backgroundColor=b6e3f4",
-  "inst-7": "https://api.dicebear.com/9.x/personas/svg?seed=PriyaSharma&backgroundColor=ffd5dc",
-  "inst-8": "https://api.dicebear.com/9.x/personas/svg?seed=MarcusThompson&backgroundColor=c0f0e0",
-};
+.font-dm   { font-family: 'DM Sans', system-ui, sans-serif; }`;
+
+// ─── API Types ────────────────────────────────────────────────────────────────
+
+interface InstructorProfile {
+  bio: string | null;
+  description: string | null;
+  tags: string[];
+  areasOfExpertise: string[];
+  teachingCategories: string[];
+  specialization: string | null;
+  website: string | null;
+}
+
+interface PublicInstructor {
+  id: string;
+  name: string;
+  image: string | null;
+  role: string;
+  createdAt: string;
+  instructorProfile: InstructorProfile | null;
+}
+
+interface PublicCourse {
+  id: string;
+  title: string;
+  img: string | null;
+  price: number;
+  level: string;
+  tags: string[];
+  averageRating: number;
+  _count: { enrollments: number };
+  totalLectures: number;
+}
+
+interface PublicCoursesResponse {
+  items: PublicCourse[];
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const AVATAR_COLORS = [
+  "bg-blue-500", "bg-violet-500", "bg-emerald-500",
+  "bg-rose-500",  "bg-amber-500",  "bg-cyan-500",
+];
+
+function fmt(n: number) {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
+}
+
+function initials(name: string) {
+  return name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
+}
+
+const COURSE_GRADIENTS = [
+  "from-blue-500 to-blue-700", "from-violet-500 to-purple-700",
+  "from-emerald-500 to-teal-700", "from-rose-500 to-pink-700",
+  "from-amber-500 to-orange-600",
+];
+
 // ─── Stars ────────────────────────────────────────────────────────────────────
+
 function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
     <span className="flex items-center gap-[2px]">
       {Array.from({ length: 5 }, (_, i) => (
         <svg key={i} width={size} height={size} viewBox="0 0 24 24"
-          fill={i + 1 <= Math.round(rating) ? "#FFC806" : "#374151"}
-        >
+          fill={i + 1 <= Math.round(rating) ? "#FFC806" : "#374151"}>
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
         </svg>
       ))}
@@ -39,45 +90,21 @@ function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   );
 }
 
-// ─── Social icon map ──────────────────────────────────────────────────────────
-function SocialIcon({ platform }: { platform: string }) {
-  const cls = "w-3.5 h-3.5";
-  switch (platform) {
-    case "website": return <Globe className={cls} />;
-    // case "linkedin": return <Linkedin className={cls} />;
-    // case "twitter": return <Twitter className={cls} />;
-    // case "github": return <Github className={cls} />;
-    // case "youtube": return <Youtube className={cls} />;
-    default: return <Globe className={cls} />;
-  }
-}
-
 // ─── Course snippet card ──────────────────────────────────────────────────────
-function CourseSnippetCard({ course }: { course: Instructor["courseSnippets"][0] }) {
-  const Icon = course.icon;
-  const [hovered, setHovered] = useState(false);
 
+function CourseSnippetCard({ course, index }: { course: PublicCourse; index: number }) {
   return (
-    <motion.div
-      onHoverStart={() => setHovered(true)}
-      onHoverEnd={() => setHovered(false)}
-      whileHover={{ y: -2 }}
-      className="flex gap-3 p-3 rounded-2xl
-        bg-gray-50 dark:bg-white/[0.04]
+    <motion.div whileHover={{ y: -2 }}
+      className="flex gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-white/[0.04]
         border border-gray-100 dark:border-white/[0.07]
-        hover:border-blue-200 dark:hover:border-blue-800/50
-        transition-all duration-200 cursor-pointer"
-    >
-      {/* Thumbnail */}
-      <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${course.thumbnail} flex items-center justify-center flex-shrink-0 overflow-hidden relative`}>
-        <div className="absolute inset-0 opacity-10"
-          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "10px 10px" }}
-        />
-        <motion.div animate={hovered ? { scale: 1.1 } : { scale: 1 }} transition={{ duration: 0.25 }}>
-          <Icon className="w-6 h-6 text-white" />
-        </motion.div>
+        hover:border-blue-200 dark:hover:border-blue-800/50 transition-all duration-200 cursor-pointer">
+      <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${COURSE_GRADIENTS[index % COURSE_GRADIENTS.length]}
+        flex items-center justify-center flex-shrink-0 overflow-hidden`}>
+        {course.img
+          ? <img src={course.img} alt={course.title} className="w-full h-full object-cover" />
+          : <span className="text-white font-black text-sm">{course.title.slice(0, 2).toUpperCase()}</span>
+        }
       </div>
-
       <div className="flex-1 min-w-0">
         <Link to={`/courses/${course.id}`}>
           <p className="text-xs font-bold text-gray-800 dark:text-white line-clamp-2 leading-snug
@@ -86,28 +113,69 @@ function CourseSnippetCard({ course }: { course: Instructor["courseSnippets"][0]
           </p>
         </Link>
         <div className="flex items-center gap-2 mt-1.5">
-          <Stars rating={course.rating} size={10} />
-          <span className="text-[10px] font-bold text-amber-500">{course.rating}</span>
-          <span className="text-[10px] text-gray-400">{fmt(course.students)}</span>
+          <Stars rating={course.averageRating} size={10} />
+          <span className="text-[10px] font-bold text-amber-500">
+            {course.averageRating > 0 ? course.averageRating.toFixed(1) : "New"}
+          </span>
+          <span className="text-[10px] text-gray-400">{fmt(course._count.enrollments)} students</span>
         </div>
-        <p className="text-xs font-extrabold text-gray-900 dark:text-white mt-1">${course.price}</p>
+        <p className="text-xs font-extrabold text-gray-900 dark:text-white mt-1">${course.price.toFixed(2)}</p>
       </div>
     </motion.div>
   );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function SingleInstructor() {
-  const { id } = useParams();
-  const instructor = getInstructorById(id ?? "") ?? instructors[0];
-
+  const { id } = useParams<{ id: string }>();
   const [showAllExpertise, setShowAllExpertise] = useState(false);
-  const visibleExpertise = showAllExpertise ? instructor.expertise : instructor.expertise.slice(0, 5);
+  const [imgError, setImgError] = useState(false);
 
-  // Related instructors (same category, exclude current)
-  const related = instructors
-    .filter((i) => i.id !== instructor.id && i.categoryIds.some((c) => instructor.categoryIds.includes(c)))
-    .slice(0, 3);
+  const { data: instructor, isLoading, isError } = useQuery<PublicInstructor>({
+    queryKey: ["instructor-public", id],
+    queryFn:  () => UserService.findOnePublic(id!) as Promise<PublicInstructor>,
+    enabled:  !!id,
+  });
+
+  const { data: coursesData } = useQuery<PublicCoursesResponse>({
+    queryKey: ["courses-public-all"],
+    queryFn:  () => CoursesService.findAllPublic() as Promise<PublicCoursesResponse>,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (isError || !instructor) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <p className="text-gray-500">Instructor not found.</p>
+        <Link to="/instructors" className="text-blue-500 hover:underline text-sm">Back to instructors</Link>
+      </div>
+    );
+  }
+
+  const profile      = instructor.instructorProfile;
+  const bio          = profile?.bio ?? profile?.description ?? "";
+  const expertise    = profile?.areasOfExpertise ?? [];
+  const categories   = profile?.teachingCategories ?? [];
+  const tags         = profile?.tags ?? [];
+  const website      = profile?.website;
+  const specialization = profile?.specialization ?? categories[0] ?? "Instructor";
+  const visibleExpertise = showAllExpertise ? expertise : expertise.slice(0, 5);
+  const avatarColor  = AVATAR_COLORS[0];
+  const showPhoto    = !!instructor.image && !imgError;
+
+  // Filter courses by this instructor
+  const instructorCourses = (coursesData?.items ?? [])
+    .filter(c => c.tags.length > 0) // all courses for now since no instructorId filter on public
+    .slice(0, 4);
 
   return (
     <div className="font-dm min-h-screen bg-[#f8fafc] dark:bg-[#080c17]">
@@ -116,14 +184,10 @@ export default function SingleInstructor() {
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="relative overflow-hidden bg-white pt-18 md:pt-30 dark:bg-[#0a0c1c]">
         <PageHeroBg />
-
         <div className="relative max-w-[1120px] mx-auto px-6 pt-10 pb-14">
           {/* Breadcrumb */}
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2 text-[12.5px] text-gray-400 mb-8"
-          >
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-2 text-[12.5px] text-gray-400 mb-8">
             <Link to="/" className="text-blue-500 hover:underline font-medium">Home</Link>
             <span className="opacity-40">›</span>
             <Link to="/instructors" className="text-blue-500 hover:underline font-medium">Instructors</Link>
@@ -133,86 +197,52 @@ export default function SingleInstructor() {
 
           <div className="flex flex-col sm:flex-row gap-8 items-start">
             {/* Avatar */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.45, delay: 0.05 }}
-              className="relative flex-shrink-0"
-            >
+            <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.45, delay: 0.05 }} className="relative flex-shrink-0">
               <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-[28px] overflow-hidden
-  shadow-[0_8px_32px_rgba(59,130,246,0.22)]
-  border-[3px] border-blue-400/25">
-  {(instructor.photo ?? PHOTO_MAP[instructor.id]) ? (
-    <img
-      src={instructor.photo ?? PHOTO_MAP[instructor.id]}
-      alt={instructor.name}
-      className="w-full h-full object-cover object-top"
-      onError={(e) => {
-        (e.currentTarget as HTMLImageElement).style.display = "none";
-      }}
-    />
-  ) : null}
-  {/* Initials fallback */}
-  <div className={`absolute inset-0 flex items-center justify-center text-4xl font-extrabold text-white ${instructor.avatarBg}`}
-    style={{ zIndex: -1 }}>
-    {instructor.avatar}
-  </div>
-</div>
-              {/* Online dot */}
+                shadow-[0_8px_32px_rgba(59,130,246,0.22)] border-[3px] border-blue-400/25">
+                {/* Initials bg */}
+                <div className={`absolute inset-0 flex items-center justify-center text-4xl font-extrabold text-white ${avatarColor}`}>
+                  {initials(instructor.name)}
+                </div>
+                {/* Photo */}
+                {showPhoto && (
+                  <img src={instructor.image!} alt={instructor.name}
+                    className="absolute inset-0 w-full h-full object-cover object-top"
+                    onError={() => setImgError(true)} />
+                )}
+              </div>
               <span className="absolute bottom-2.5 right-2.5 w-4 h-4 rounded-full bg-emerald-400
-                border-[2.5px] border-white dark:border-[#0a0c1c]
-                shadow-[0_0_10px_rgba(52,211,153,0.6)]" />
+                border-[2.5px] border-white dark:border-[#0a0c1c] shadow-[0_0_10px_rgba(52,211,153,0.6)]" />
             </motion.div>
 
-            {/* Copy */}
-            <motion.div
-              initial={{ opacity: 0, x: -16 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.45, delay: 0.1 }}
-              className="flex-1 min-w-0"
-            >
-              {/* Eyebrow */}
+            {/* Info */}
+            <motion.div initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.45, delay: 0.1 }} className="flex-1 min-w-0">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-                border border-blue-200 dark:border-blue-900/60
-                bg-blue-50 dark:bg-blue-950/30 mb-3">
+                border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/30 mb-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                <span className="text-[11px] font-bold tracking-widest text-blue-600 dark:text-blue-400 uppercase">
-                  Verified Instructor
-                </span>
+                <span className="text-[11px] font-bold tracking-widest text-blue-600 dark:text-blue-400 uppercase">Verified Instructor</span>
               </div>
 
               <h1 className="font-syne text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight
                 text-gray-900 dark:text-white mb-2">
                 {instructor.name}
               </h1>
-              <p className="text-gray-500 dark:text-gray-400 text-sm font-light mb-5 leading-relaxed">
-                {instructor.title}
-              </p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm font-light mb-5">{specialization}</p>
 
-              {/* Stats row */}
-              <div className="flex flex-wrap gap-5 mb-6">
-                {[
-                  { icon: Users, n: fmt(instructor.students), l: "Students" },
-                  { icon: Star, n: String(instructor.reviews.toLocaleString()), l: "Reviews" },
-                  { icon: BookOpen, n: String(instructor.courses), l: "Courses" },
-                  { icon: Award, n: instructor.rating.toFixed(1), l: "Avg. Rating" },
-                ].map(({ icon: Icon, n, l }) => (
-                  <div key={l} className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl flex-shrink-0
-                      bg-blue-50 dark:bg-blue-950/40
-                      border border-blue-100 dark:border-blue-900/40
-                      flex items-center justify-center text-blue-600 dark:text-blue-400">
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-syne text-lg font-extrabold text-gray-900 dark:text-white leading-none">
-                        {n}
-                      </div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">{l}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {/* Tags / categories */}
+              {(categories.length > 0 || tags.length > 0) && (
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {[...categories, ...tags].slice(0, 4).map(t => (
+                    <span key={t} className="px-3 py-1 rounded-full text-xs font-semibold capitalize
+                      bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40
+                      text-blue-600 dark:text-blue-400">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {/* Action buttons */}
               <div className="flex flex-wrap gap-2.5">
@@ -221,53 +251,38 @@ export default function SingleInstructor() {
                   whileTap={{ scale: 0.97 }}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full
                     bg-gradient-to-br from-blue-500 to-blue-700 text-white
-                    text-sm font-semibold shadow-[0_4px_18px_rgba(59,130,246,0.38)]
-                    transition-shadow"
-                >
+                    text-sm font-semibold shadow-[0_4px_18px_rgba(59,130,246,0.38)] transition-shadow">
                   <Mail className="w-3.5 h-3.5" /> Contact Instructor
                 </motion.button>
-
-                {instructor.socials.map((s) => (
-                  <motion.a
-                    key={s.platform}
-                    href={s.url}
-                    whileHover={{ y: -1 }}
+                {website && (
+                  <motion.a href={website} target="_blank" rel="noopener noreferrer" whileHover={{ y: -1 }}
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full
                       border border-gray-200 dark:border-white/[0.10]
-                      text-gray-600 dark:text-gray-300 text-sm font-medium capitalize
+                      text-gray-600 dark:text-gray-300 text-sm font-medium
                       hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400
-                      transition-all bg-white/50 dark:bg-white/[0.03]"
-                  >
-                    <SocialIcon platform={s.platform} />
-                    {s.platform}
+                      transition-all bg-white/50 dark:bg-white/[0.03]">
+                    <Globe className="w-3.5 h-3.5" /> Website
                   </motion.a>
-                ))}
+                )}
               </div>
             </motion.div>
           </div>
         </div>
       </div>
 
-      {/* Divider */}
       <div className="h-px bg-gradient-to-r from-transparent via-blue-200/40 dark:via-blue-800/20 to-transparent" />
 
       {/* ── Content ───────────────────────────────────────────────────────── */}
       <div className="max-w-[1120px] mx-auto px-6 py-12 pb-24
         grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-10 items-start">
 
-        {/* ── Left: main ──────────────────────────────────────────────────── */}
+        {/* ── Left ──────────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-7">
 
           {/* About */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-            className="rounded-[22px] p-7
-              bg-white dark:bg-[#0f1420]
-              border border-gray-100 dark:border-white/[0.07]
-              shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-          >
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+            className="rounded-[22px] p-7 bg-white dark:bg-[#0f1420]
+              border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-[0_3px_10px_rgba(59,130,246,0.35)]">
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
@@ -279,170 +294,85 @@ export default function SingleInstructor() {
                 About {instructor.name.split(" ")[0]}
               </h2>
             </div>
-            <p className="text-sm font-light leading-relaxed text-gray-500 dark:text-gray-400">
-              {instructor.bio}
-            </p>
-            {instructor.bio2 && (
-              <p className="text-sm font-light leading-relaxed text-gray-500 dark:text-gray-400 mt-4">
-                {instructor.bio2}
-              </p>
+            {bio ? (
+              <p className="text-sm font-light leading-relaxed text-gray-500 dark:text-gray-400">{bio}</p>
+            ) : (
+              <p className="text-sm text-gray-400 dark:text-gray-500 italic">No bio added yet.</p>
             )}
           </motion.div>
 
           {/* Expertise */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.14 }}
-            className="rounded-[22px] p-7
-              bg-white dark:bg-[#0f1420]
-              border border-gray-100 dark:border-white/[0.07]
-              shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-          >
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-[0_3px_10px_rgba(59,130,246,0.35)]">
-                <CheckCircle className="w-3.5 h-3.5 text-white" strokeWidth={1.8} />
+          {expertise.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}
+              className="rounded-[22px] p-7 bg-white dark:bg-[#0f1420]
+                border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-[0_3px_10px_rgba(59,130,246,0.35)]">
+                  <CheckCircle className="w-3.5 h-3.5 text-white" strokeWidth={1.8} />
+                </div>
+                <h2 className="font-syne text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">Areas of Expertise</h2>
               </div>
-              <h2 className="font-syne text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">
-                Areas of Expertise
-              </h2>
-            </div>
+              <ul className="flex flex-col gap-2">
+                <AnimatePresence>
+                  {visibleExpertise.map((item, i) => (
+                    <motion.li key={item} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -10 }} transition={{ delay: i * 0.04 }} whileHover={{ x: 4 }}
+                      className="flex items-center gap-3 px-4 py-2.5 rounded-xl
+                        border border-blue-50 dark:border-blue-900/20
+                        bg-blue-50/50 dark:bg-blue-950/10
+                        text-sm text-gray-700 dark:text-gray-300
+                        hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all cursor-default">
+                      <CheckCircle className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" strokeWidth={2} />
+                      {item}
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+              {expertise.length > 5 && (
+                <button onClick={() => setShowAllExpertise(p => !p)}
+                  className="mt-4 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
+                  {showAllExpertise ? "Show less" : `Show all ${expertise.length} skills`}
+                  <motion.span animate={{ rotate: showAllExpertise ? 180 : 0 }} transition={{ duration: 0.22 }}>↓</motion.span>
+                </button>
+              )}
+            </motion.div>
+          )}
 
-            <ul className="flex flex-col gap-2">
-              <AnimatePresence>
-                {visibleExpertise.map((item, i) => (
-                  <motion.li
-                    key={item}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -10 }}
-                    transition={{ delay: i * 0.04 }}
-                    whileHover={{ x: 4 }}
-                    className="flex items-center gap-3 px-4 py-2.5 rounded-xl
-                      border border-blue-50 dark:border-blue-900/20
-                      bg-blue-50/50 dark:bg-blue-950/10
-                      text-sm text-gray-700 dark:text-gray-300
-                      hover:bg-blue-50 dark:hover:bg-blue-950/20
-                      hover:border-blue-100 dark:hover:border-blue-800/40
-                      transition-all cursor-default"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" strokeWidth={2} />
-                    {item}
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-            </ul>
-
-            {instructor.expertise.length > 5 && (
-              <button
-                onClick={() => setShowAllExpertise((p) => !p)}
-                className="mt-4 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-              >
-                {showAllExpertise ? "Show less" : `Show all ${instructor.expertise.length} skills`}
-                <motion.span animate={{ rotate: showAllExpertise ? 180 : 0 }} transition={{ duration: 0.22 }}>
-                  ↓
-                </motion.span>
-              </button>
-            )}
-          </motion.div>
-
-          {/* Experience */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="rounded-[22px] p-7
-              bg-white dark:bg-[#0f1420]
-              border border-gray-100 dark:border-white/[0.07]
-              shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-          >
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-[0_3px_10px_rgba(59,130,246,0.35)]">
-                <Briefcase className="w-3.5 h-3.5 text-white" strokeWidth={1.8} />
+          {/* Courses */}
+          {instructorCourses.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+              className="rounded-[22px] p-7 bg-white dark:bg-[#0f1420]
+                border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-[0_3px_10px_rgba(59,130,246,0.35)]">
+                  <Briefcase className="w-3.5 h-3.5 text-white" strokeWidth={1.8} />
+                </div>
+                <h2 className="font-syne text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">Their Courses</h2>
               </div>
-              <h2 className="font-syne text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">
-                Professional Experience
-              </h2>
-            </div>
-            <p className="text-sm font-light leading-relaxed text-gray-500 dark:text-gray-400">
-              {instructor.experience}
-            </p>
-            {instructor.experience2 && (
-              <p className="text-sm font-light leading-relaxed text-gray-500 dark:text-gray-400 mt-4">
-                {instructor.experience2}
-              </p>
-            )}
-          </motion.div>
-
-          {/* Related instructors */}
-          {related.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.26 }}
-              className="rounded-[22px] p-7
-                bg-white dark:bg-[#0f1420]
-                border border-gray-100 dark:border-white/[0.07]
-                shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-            >
-              <h2 className="font-syne text-lg font-extrabold text-gray-900 dark:text-white tracking-tight mb-5">
-                Similar Instructors
-              </h2>
               <div className="flex flex-col gap-3">
-                {related.map((rel) => (
-                  <Link key={rel.id} to={`/instructors/${rel.id}`}
-                    className="flex items-center gap-4 p-3 rounded-2xl
-                      border border-gray-100 dark:border-white/[0.07]
-                      hover:border-blue-200 dark:hover:border-blue-800/50
-                      hover:bg-blue-50/30 dark:hover:bg-blue-950/10
-                      transition-all group"
-                  >
-                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-sm font-extrabold text-white flex-shrink-0 ${rel.avatarBg}`}>
-                      {rel.avatar}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        {rel.name}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">{rel.title}</p>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-                  </Link>
-                ))}
+                {instructorCourses.map((c, i) => <CourseSnippetCard key={c.id} course={c} index={i} />)}
               </div>
             </motion.div>
           )}
         </div>
 
-        {/* ── Right: sidebar ───────────────────────────────────────────────── */}
+        {/* ── Right sidebar ─────────────────────────────────────────────── */}
         <div className="flex flex-col gap-5">
 
           {/* Quick stats */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="rounded-[22px] p-5
-              bg-white dark:bg-[#0f1420]
-              border border-gray-100 dark:border-white/[0.07]
-              shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-          >
-            <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">
-              At a Glance
-            </p>
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            className="rounded-[22px] p-5 bg-white dark:bg-[#0f1420]
+              border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+            <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">At a Glance</p>
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { n: fmt(instructor.students), s: "", l: "Students" },
-                { n: instructor.reviews.toLocaleString(), s: "", l: "Reviews" },
-                { n: String(instructor.courses), s: "", l: "Courses" },
-                { n: instructor.rating.toFixed(1), s: "★", l: "Rating" },
+                { n: instructorCourses.length.toString(), s: "", l: "Courses"  },
+                { n: specialization,                      s: "", l: "Specialty" },
               ].map(({ n, s, l }) => (
                 <div key={l} className="flex flex-col items-center py-3.5 rounded-2xl
-                  bg-blue-50/60 dark:bg-blue-950/20
-                  border border-blue-100/60 dark:border-blue-900/20
-                  hover:bg-blue-50 dark:hover:bg-blue-950/30
-                  transition-colors">
-                  <div className="font-syne text-2xl font-extrabold text-gray-900 dark:text-white leading-none">
+                  bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100/60 dark:border-blue-900/20
+                  hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
+                  <div className="font-syne text-lg font-extrabold text-gray-900 dark:text-white leading-none text-center px-2 truncate w-full text-center">
                     {n}<span className="text-blue-500 dark:text-blue-400">{s}</span>
                   </div>
                   <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest">{l}</div>
@@ -451,103 +381,42 @@ export default function SingleInstructor() {
             </div>
           </motion.div>
 
-          {/* Rating breakdown */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.16 }}
-            className="rounded-[22px] p-5
-              bg-white dark:bg-[#0f1420]
-              border border-gray-100 dark:border-white/[0.07]
-              shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-          >
-            <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">
-              Student Rating
-            </p>
-            <div className="flex items-center gap-3 mb-4">
-              <span className="font-syne text-5xl font-extrabold text-gray-900 dark:text-white leading-none">
-                {instructor.rating.toFixed(1)}
-              </span>
-              <div>
-                <Stars rating={instructor.rating} size={15} />
-                <p className="text-[11px] text-gray-400 mt-1">Based on {instructor.reviews.toLocaleString()} reviews</p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              {instructor.ratingBreakdown.map(({ star, pct }) => (
-                <div key={star} className="flex items-center gap-2">
-                  <span className="text-[11px] text-gray-400 w-2 flex-shrink-0">{star}</span>
-                  <div className="flex-1 h-[5px] rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.7, delay: star * 0.05, ease: "easeOut" }}
-                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400"
-                    />
-                  </div>
-                  <span className="text-[11px] text-gray-400 w-7 text-right">{pct}%</span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Courses */}
-          {instructor.courseSnippets.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.22 }}
-              className="rounded-[22px] p-5
-                bg-white dark:bg-[#0f1420]
-                border border-gray-100 dark:border-white/[0.07]
-                shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-            >
-              <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">
-                Their Courses
-              </p>
-              <div className="flex flex-col gap-3">
-                {instructor.courseSnippets.map((c) => (
-                  <CourseSnippetCard key={c.id} course={c} />
+          {/* Categories */}
+          {categories.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}
+              className="rounded-[22px] p-5 bg-white dark:bg-[#0f1420]
+                border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+              <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-3">Teaching Areas</p>
+              <div className="flex flex-wrap gap-2">
+                {categories.map(c => (
+                  <span key={c} className="px-3 py-1.5 rounded-full text-xs font-semibold capitalize
+                    bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40
+                    text-blue-600 dark:text-blue-400">
+                    {c}
+                  </span>
                 ))}
               </div>
             </motion.div>
           )}
 
           {/* Connect */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.28 }}
-            className="rounded-[22px] p-5
-              bg-white dark:bg-[#0f1420]
-              border border-gray-100 dark:border-white/[0.07]
-              shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-          >
-            <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">
-              Connect
-            </p>
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
+            className="rounded-[22px] p-5 bg-white dark:bg-[#0f1420]
+              border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+            <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">Connect</p>
             <div className="flex flex-col gap-2">
               {[
-                { icon: <Mail className="w-3.5 h-3.5" />, label: "Send Message" },
-                ...instructor.socials.map((s) => ({
-                  icon: <SocialIcon platform={s.platform} />,
-                  label: s.platform.charAt(0).toUpperCase() + s.platform.slice(1),
-                  href: s.url,
-                })),
-              ].map((link) => (
-                <a
-                  key={link.label}
-                  href={"href" in link ? link.href : "#"}
+                { icon: <Mail className="w-3.5 h-3.5" />, label: "Send Message", href: "#" },
+                ...(website ? [{ icon: <Globe className="w-3.5 h-3.5" />, label: "Website", href: website }] : []),
+              ].map(link => (
+                <a key={link.label} href={link.href}
                   className="flex items-center gap-3 px-4 py-2.5 rounded-xl w-full
                     border border-gray-100 dark:border-white/[0.07]
                     text-sm font-medium text-gray-600 dark:text-gray-300
                     hover:border-blue-200 dark:hover:border-blue-800/50
                     hover:bg-blue-50/40 dark:hover:bg-blue-950/20
-                    hover:text-blue-600 dark:hover:text-blue-400
-                    transition-all group"
-                >
-                  <div className="w-7 h-7 rounded-lg flex-shrink-0
-                    bg-blue-50 dark:bg-blue-950/40
+                    hover:text-blue-600 dark:hover:text-blue-400 transition-all group">
+                  <div className="w-7 h-7 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-950/40
                     border border-blue-100 dark:border-blue-900/30
                     flex items-center justify-center text-blue-500 dark:text-blue-400">
                     {link.icon}
@@ -559,33 +428,17 @@ export default function SingleInstructor() {
             </div>
           </motion.div>
 
-          {/* Badges */}
-          {instructor.badges.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.32 }}
-              className="rounded-[22px] p-5
-                bg-white dark:bg-[#0f1420]
-                border border-gray-100 dark:border-white/[0.07]
-                shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-            >
-              <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-3">
-                Recognition
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {instructor.badges.map((b) => (
-                  <span key={b} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold
-                    bg-gradient-to-r from-blue-50 to-indigo-50
-                    dark:from-blue-950/40 dark:to-indigo-950/40
-                    border border-blue-200 dark:border-blue-800/50
-                    text-blue-600 dark:text-blue-400">
-                    <Award className="w-3 h-3" /> {b}
-                  </span>
-                ))}
-              </div>
-            </motion.div>
-          )}
+          {/* All instructors link */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}>
+            <Link to="/instructors"
+              className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl w-full
+                border border-gray-200 dark:border-white/[0.08]
+                text-sm font-semibold text-gray-600 dark:text-gray-300
+                hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400
+                transition-all">
+              Browse all instructors <ArrowRight className="w-4 h-4" />
+            </Link>
+          </motion.div>
         </div>
       </div>
     </div>

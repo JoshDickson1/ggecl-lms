@@ -1,62 +1,111 @@
+// src/landing/pages/SingleCategory.tsx
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft, ArrowRight, Star, Users, BookOpen,
   Clock, TrendingUp, Play, ChevronDown, LayoutGrid,
-  List, X, Search, SlidersHorizontal,
+  List, X, Search, SlidersHorizontal, Loader2,
 } from "lucide-react";
-import { categories } from "@/data/categories";
 import {
-  getCoursesByCategory,
-  getInstructorsByCategory,
-  type Course,
-  type Instructor,
-} from "@/data/courses";
+  Cloud, Code2, Container, Globe, Server, Database,
+  Layers, Terminal, Braces, Box, Workflow,
+} from "lucide-react";
+import CoursesService from "@/services/course.service";
 
-// ─── Shared Hero BG — reuse this on every page ────────────────────────────────
+// ─── Shared Hero BG — exported for reuse ──────────────────────────────────────
+
 export function PageHeroBg({ color = "from-blue-500 to-cyan-400" }: { color?: string }) {
   return (
     <>
-      {/* Dot grid */}
-      <div
-        className="absolute inset-0 opacity-[0.035] dark:opacity-[0.055]"
-        style={{
-          backgroundImage: "radial-gradient(circle, #3b82f6 1px, transparent 1px)",
-          backgroundSize: "28px 28px",
-        }}
-      />
-      {/* Category color wash */}
+      <div className="absolute inset-0 opacity-[0.035] dark:opacity-[0.055]"
+        style={{ backgroundImage: "radial-gradient(circle, #3b82f6 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
       <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-[0.07] dark:opacity-[0.13]`} />
-      {/* Blue glow ball — top right */}
       <div className="absolute -top-40 -right-40 w-[560px] h-[560px] rounded-full bg-blue-500/[0.09] dark:bg-blue-500/[0.18] blur-[100px]" />
-      {/* Secondary glow — bottom left */}
       <div className="absolute -bottom-20 -left-20 w-[400px] h-[400px] rounded-full bg-indigo-400/[0.06] dark:bg-indigo-400/[0.12] blur-[80px]" />
     </>
   );
 }
 
+// ─── API Types ────────────────────────────────────────────────────────────────
+
+interface PublicCourse {
+  id: string;
+  title: string;
+  description: string;
+  img: string | null;
+  price: number;
+  level: string;
+  tags: string[];
+  badge: string | null;
+  totalDuration: number;
+  instructorId: string;
+  _count: { enrollments: number };
+  averageRating: number;
+  reviewCount: number;
+  totalLectures: number;
+}
+
+interface PublicCoursesResponse {
+  items: PublicCourse[];
+}
+
+// ─── Tag meta ─────────────────────────────────────────────────────────────────
+
+const TAG_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  gcp:           { label: "Google Cloud",  icon: Cloud,      color: "from-blue-500 to-cyan-400"     },
+  cloud:         { label: "Cloud",         icon: Cloud,      color: "from-sky-500 to-blue-400"      },
+  certification: { label: "Certification", icon: Layers,     color: "from-violet-500 to-purple-400" },
+  devops:        { label: "DevOps",        icon: Workflow,   color: "from-orange-500 to-amber-400"  },
+  docker:        { label: "Docker",        icon: Container,  color: "from-cyan-500 to-teal-400"     },
+  kubernetes:    { label: "Kubernetes",    icon: Box,        color: "from-indigo-500 to-blue-400"   },
+  react:         { label: "React",         icon: Braces,     color: "from-cyan-400 to-blue-500"     },
+  javascript:    { label: "JavaScript",    icon: Code2,      color: "from-yellow-400 to-amber-500"  },
+  frontend:      { label: "Frontend",      icon: Globe,      color: "from-pink-500 to-rose-400"     },
+  aws:           { label: "AWS",           icon: Cloud,      color: "from-amber-500 to-orange-400"  },
+  nestjs:        { label: "NestJS",        icon: Server,     color: "from-red-500 to-rose-400"      },
+  typescript:    { label: "TypeScript",    icon: Code2,      color: "from-blue-600 to-blue-400"     },
+  backend:       { label: "Backend",       icon: Database,   color: "from-emerald-500 to-teal-400"  },
+};
+
+const FALLBACK_META = { label: "", icon: Terminal, color: "from-gray-500 to-slate-400" };
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function fmt(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
-const LEVELS = ["All", "Beginner", "Intermediate", "Advanced", "All levels"] as const;
+function fmtDuration(s: number) {
+  if (!s) return null;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
 
-const badgeStyle: Record<string, string> = {
+const GRADIENTS = [
+  "from-blue-500 to-blue-700","from-violet-500 to-purple-700",
+  "from-emerald-500 to-teal-700","from-rose-500 to-pink-700",
+  "from-amber-500 to-orange-600",
+];
+
+const BADGE_STYLES: Record<string, string> = {
   Bestseller: "bg-amber-400 text-amber-900",
   "Hot & New": "bg-rose-500 text-white",
   New: "bg-emerald-500 text-white",
+  Hot: "bg-rose-500 text-white",
+  Popular: "bg-blue-500 text-white",
 };
 
 // ─── Stars ────────────────────────────────────────────────────────────────────
+
 function Stars({ rating, size = 13 }: { rating: number; size?: number }) {
   return (
     <span className="flex items-center gap-[2px]">
       {Array.from({ length: 5 }, (_, i) => (
         <svg key={i} width={size} height={size} viewBox="0 0 24 24"
-          fill={i + 1 <= Math.round(rating) ? "#FFC806" : "#374151"}
-        >
+          fill={i + 1 <= Math.round(rating) ? "#FFC806" : "#374151"}>
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
         </svg>
       ))}
@@ -64,11 +113,29 @@ function Stars({ rating, size = 13 }: { rating: number; size?: number }) {
   );
 }
 
+// ─── Stat Pill ────────────────────────────────────────────────────────────────
+
+function StatPill({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1 px-5 py-4 rounded-2xl
+      bg-white/80 dark:bg-white/[0.05] backdrop-blur-xl
+      border border-white dark:border-white/[0.08] shadow-[0_2px_14px_rgba(0,0,0,0.06)]">
+      <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/50 flex items-center justify-center mb-0.5">
+        <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+      </div>
+      <span className="text-xl font-extrabold text-gray-900 dark:text-white">{value}</span>
+      <span className="text-[11px] text-gray-400 dark:text-gray-500 font-medium">{label}</span>
+    </div>
+  );
+}
+
 // ─── Course Card Grid ─────────────────────────────────────────────────────────
-function CourseCardGrid({ course, index }: { course: Course; index: number }) {
-  const Icon = course.icon;
+
+function CourseCardGrid({ course, index }: { course: PublicCourse; index: number }) {
   const [hovered, setHovered] = useState(false);
-  const discount = Math.round((1 - course.price / course.originalPrice) * 100);
+  const gradient  = GRADIENTS[index % GRADIENTS.length];
+  const origPrice = Math.round(course.price * 1.4 * 100) / 100;
+  const discount  = Math.round(((origPrice - course.price) / origPrice) * 100);
 
   return (
     <motion.div
@@ -80,64 +147,48 @@ function CourseCardGrid({ course, index }: { course: Course; index: number }) {
       onHoverStart={() => setHovered(true)}
       onHoverEnd={() => setHovered(false)}
       className="relative flex flex-col rounded-[20px] overflow-hidden
-        bg-white dark:bg-[#0f1420]
-        border border-gray-100 dark:border-white/[0.07]
-        transition-all duration-300"
+        bg-white dark:bg-[#0f1420] border border-gray-100 dark:border-white/[0.07] transition-all duration-300"
       style={{
         boxShadow: hovered
           ? "0 0 0 1.5px rgba(59,130,246,0.4), 0 16px 48px rgba(59,130,246,0.13)"
           : "0 2px 16px rgba(0,0,0,0.06)",
       }}
     >
-      {/* Thumbnail */}
       <Link to={`/courses/${course.id}`} className="block flex-shrink-0">
-        <div className={`relative h-48 bg-gradient-to-br ${course.thumbnail} overflow-hidden`}>
-          {/* Dot overlay */}
+        <div className={`relative h-48 bg-gradient-to-br ${gradient} overflow-hidden`}>
           <div className="absolute inset-0 opacity-[0.12]"
-            style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "18px 18px" }}
-          />
-          {/* Icon */}
-          <motion.div
-            animate={hovered ? { scale: 1.12, rotate: 6 } : { scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 240, damping: 20 }}
-            className="absolute inset-0 flex items-center justify-center"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-xl">
-              <Icon className="w-8 h-8 text-white" />
-            </div>
-          </motion.div>
-          {/* Play overlay */}
-          <motion.div
-            animate={{ opacity: hovered ? 1 : 0 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-black/28 backdrop-blur-[2px] flex items-center justify-center"
-          >
-            <motion.div
-              animate={{ scale: hovered ? 1 : 0.75 }}
-              transition={{ type: "spring", stiffness: 280, damping: 20 }}
-              className="w-12 h-12 rounded-full bg-white/95 flex items-center justify-center shadow-2xl"
-            >
+            style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "18px 18px" }} />
+          {course.img
+            ? <img src={course.img} alt={course.title} className="absolute inset-0 w-full h-full object-cover" />
+            : (
+              <motion.div
+                animate={hovered ? { scale: 1.12, rotate: 6 } : { scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 240, damping: 20 }}
+                className="absolute inset-0 flex items-center justify-center">
+                <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-xl">
+                  <span className="text-2xl font-black text-white">{course.title.slice(0, 2).toUpperCase()}</span>
+                </div>
+              </motion.div>
+            )
+          }
+          <motion.div animate={{ opacity: hovered ? 1 : 0 }} transition={{ duration: 0.2 }}
+            className="absolute inset-0 bg-black/28 backdrop-blur-[2px] flex items-center justify-center">
+            <motion.div animate={{ scale: hovered ? 1 : 0.75 }} transition={{ type: "spring", stiffness: 280, damping: 20 }}
+              className="w-12 h-12 rounded-full bg-white/95 flex items-center justify-center shadow-2xl">
               <Play className="w-5 h-5 text-gray-900 ml-0.5" fill="currentColor" />
             </motion.div>
           </motion.div>
-          {/* Badge */}
           {course.badge && (
-            <span className={`absolute top-3 left-3 px-2.5 py-1 rounded-lg text-[10.5px] font-bold tracking-wide ${badgeStyle[course.badge]}`}>
+            <span className={`absolute top-3 left-3 px-2.5 py-1 rounded-lg text-[10.5px] font-bold tracking-wide ${BADGE_STYLES[course.badge] ?? "bg-gray-500 text-white"}`}>
               {course.badge}
             </span>
           )}
-          {/* Level */}
-          <span className="absolute top-3 right-3 px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-black/35 text-white backdrop-blur-sm">
-            {course.level}
-          </span>
-          {/* Updated */}
-          <span className="absolute bottom-3 left-3 text-[10px] text-white/65 font-medium">
-            Updated {course.lastUpdated}
+          <span className="absolute top-3 right-3 px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-black/35 text-white backdrop-blur-sm capitalize">
+            {course.level.charAt(0) + course.level.slice(1).toLowerCase()}
           </span>
         </div>
       </Link>
 
-      {/* Body */}
       <div className="flex flex-col gap-2.5 p-5 flex-1">
         <Link to={`/courses/${course.id}`}>
           <h3 className="font-bold text-[14.5px] leading-snug text-gray-900 dark:text-white line-clamp-2
@@ -145,50 +196,38 @@ function CourseCardGrid({ course, index }: { course: Course; index: number }) {
             {course.title}
           </h3>
         </Link>
-        <p className="text-xs text-gray-400 dark:text-gray-500 line-clamp-2 leading-relaxed">
-          {course.description}
-        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 line-clamp-2 leading-relaxed">{course.description}</p>
 
-        {/* Instructor */}
-        <Link to={`/instructors/${course.instructor.id}`} className="flex items-center gap-2 group w-fit">
-          <span className={`w-6 h-6 rounded-full text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0 ${course.instructor.avatarBg}`}>
-            {course.instructor.avatar}
-          </span>
-          <span className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors truncate">
-            {course.instructor.name}
-          </span>
-        </Link>
-
-        {/* Rating */}
         <div className="flex items-center gap-1.5">
-          <Stars rating={course.rating} />
-          <span className="text-xs font-bold text-amber-500">{course.rating}</span>
-          <span className="text-xs text-gray-400">({fmt(course.reviews)} reviews)</span>
+          <Stars rating={course.averageRating} />
+          <span className="text-xs font-bold text-amber-500">
+            {course.averageRating > 0 ? course.averageRating.toFixed(1) : "New"}
+          </span>
+          {course.reviewCount > 0 && (
+            <span className="text-xs text-gray-400">({fmt(course.reviewCount)} reviews)</span>
+          )}
         </div>
 
-        {/* Meta */}
         <div className="flex items-center gap-3 text-[11px] text-gray-400 dark:text-gray-500 flex-wrap">
-          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{course.duration}</span>
-          <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{course.lectures} lectures</span>
-          <span className="flex items-center gap-1"><Users className="w-3 h-3" />{fmt(course.students)}</span>
+          {fmtDuration(course.totalDuration) && (
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmtDuration(course.totalDuration)}</span>
+          )}
+          <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{course.totalLectures} lessons</span>
+          <span className="flex items-center gap-1"><Users className="w-3 h-3" />{fmt(course._count.enrollments)}</span>
         </div>
 
         <div className="h-px bg-gray-100 dark:bg-white/[0.06] mt-1" />
 
-        {/* Price + CTA */}
         <div className="flex items-center justify-between mt-auto pt-1">
-          <div className="flex items-baseline gap-1.5 flex-wrap">
-            <span className="text-xl font-extrabold text-gray-900 dark:text-white">${course.price}</span>
-            <span className="text-xs text-gray-400 line-through">${course.originalPrice}</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl font-extrabold text-gray-900 dark:text-white">${course.price.toFixed(2)}</span>
+            <span className="text-xs text-gray-400 line-through">${origPrice.toFixed(2)}</span>
             <span className="text-[10px] font-bold text-emerald-500">{discount}% off</span>
           </div>
           <Link to={`/courses/${course.id}`}>
-            <motion.div
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.94 }}
+            <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500
-                text-white text-xs font-bold transition-colors shadow-[0_3px_12px_rgba(59,130,246,0.35)]"
-            >
+                text-white text-xs font-bold transition-colors shadow-[0_3px_12px_rgba(59,130,246,0.35)]">
               Enroll <ArrowRight className="w-3 h-3" />
             </motion.div>
           </Link>
@@ -199,9 +238,11 @@ function CourseCardGrid({ course, index }: { course: Course; index: number }) {
 }
 
 // ─── Course Card List ─────────────────────────────────────────────────────────
-function CourseCardList({ course, index }: { course: Course; index: number }) {
-  const Icon = course.icon;
+
+function CourseCardList({ course, index }: { course: PublicCourse; index: number }) {
   const [hovered, setHovered] = useState(false);
+  const gradient  = GRADIENTS[index % GRADIENTS.length];
+  const origPrice = Math.round(course.price * 1.4 * 100) / 100;
 
   return (
     <motion.div
@@ -213,83 +254,57 @@ function CourseCardList({ course, index }: { course: Course; index: number }) {
       onHoverStart={() => setHovered(true)}
       onHoverEnd={() => setHovered(false)}
       className="flex md:flex-row flex-col gap-4 rounded-[18px] overflow-hidden p-3
-        bg-white dark:bg-[#0f1420]
-        border border-gray-100 dark:border-white/[0.07]
-        transition-all duration-300"
+        bg-white dark:bg-[#0f1420] border border-gray-100 dark:border-white/[0.07] transition-all duration-300"
       style={{
         boxShadow: hovered
           ? "0 0 0 1.5px rgba(59,130,246,0.35), 0 8px 32px rgba(59,130,246,0.12)"
           : "0 2px 12px rgba(0,0,0,0.05)",
       }}
     >
-      {/* Thumbnail */}
       <Link to={`/courses/${course.id}`} className="flex-shrink-0">
-        <div className={`relative w-full md:w-36 h-[100px] rounded-xl bg-gradient-to-br ${course.thumbnail} flex items-center justify-center overflow-hidden`}>
-          <div className="absolute inset-0 opacity-[0.12]"
-            style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "14px 14px" }}
-          />
-          <motion.div animate={hovered ? { scale: 1.1 } : { scale: 1 }} transition={{ duration: 0.28 }}>
-            <Icon className="w-8 h-8 text-white" />
-          </motion.div>
+        <div className={`relative w-full md:w-36 h-[100px] rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center overflow-hidden`}>
+          {course.img
+            ? <img src={course.img} alt={course.title} className="w-full h-full object-cover" />
+            : <span className="text-white font-black text-lg">{course.title.slice(0, 2).toUpperCase()}</span>
+          }
           {course.badge && (
-            <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${badgeStyle[course.badge]}`}>
+            <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${BADGE_STYLES[course.badge] ?? "bg-gray-500 text-white"}`}>
               {course.badge}
             </span>
           )}
         </div>
       </Link>
 
-      {/* Info */}
       <div className="flex flex-col flex-1 gap-1.5 min-w-0 py-1">
-        <div className="flex items-start justify-between gap-2">
-          <Link to={`/courses/${course.id}`}>
-            <h3 className="font-bold text-sm text-gray-900 dark:text-white line-clamp-1
-              hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-              {course.title}
-            </h3>
-          </Link>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md
-            bg-gray-100 dark:bg-white/[0.07] text-gray-500 dark:text-gray-400 flex-shrink-0">
-            {course.level}
-          </span>
-        </div>
-        <p className="text-[11px] text-gray-400 dark:text-gray-500 line-clamp-1">{course.description}</p>
-        <Link to={`/instructors/${course.instructor.id}`} className="flex items-center gap-1.5 group w-fit">
-          <span className={`w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center flex-shrink-0 ${course.instructor.avatarBg}`}>
-            {course.instructor.avatar}
-          </span>
-          <span className="text-[11px] text-gray-400 group-hover:text-blue-500 transition-colors">
-            {course.instructor.name}
-          </span>
+        <Link to={`/courses/${course.id}`}>
+          <h3 className="font-bold text-sm text-gray-900 dark:text-white line-clamp-1
+            hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+            {course.title}
+          </h3>
         </Link>
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 line-clamp-1">{course.description}</p>
         <div className="flex items-center gap-1.5">
-          <Stars rating={course.rating} size={11} />
-          <span className="text-[11px] font-bold text-amber-500">{course.rating}</span>
-          <span className="text-[10px] text-gray-400">({fmt(course.reviews)})</span>
+          <Stars rating={course.averageRating} size={11} />
+          <span className="text-[11px] font-bold text-amber-500">
+            {course.averageRating > 0 ? course.averageRating.toFixed(1) : "New"}
+          </span>
+          {course.reviewCount > 0 && <span className="text-[10px] text-gray-400">({fmt(course.reviewCount)})</span>}
         </div>
         <div className="flex items-center gap-3 text-[10.5px] text-gray-400 flex-wrap">
-          <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{course.duration}</span>
-          <span className="flex items-center gap-1"><BookOpen className="w-2.5 h-2.5" />{course.lectures} lectures</span>
-          <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" />{fmt(course.students)}</span>
+          <span className="flex items-center gap-1"><BookOpen className="w-2.5 h-2.5" />{course.totalLectures} lessons</span>
+          <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" />{fmt(course._count.enrollments)}</span>
         </div>
       </div>
 
-      {/* Price + CTA */}
-      <div className="flex flex-col items-end justify-between flex-shrink-0 py-1 pl-2 md:-mt-0 -mt-20">
+      <div className="flex flex-col items-end justify-between flex-shrink-0 py-1 pl-2">
         <div className="text-right">
-          <div className="text-lg font-extrabold text-gray-900 dark:text-white">${course.price}</div>
-          <div className="text-[11px] text-gray-400 line-through">${course.originalPrice}</div>
-          <div className="text-[10px] font-bold text-emerald-500">
-            {Math.round((1 - course.price / course.originalPrice) * 100)}% off
-          </div>
+          <div className="text-lg font-extrabold text-gray-900 dark:text-white">${course.price.toFixed(2)}</div>
+          <div className="text-[11px] text-gray-400 line-through">${origPrice.toFixed(2)}</div>
         </div>
         <Link to={`/courses/${course.id}`}>
-          <motion.div
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
+          <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500
-              text-white text-xs font-bold transition-colors shadow-[0_3px_10px_rgba(59,130,246,0.3)]"
-          >
+              text-white text-xs font-bold transition-colors shadow-[0_3px_10px_rgba(59,130,246,0.3)]">
             Enroll <ArrowRight className="w-3 h-3" />
           </motion.div>
         </Link>
@@ -298,174 +313,118 @@ function CourseCardList({ course, index }: { course: Course; index: number }) {
   );
 }
 
-// ─── Instructor Card ──────────────────────────────────────────────────────────
-function InstructorCard({ instructor, index }: { instructor: Instructor; index: number }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index * 0.07 }}
-    >
-      <Link
-        to={`/instructors/${instructor.id}`}
-        className="flex items-center gap-4 p-5 rounded-[20px]
-          bg-white dark:bg-[#0f1420]
-          border border-gray-100 dark:border-white/[0.07]
-          shadow-[0_2px_16px_rgba(0,0,0,0.05)]
-          hover:shadow-[0_0_0_1.5px_rgba(59,130,246,0.35),0_8px_32px_rgba(59,130,246,0.11)]
-          hover:-translate-y-0.5
-          transition-all duration-300 group block"
-      >
-        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-extrabold text-white flex-shrink-0 shadow-lg ${instructor.avatarBg}`}>
-          {instructor.avatar}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-gray-900 dark:text-white text-sm truncate
-            group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-            {instructor.name}
-          </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{instructor.title}</p>
-          <div className="flex items-center gap-2 mt-1.5">
-            <Stars rating={instructor.rating} size={11} />
-            <span className="text-[11px] font-bold text-amber-500">{instructor.rating}</span>
-          </div>
-        </div>
-        <div className="hidden sm:flex flex-col items-end gap-1 flex-shrink-0">
-          <span className="text-xs font-semibold text-gray-400 flex items-center gap-1">
-            <Users className="w-3 h-3" />{fmt(instructor.students)}
-          </span>
-          <span className="text-xs font-semibold text-gray-400 flex items-center gap-1">
-            <BookOpen className="w-3 h-3" />{instructor.courses} courses
-          </span>
-        </div>
-        <ArrowRight className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-      </Link>
-    </motion.div>
-  );
-}
-
-// ─── Stat Pill ────────────────────────────────────────────────────────────────
-function StatPill({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
-  return (
-    <div className="flex flex-col items-center gap-1 px-5 py-4 rounded-2xl
-      bg-white/80 dark:bg-white/[0.05]
-      backdrop-blur-xl
-      border border-white dark:border-white/[0.08]
-      shadow-[0_2px_14px_rgba(0,0,0,0.06)]">
-      <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/50 flex items-center justify-center mb-0.5">
-        <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-      </div>
-      <span className="text-xl font-extrabold text-gray-900 dark:text-white">{value}</span>
-      <span className="text-[11px] text-gray-400 dark:text-gray-500 font-medium">{label}</span>
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function SingleCategory() {
-  const { id } = useParams();
-  const categoryId = id ?? "development";
-  const category = categories.find((c) => c.id === categoryId) ?? categories[0];
-  const Icon = category.icon;
+  const { id } = useParams<{ id: string }>();
+  const tagId   = id ?? "";
 
-  const categoryCourses = getCoursesByCategory(category.id);
-  const categoryInstructors = getInstructorsByCategory(category.id);
+  const { data, isLoading } = useQuery<PublicCoursesResponse>({
+    queryKey: ["courses-public-all"],
+    queryFn:  () => CoursesService.findAllPublic() as Promise<PublicCoursesResponse>,
+    staleTime: 1000 * 60 * 10,
+  });
 
-  const [levelFilter, setLevelFilter] = useState<string>("All");
-  const [sortBy, setSortBy] = useState("rating");
-  const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [showAllInstructors, setShowAllInstructors] = useState(false);
+  const meta     = TAG_META[tagId] ?? { ...FALLBACK_META, label: tagId.charAt(0).toUpperCase() + tagId.slice(1) };
+  const Icon     = meta.icon;
+  const allCourses = data?.items ?? [];
 
-  const totalStudents = categoryCourses.reduce((a, c) => a + c.students, 0);
-  const avgRating = categoryCourses.reduce((a, c) => a + c.rating, 0) / (categoryCourses.length || 1);
+  // All courses that have this tag
+  const tagCourses = allCourses.filter(c => c.tags.includes(tagId));
+
+  // Related tags derived from these courses
+  const relatedTags = [...new Set(tagCourses.flatMap(c => c.tags))].filter(t => t !== tagId).slice(0, 4);
+
+  const [levelFilter, setLevelFilter] = useState("All");
+  const [sortBy,      setSortBy]      = useState("rating");
+  const [search,      setSearch]      = useState("");
+  const [viewMode,    setViewMode]    = useState<"grid" | "list">("grid");
+
+  const levels = ["All", ...new Set(tagCourses.map(c => c.level.charAt(0) + c.level.slice(1).toLowerCase()))];
+
+  const totalStudents = tagCourses.reduce((a, c) => a + c._count.enrollments, 0);
+  const rated         = tagCourses.filter(c => c.averageRating > 0);
+  const avgRating     = rated.length ? rated.reduce((a, c) => a + c.averageRating, 0) / rated.length : 0;
+  const hasFilters    = levelFilter !== "All" || search.trim() !== "" || sortBy !== "rating";
 
   const filteredCourses = useMemo(() => {
-    let result = [...categoryCourses];
-    if (levelFilter !== "All") result = result.filter((c) => c.level === levelFilter);
-    if (search.trim()) result = result.filter((c) =>
-      c.title.toLowerCase().includes(search.toLowerCase()) ||
-      c.instructor.name.toLowerCase().includes(search.toLowerCase())
+    let r = [...tagCourses];
+    if (levelFilter !== "All") r = r.filter(c =>
+      (c.level.charAt(0) + c.level.slice(1).toLowerCase()) === levelFilter
     );
+    if (search.trim()) r = r.filter(c => c.title.toLowerCase().includes(search.toLowerCase()));
     switch (sortBy) {
-      case "rating": result.sort((a, b) => b.rating - a.rating); break;
-      case "students": result.sort((a, b) => b.students - a.students); break;
-      case "price-low": result.sort((a, b) => a.price - b.price); break;
-      case "price-high": result.sort((a, b) => b.price - a.price); break;
-      case "newest": result.sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated)); break;
+      case "rating":     r.sort((a, b) => b.averageRating - a.averageRating); break;
+      case "students":   r.sort((a, b) => b._count.enrollments - a._count.enrollments); break;
+      case "price-low":  r.sort((a, b) => a.price - b.price); break;
+      case "price-high": r.sort((a, b) => b.price - a.price); break;
     }
-    return result;
-  }, [categoryCourses, levelFilter, sortBy, search]);
+    return r;
+  }, [tagCourses, levelFilter, sortBy, search]);
 
-  const visibleInstructors = showAllInstructors ? categoryInstructors : categoryInstructors.slice(0, 3);
-  const hasFilters = levelFilter !== "All" || search.trim() !== "" || sortBy !== "rating";
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-[#080c17]">
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="relative overflow-hidden pt-20 md:pt-34 bg-white dark:bg-[#0a0c1c]">
-        <PageHeroBg color={category.color} />
+        <PageHeroBg color={meta.color} />
 
         <div className="relative max-w-[1280px] mx-auto px-6 pt-10 pb-14">
-          <Link
-            to="/categories"
+          <Link to="/categories"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400
-              hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-8 group"
-          >
+              hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-8 group">
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
             Back to all categories
           </Link>
 
           <div className="flex flex-col lg:flex-row lg:items-center gap-10">
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.42 }}
-              className="flex-1"
-            >
-              <div className={`w-20 h-20 rounded-3xl bg-gradient-to-br ${category.color} flex items-center justify-center mb-6 shadow-[0_10px_40px_rgba(59,130,246,0.25)]`}>
+            <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }} className="flex-1">
+              <div className={`w-20 h-20 rounded-3xl bg-gradient-to-br ${meta.color} flex items-center justify-center mb-6 shadow-[0_10px_40px_rgba(59,130,246,0.25)]`}>
                 <Icon className="w-10 h-10 text-white" />
               </div>
 
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
-                border border-blue-200 dark:border-blue-900/60
-                bg-blue-50 dark:bg-blue-950/30 mb-3">
+                border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/30 mb-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                <span className="text-[11px] font-bold tracking-widest text-blue-600 dark:text-blue-400 uppercase">
-                  Category
-                </span>
+                <span className="text-[11px] font-bold tracking-widest text-blue-600 dark:text-blue-400 uppercase">Category</span>
               </div>
 
               <h1 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white mb-3 tracking-tight">
-                {category.title}
+                {meta.label}
               </h1>
               <p className="text-gray-500 dark:text-gray-400 text-base max-w-lg leading-relaxed">
-                Explore our curated {category.title.toLowerCase()} courses — from beginner fundamentals to advanced mastery, taught by world-class instructors.
+                Explore our curated {meta.label.toLowerCase()} courses — from beginner fundamentals to advanced mastery, taught by world-class instructors.
               </p>
 
-              <div className="flex flex-wrap gap-2 mt-5">
-                {category.tags.map((tag) => (
-                  <span key={tag} className="px-3 py-1 rounded-full text-xs font-semibold
-                    border border-gray-200 dark:border-white/[0.10]
-                    text-gray-600 dark:text-gray-300
-                    bg-white/80 dark:bg-white/[0.04]">
-                    {tag}
-                  </span>
-                ))}
-              </div>
+              {relatedTags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-5">
+                  {relatedTags.map(tag => (
+                    <Link key={tag} to={`/categories/${tag}`}
+                      className="px-3 py-1 rounded-full text-xs font-semibold
+                        border border-gray-200 dark:border-white/[0.10]
+                        text-gray-600 dark:text-gray-300 bg-white/80 dark:bg-white/[0.04]
+                        hover:border-blue-300 hover:text-blue-600 transition-colors">
+                      {tag}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.42, delay: 0.1 }}
-              className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-3"
-            >
-              <StatPill icon={BookOpen} label="Courses" value={String(category.courses)} />
-              <StatPill icon={Users} label="Students" value={fmt(totalStudents)} />
-              <StatPill icon={Star} label="Avg Rating" value={avgRating.toFixed(1)} />
-              <StatPill icon={TrendingUp} label="Popularity" value={`${category.popularity}%`} />
+            <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42, delay: 0.1 }}
+              className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-3">
+              <StatPill icon={BookOpen}   label="Courses"     value={String(tagCourses.length)} />
+              <StatPill icon={Users}      label="Students"    value={fmt(totalStudents)} />
+              <StatPill icon={Star}       label="Avg Rating"  value={avgRating > 0 ? avgRating.toFixed(1) : "New"} />
+              <StatPill icon={TrendingUp} label="Topics"      value={String(relatedTags.length + 1)} />
             </motion.div>
           </div>
         </div>
@@ -473,48 +432,32 @@ export default function SingleCategory() {
 
       {/* ── Content ───────────────────────────────────────────────────────── */}
       <div className="max-w-[1280px] mx-auto px-6 pb-24 pt-10">
-
-        {/* ── Courses ─────────────────────────────────────────────────────── */}
-        <section className="mb-16">
-          {/* Header row */}
+        <section>
+          {/* Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
             <div>
               <h2 className="text-2xl font-black text-gray-900 dark:text-white">
-                Courses in{" "}
-                <span className="text-blue-600 dark:text-blue-400">{category.title}</span>
+                Courses in <span className="text-blue-600 dark:text-blue-400">{meta.label}</span>
               </h2>
               <p className="text-sm text-gray-400 mt-0.5">
                 {filteredCourses.length} {filteredCourses.length === 1 ? "course" : "courses"} found
               </p>
             </div>
 
-            {/* Controls */}
             <div className="flex items-center gap-2 flex-wrap">
               {/* Search */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Search courses..."
                   className="pl-9 pr-8 py-2 rounded-xl text-sm w-44
-                    bg-white dark:bg-white/[0.05]
-                    border border-gray-200 dark:border-white/[0.08]
-                    text-gray-800 dark:text-white
-                    placeholder:text-gray-400
-                    outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400
-                    transition-all"
-                />
+                    bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08]
+                    text-gray-800 dark:text-white placeholder:text-gray-400
+                    outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 transition-all" />
                 <AnimatePresence>
                   {search && (
-                    <motion.button
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      onClick={() => setSearch("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2"
-                    >
+                    <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+                      onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
                       <X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
                     </motion.button>
                   )}
@@ -523,214 +466,92 @@ export default function SingleCategory() {
 
               {/* Sort */}
               <div className="relative">
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                <select value={sortBy} onChange={e => setSortBy(e.target.value)}
                   className="appearance-none pl-3 pr-8 py-2 rounded-xl text-sm font-semibold
-                    bg-white dark:bg-white/[0.05]
-                    border border-gray-200 dark:border-white/[0.08]
-                    text-gray-700 dark:text-gray-300
-                    outline-none cursor-pointer
-                    focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400"
-                >
+                    bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08]
+                    text-gray-700 dark:text-gray-300 outline-none cursor-pointer
+                    focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400">
                   <option value="rating">Top Rated</option>
                   <option value="students">Most Students</option>
                   <option value="price-low">Price ↑</option>
                   <option value="price-high">Price ↓</option>
-                  <option value="newest">Newest</option>
                 </select>
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
               </div>
 
               {/* Grid / List toggle */}
               <div className="flex items-center rounded-xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-white/[0.04]">
-                <button
-                  onClick={() => setViewMode("grid")}
-                  className={`p-2 transition-colors ${viewMode === "grid"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}
-                >
+                <button onClick={() => setViewMode("grid")}
+                  className={`p-2 transition-colors ${viewMode === "grid" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}>
                   <LayoutGrid className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={() => setViewMode("list")}
-                  className={`p-2 transition-colors ${viewMode === "list"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}
-                >
+                <button onClick={() => setViewMode("list")}
+                  className={`p-2 transition-colors ${viewMode === "list" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}>
                   <List className="w-4 h-4" />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Level filter pills */}
+          {/* Level pills */}
           <div className="flex items-center gap-2 flex-wrap mb-6">
             <SlidersHorizontal className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            {LEVELS.map((lvl) => (
-              <button
-                key={lvl}
-                onClick={() => setLevelFilter(lvl)}
+            {levels.map(lvl => (
+              <button key={lvl} onClick={() => setLevelFilter(lvl)}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200
                   ${levelFilter === lvl
                     ? "bg-blue-600 text-white shadow-[0_4px_12px_rgba(59,130,246,0.35)]"
                     : "bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-300 hover:border-blue-300 hover:text-blue-600"
-                  }`}
-              >
+                  }`}>
                 {lvl}
               </button>
             ))}
-
             <AnimatePresence>
               {hasFilters && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.85 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.85 }}
+                <motion.button initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
                   onClick={() => { setLevelFilter("All"); setSearch(""); setSortBy("rating"); }}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold
-                    border border-red-200 dark:border-red-900/50
-                    text-red-500 dark:text-red-400
-                    bg-red-50 dark:bg-red-950/20
-                    hover:bg-red-100 transition-colors"
-                >
+                    border border-red-200 dark:border-red-900/50 text-red-500 dark:text-red-400
+                    bg-red-50 dark:bg-red-950/20 hover:bg-red-100 transition-colors">
                   <X className="w-3 h-3" /> Clear
                 </motion.button>
               )}
             </AnimatePresence>
           </div>
 
-          {/* Courses */}
+          {/* Course grid/list */}
           <AnimatePresence mode="wait">
             {filteredCourses.length > 0 ? (
               viewMode === "grid" ? (
-                <motion.div
-                  key="grid"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5"
-                >
+                <motion.div key="grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                   <AnimatePresence mode="popLayout">
                     {filteredCourses.map((c, i) => <CourseCardGrid key={c.id} course={c} index={i} />)}
                   </AnimatePresence>
                 </motion.div>
               ) : (
-                <motion.div
-                  key="list"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col gap-3"
-                >
+                <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="flex flex-col gap-3">
                   <AnimatePresence mode="popLayout">
                     {filteredCourses.map((c, i) => <CourseCardList key={c.id} course={c} index={i} />)}
                   </AnimatePresence>
                 </motion.div>
               )
             ) : (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex flex-col items-center justify-center py-24 text-center"
-              >
+              <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="flex flex-col items-center justify-center py-24 text-center">
                 <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center mb-4">
                   <Search className="w-7 h-7 text-blue-400" />
                 </div>
                 <h3 className="text-lg font-bold text-gray-700 dark:text-white mb-1">No courses found</h3>
                 <p className="text-sm text-gray-400 mb-5">Try adjusting your filters</p>
-                <button
-                  onClick={() => { setLevelFilter("All"); setSearch(""); setSortBy("rating"); }}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors"
-                >
+                <button onClick={() => { setLevelFilter("All"); setSearch(""); setSortBy("rating"); }}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors">
                   Clear filters
                 </button>
               </motion.div>
             )}
           </AnimatePresence>
-        </section>
-
-        {/* ── Instructors ────────────────────────────────────────────────── */}
-        <section className="mb-16">
-          <div className="mb-6">
-            <h2 className="text-2xl font-black text-gray-900 dark:text-white">
-              Meet the{" "}
-              <span className="text-blue-600 dark:text-blue-400">Instructors</span>
-            </h2>
-            <p className="text-sm text-gray-400 mt-0.5">
-              {categoryInstructors.length} instructor{categoryInstructors.length !== 1 ? "s" : ""} in this category
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <AnimatePresence>
-              {visibleInstructors.map((inst, i) => (
-                <InstructorCard key={inst.id} instructor={inst} index={i} />
-              ))}
-            </AnimatePresence>
-          </div>
-
-          {categoryInstructors.length > 3 && (
-            <motion.button
-              onClick={() => setShowAllInstructors((p) => !p)}
-              className="mt-6 flex items-center gap-2 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline mx-auto"
-            >
-              {showAllInstructors ? "Show less" : `Show all ${categoryInstructors.length} instructors`}
-              <motion.span animate={{ rotate: showAllInstructors ? 180 : 0 }} transition={{ duration: 0.25 }}>
-                <ChevronDown className="w-4 h-4" />
-              </motion.span>
-            </motion.button>
-          )}
-        </section>
-
-        {/* ── Related categories ─────────────────────────────────────────── */}
-        <section>
-          <div className="mb-6">
-            <h2 className="text-2xl font-black text-gray-900 dark:text-white">
-              Related{" "}
-              <span className="text-blue-600 dark:text-blue-400">Categories</span>
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {categories
-              .filter((c) => c.id !== category.id)
-              .slice(0, 4)
-              .map((cat, i) => {
-                const CatIcon = cat.icon;
-                return (
-                  <motion.div
-                    key={cat.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.06 }}
-                    whileHover={{ y: -3 }}
-                  >
-                    <Link
-                      to={`/categories/${cat.id}`}
-                      className="flex items-center gap-3 p-4 rounded-2xl
-                        bg-white dark:bg-[#0f1420]
-                        border border-gray-100 dark:border-white/[0.07]
-                        shadow-[0_2px_12px_rgba(0,0,0,0.05)]
-                        hover:shadow-[0_0_0_1.5px_rgba(59,130,246,0.3),0_8px_24px_rgba(59,130,246,0.1)]
-                        transition-all duration-300 group block"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center flex-shrink-0">
-                        <CatIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-gray-800 dark:text-white truncate
-                          group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {cat.title}
-                        </p>
-                        <p className="text-xs text-gray-400">{cat.courses} courses</p>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })}
-          </div>
         </section>
       </div>
     </div>

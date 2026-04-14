@@ -207,4 +207,4 @@ export const categories: Category[] = [
       { initials: "A", bg: "bg-rose-500" },
     ],
   },
-];
+]; 
