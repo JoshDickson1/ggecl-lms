@@ -83,6 +83,7 @@ function getNavItems(_isSuperAdmin: boolean): NavItemDef[] {
     label: "Transactions",
     children: [
       { to: "/admin/transactions", label: "All Transactions" },
+      { to: "/admin/analytics", label: "Analytics" },
     ],
   },
 

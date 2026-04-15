@@ -14,7 +14,7 @@ import {
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 // const ADMIN = { name: "Emeka Osei", avatar: "EO" };
-
+  
 const PLATFORM_STATS = [
   { label: "Total Students",    value: "3,842",  sub: "+124 this week",  icon: GraduationCap, color: "from-blue-500 to-blue-600",    trend: "+3.3%",  trendUp: true },
   { label: "Active Instructors",value: "48",     sub: "2 pending review",icon: Users,         color: "from-violet-500 to-purple-600", trend: "+2",     trendUp: true },

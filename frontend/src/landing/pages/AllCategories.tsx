@@ -1,7 +1,7 @@
 // src/landing/pages/AllCategories.tsx
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, Search, SlidersHorizontal, X, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -85,14 +85,56 @@ function fmt(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
 }
 
+// ─── Popularity Bar ───────────────────────────────────────────────────────────
+
+function PopularityBar({
+  value,        // 0–100
+  color,        // tailwind gradient string e.g. "from-blue-500 to-cyan-400"
+}: {
+  value: number;
+  color: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+          <TrendingUp className="w-3 h-3" />
+          Popularity
+        </span>
+        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400">{Math.round(value)}%</span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.07] overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${value}%` }}
+          transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
+          className={`h-full rounded-full bg-gradient-to-r ${color}`}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ─── Category Card ────────────────────────────────────────────────────────────
 
-function CategoryCard({ category, index }: { category: DerivedCategory; index: number }) {
+function CategoryCard({
+  category,
+  index,
+  maxEnrollments,
+}: {
+  category: DerivedCategory;
+  index: number;
+  maxEnrollments: number;
+}) {
   const Icon    = category.icon;
   const [hovered, setHovered] = useState(false);
   const avatars = AVATAR_COLORS.slice(0, 3).map((bg, i) => ({
     bg, initials: String.fromCharCode(65 + ((index * 3 + i) % 26)),
   }));
+
+  // Popularity = weighted combo of enrollments (70%) + course count (30%), normalised to 0–100
+  const enrollPct  = maxEnrollments > 0 ? (category.totalEnrollments / maxEnrollments) * 100 : 0;
+  const popularityPct = Math.min(100, Math.round(enrollPct));
 
   return (
     <motion.div
@@ -131,6 +173,11 @@ function CategoryCard({ category, index }: { category: DerivedCategory; index: n
           <span className="text-blue-600 dark:text-blue-400 font-semibold">{category.courseCount}</span>
           <span className="text-gray-400 dark:text-gray-500"> courses available</span>
         </p>
+      </div>
+
+      {/* Popularity bar */}
+      <div className="relative z-10">
+        <PopularityBar value={popularityPct} color={category.color} />
       </div>
 
       {/* Related tags */}
@@ -191,6 +238,14 @@ function GridSkeleton() {
             <div className="h-5 w-2/3 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
             <div className="h-3 w-1/2 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
           </div>
+          {/* Skeleton bar */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between">
+              <div className="h-3 w-20 animate-pulse rounded bg-gray-100 dark:bg-white/[0.06]" />
+              <div className="h-3 w-8 animate-pulse rounded bg-gray-100 dark:bg-white/[0.06]" />
+            </div>
+            <div className="h-1.5 w-full animate-pulse rounded-full bg-gray-100 dark:bg-white/[0.06]" />
+          </div>
           <div className="h-px bg-gray-100 dark:bg-white/[0.06]" />
           <div className="h-10 animate-pulse rounded-2xl bg-gray-100 dark:bg-white/[0.06]" />
         </div>
@@ -236,9 +291,10 @@ function FilterSidebar({
         <p className={`${labelClass} flex items-center gap-1.5`}><SlidersHorizontal className="w-3 h-3" /> Sort by</p>
         <div className="flex flex-col gap-2">
           {[
-            { value: "courses",    label: "Most Courses"  },
-            { value: "students",   label: "Most Students" },
-            { value: "az",         label: "A → Z"         },
+            { value: "courses",    label: "Most Courses"     },
+            { value: "students",   label: "Most Students"    },
+            { value: "popularity", label: "Most Popular"     },
+            { value: "az",         label: "A → Z"            },
           ].map(opt => (
             <button key={opt.value} onClick={() => setSortBy(opt.value)} className={btn(sortBy === opt.value)}>
               {opt.label}
@@ -276,15 +332,23 @@ export default function AllCategories() {
   });
 
   const allCategories = deriveCategories(data?.items ?? []);
+
+  // Compute max enrollments once across all categories for normalising the bar
+  const maxEnrollments = useMemo(
+    () => Math.max(1, ...allCategories.map(c => c.totalEnrollments)),
+    [allCategories],
+  );
+
   const hasFilters = search.trim() !== "" || sortBy !== "courses";
 
   const filtered = useMemo(() => {
     let r = [...allCategories];
     if (search.trim()) r = r.filter(c => c.label.toLowerCase().includes(search.toLowerCase()));
     switch (sortBy) {
-      case "courses":  r.sort((a, b) => b.courseCount - a.courseCount); break;
-      case "students": r.sort((a, b) => b.totalEnrollments - a.totalEnrollments); break;
-      case "az":       r.sort((a, b) => a.label.localeCompare(b.label)); break;
+      case "courses":    r.sort((a, b) => b.courseCount - a.courseCount); break;
+      case "students":   r.sort((a, b) => b.totalEnrollments - a.totalEnrollments); break;
+      case "popularity": r.sort((a, b) => b.totalEnrollments - a.totalEnrollments); break;
+      case "az":         r.sort((a, b) => a.label.localeCompare(b.label)); break;
     }
     return r;
   }, [allCategories, search, sortBy]);
@@ -335,7 +399,14 @@ export default function AllCategories() {
                 {filtered.length > 0 ? (
                   <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                     <AnimatePresence mode="popLayout">
-                      {filtered.map((cat, i) => <CategoryCard key={cat.id} category={cat} index={i} />)}
+                      {filtered.map((cat, i) => (
+                        <CategoryCard
+                          key={cat.id}
+                          category={cat}
+                          index={i}
+                          maxEnrollments={maxEnrollments}
+                        />
+                      ))}
                     </AnimatePresence>
                   </motion.div>
                 ) : (

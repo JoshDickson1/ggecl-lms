@@ -104,6 +104,7 @@ import { ProtectedRoute }        from "./auth/ProtectedRoute";
 import InstructorStudentPreview from "./dashboards/instructor-dashboard/pages/InstructorPreviewStudent";
 import InstructorStudentSingle from "./dashboards/instructor-dashboard/pages/InstructorStudentSingle";
 import InstructorReviews from "./dashboards/instructor-dashboard/pages/InstructorReviews";
+import AdminAnalytics from "./dashboards/admin-dashboard/pages/AdminAnalytics";
 
 const router = createBrowserRouter([
 
@@ -175,6 +176,7 @@ const router = createBrowserRouter([
           { path: "courses/:id/edit",                 element: <AdminCreateCourse /> },
           { path: "courses",                          element: <AdminManageCourses /> },
           { path: "search",                           element: <AdminSearch /> },
+          { path: "analytics",                           element: <AdminAnalytics /> },
         ],
       },
     ],
