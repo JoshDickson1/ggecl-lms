@@ -80,6 +80,7 @@ const NAV_ITEMS: NavItemDef[] = [
     children: [
       { to: "/student/live", label: "Live Classes" },
       { to: "/student/certificates", label: "Certificates" },
+      // { to: "/student/live/recordings", label: "Live Recordings" },
     ],
   },
 

@@ -105,6 +105,11 @@ import InstructorStudentPreview from "./dashboards/instructor-dashboard/pages/In
 import InstructorStudentSingle from "./dashboards/instructor-dashboard/pages/InstructorStudentSingle";
 import InstructorReviews from "./dashboards/instructor-dashboard/pages/InstructorReviews";
 import AdminAnalytics from "./dashboards/admin-dashboard/pages/AdminAnalytics";
+import Signup from "./auth/student_auth/Signup";
+import StudentLiveClass from "./dashboards/student-dashboard/pages/StudentLiveClass";
+import StudentLiveLobby from "./dashboards/student-dashboard/pages/StudentLiveLobby";
+// import StudentRecordings from "./dashboards/student-dashboard/pages/StudentRecordings";
+// import StudentRecordingView from "./dashboards/student-dashboard/pages/StudentRecordingView";
 
 const router = createBrowserRouter([
 
@@ -130,6 +135,7 @@ const router = createBrowserRouter([
       { path: "about",              element: <About /> },
       // ── Auth ────────────────────────────────────────────────────────
       { path: "login",                         element: <Login /> },
+      { path: "signup",                         element: <Signup /> },
       { path: "forgotten-password",            element: <Forgotten /> },
       { path: "reset-password",                element: <ResetPassword /> },
       { path: "instructor/login",              element: <InstructorLogin /> },
@@ -256,6 +262,10 @@ const router = createBrowserRouter([
           { path: "search",                       element: <StudentSearch /> },
           { path: "categories",                   element: <StudentCategories /> },
           { path: "categories/:id",               element: <StudentSingleCategory /> },
+          { path: "live",               element: <StudentLiveLobby /> },
+          { path: "live/:id",               element: <StudentLiveClass /> },
+          // { path: "live/recordings", element: <StudentRecordings /> },
+          // { path: "live/recordings/:id", element: <StudentRecordingView /> },
         ],
       },
     ],
