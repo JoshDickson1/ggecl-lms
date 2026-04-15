@@ -1,5 +1,5 @@
 // src/dashboards/student/StudentSupport.tsx
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LifeBuoy,
@@ -15,13 +15,16 @@ import {
   FileText,
   Tag,
   Flame,
+  RefreshCw,
 } from "lucide-react";
-import type {
-  SupportTicket,
+import SupportTicketService, {
   TicketCategory,
   TicketPriority,
-} from "@/data/supportTypes.ts";
-import { SEED_TICKETS } from "@/data/supportTypes.ts";
+  TicketStatus,
+  type SupportTicketSummary,
+  type SupportTicketDetail,
+  type PaginatedTicketsMeta,
+} from "@/services/support-ticket.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,32 +36,83 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   );
 }
 
-const statusMeta: Record<string, { color: string; icon: React.ElementType; label: string }> = {
-  Open: { color: "bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30", icon: AlertCircle, label: "Open" },
-  "In Progress": { color: "bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30", icon: Loader2, label: "In Progress" },
-  Resolved: { color: "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/30", icon: CheckCircle2, label: "Resolved" },
+// Map backend enums → display strings
+const STATUS_LABEL: Record<TicketStatus, string> = {
+  [TicketStatus.OPEN]:        "Open",
+  [TicketStatus.IN_PROGRESS]: "In Progress",
+  [TicketStatus.RESOLVED]:    "Resolved",
 };
 
-const priorityMeta: Record<string, { color: string; dot: string }> = {
-  Low: { color: "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-700/30 dark:text-gray-400 dark:border-gray-600/30", dot: "bg-gray-400" },
-  Medium: { color: "bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30", dot: "bg-amber-400" },
-  High: { color: "bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800/30", dot: "bg-rose-500" },
+const PRIORITY_LABEL: Record<TicketPriority, string> = {
+  [TicketPriority.LOW]:    "Low",
+  [TicketPriority.MEDIUM]: "Medium",
+  [TicketPriority.HIGH]:   "High",
 };
 
-const CATEGORIES: TicketCategory[] = ["Billing", "Technical", "Course Issue", "Account", "Other"];
-const PRIORITIES: TicketPriority[] = ["Low", "Medium", "High"];
+const CATEGORY_LABEL: Record<TicketCategory, string> = {
+  [TicketCategory.TECHNICAL]: "Technical",
+  [TicketCategory.BILLING]:   "Billing",
+  [TicketCategory.COURSE]:    "Course Issue",
+  [TicketCategory.ACCOUNT]:   "Account",
+  [TicketCategory.OTHER]:     "Other",
+};
 
-const timeAgo = (d: Date) => {
-  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+const statusMeta: Record<TicketStatus, { color: string; icon: React.ElementType }> = {
+  [TicketStatus.OPEN]: {
+    color: "bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30",
+    icon: AlertCircle,
+  },
+  [TicketStatus.IN_PROGRESS]: {
+    color: "bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30",
+    icon: Loader2,
+  },
+  [TicketStatus.RESOLVED]: {
+    color: "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/30",
+    icon: CheckCircle2,
+  },
+};
+
+const priorityMeta: Record<TicketPriority, { color: string; dot: string }> = {
+  [TicketPriority.LOW]:    { color: "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-700/30 dark:text-gray-400 dark:border-gray-600/30", dot: "bg-gray-400" },
+  [TicketPriority.MEDIUM]: { color: "bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30", dot: "bg-amber-400" },
+  [TicketPriority.HIGH]:   { color: "bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800/30", dot: "bg-rose-500" },
+};
+
+const timeAgo = (d: string | Date) => {
+  const date = typeof d === "string" ? new Date(d) : d;
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 60)    return "just now";
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
-// ─── Ticket Card ─────────────────────────────────────────────────────────────
+const CATEGORIES = Object.values(TicketCategory);
+const PRIORITIES = Object.values(TicketPriority);
 
-function TicketCard({ ticket, onClick }: { ticket: SupportTicket; onClick: () => void }) {
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function TicketSkeleton() {
+  return (
+    <Card className="p-5 animate-pulse">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 space-y-2">
+          <div className="flex gap-2">
+            <div className="h-5 w-20 rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+            <div className="h-5 w-16 rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+          </div>
+          <div className="h-4 w-2/3 rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+          <div className="h-3 w-1/2 rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+        </div>
+        <div className="h-4 w-14 rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
+      </div>
+    </Card>
+  );
+}
+
+// ─── Ticket Card ──────────────────────────────────────────────────────────────
+
+function TicketCard({ ticket, onClick }: { ticket: SupportTicketSummary; onClick: () => void }) {
   const sm = statusMeta[ticket.status];
   const pm = priorityMeta[ticket.priority];
   const StatusIcon = sm.icon;
@@ -76,35 +130,29 @@ function TicketCard({ ticket, onClick }: { ticket: SupportTicket; onClick: () =>
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-bold text-gray-400 font-mono">{ticket.id}</span>
+              <span className="text-xs font-bold text-gray-400 font-mono">{ticket.ticketNumber}</span>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border ${sm.color}`}>
                 <StatusIcon className="w-3 h-3" />
-                {sm.label}
+                {STATUS_LABEL[ticket.status]}
               </span>
               <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-semibold border ${pm.color}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${pm.dot}`} />
-                {ticket.priority}
+                {PRIORITY_LABEL[ticket.priority]}
               </span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-700/20 dark:text-gray-400 dark:border-gray-700/30">
                 <Tag className="w-3 h-3" />
-                {ticket.category}
+                {CATEGORY_LABEL[ticket.category]}
               </span>
             </div>
             <h3 className="font-bold text-gray-900 dark:text-white text-sm group-hover:text-blue-500 transition-colors truncate">
               {ticket.subject}
             </h3>
-            <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{ticket.description}</p>
           </div>
           <div className="text-right flex-shrink-0">
             <p className="text-xs text-gray-400 flex items-center gap-1 justify-end">
               <Clock className="w-3 h-3" />
               {timeAgo(ticket.createdAt)}
             </p>
-            {ticket.notes.length > 0 && (
-              <p className="text-xs text-blue-500 mt-1 font-semibold">
-                {ticket.notes.length} note{ticket.notes.length > 1 ? "s" : ""}
-              </p>
-            )}
           </div>
         </div>
       </Card>
@@ -114,10 +162,23 @@ function TicketCard({ ticket, onClick }: { ticket: SupportTicket; onClick: () =>
 
 // ─── Ticket Detail Modal ──────────────────────────────────────────────────────
 
-function TicketModal({ ticket, onClose }: { ticket: SupportTicket; onClose: () => void }) {
-  const sm = statusMeta[ticket.status];
-  const pm = priorityMeta[ticket.priority];
-  const StatusIcon = sm.icon;
+function TicketModal({ ticketId, onClose }: { ticketId: string; onClose: () => void }) {
+  const [ticket, setTicket] = useState<SupportTicketDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(false);
+    SupportTicketService.findOne(ticketId)
+      .then(setTicket)
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, [ticketId]);
+
+  const sm = ticket ? statusMeta[ticket.status] : null;
+  const pm = ticket ? priorityMeta[ticket.priority] : null;
+  const StatusIcon = sm?.icon ?? Loader2;
 
   return (
     <motion.div
@@ -135,134 +196,360 @@ function TicketModal({ ticket, onClose }: { ticket: SupportTicket; onClose: () =
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg bg-white dark:bg-[#0f1623] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/[0.08] overflow-hidden max-h-[85vh] flex flex-col"
       >
-        {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-100 dark:border-white/[0.07] flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-bold text-gray-400 font-mono mb-1">{ticket.id}</p>
-            <h2 className="font-black text-gray-900 dark:text-white text-base leading-snug">{ticket.subject}</h2>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border ${sm.color}`}>
-                <StatusIcon className="w-3 h-3" />{sm.label}
-              </span>
-              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-semibold border ${pm.color}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${pm.dot}`} />{ticket.priority}
-              </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-700/20 dark:text-gray-400 dark:border-gray-700/30">
-                <Tag className="w-3 h-3" />{ticket.category}
-              </span>
-            </div>
+        {/* Loading state */}
+        {loading && (
+          <div className="px-6 py-16 flex flex-col items-center gap-3">
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            <p className="text-sm text-gray-400">Loading ticket…</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        )}
 
-        {/* Body */}
-        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-          <div>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Description</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{ticket.description}</p>
+        {/* Error state */}
+        {!loading && error && (
+          <div className="px-6 py-16 flex flex-col items-center gap-3 text-center">
+            <AlertCircle className="w-8 h-8 text-rose-400" />
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Couldn't load ticket</p>
+            <p className="text-xs text-gray-400">Please try again later.</p>
+            <button onClick={onClose} className="mt-2 px-4 py-2 rounded-xl text-sm font-bold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/[0.08] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all">
+              Close
+            </button>
           </div>
+        )}
 
-          {ticket.attachmentName && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit">
-              <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">{ticket.attachmentName}</span>
-            </div>
-          )}
-
-          {ticket.notes.length > 0 && (
-            <div>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Admin Notes</p>
-              <div className="space-y-3">
-                {ticket.notes.map((note) => (
-                  <div key={note.id} className="flex gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white text-xs font-black flex-shrink-0">
-                      A
-                    </div>
-                    <div className="flex-1 bg-blue-50 dark:bg-blue-900/20 rounded-2xl rounded-tl-sm px-4 py-3">
-                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{note.text}</p>
-                      <p className="text-[10px] text-gray-400 mt-1.5">{timeAgo(note.createdAt)}</p>
-                    </div>
-                  </div>
-                ))}
+        {/* Ticket content */}
+        {!loading && ticket && sm && pm && (
+          <>
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-gray-100 dark:border-white/[0.07] flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-gray-400 font-mono mb-1">{ticket.ticketNumber}</p>
+                <h2 className="font-black text-gray-900 dark:text-white text-base leading-snug">{ticket.subject}</h2>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border ${sm.color}`}>
+                    <StatusIcon className="w-3 h-3" />{STATUS_LABEL[ticket.status]}
+                  </span>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-semibold border ${pm.color}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${pm.dot}`} />{PRIORITY_LABEL[ticket.priority]}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-700/20 dark:text-gray-400 dark:border-gray-700/30">
+                    <Tag className="w-3 h-3" />{CATEGORY_LABEL[ticket.category]}
+                  </span>
+                </div>
               </div>
+              <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          )}
 
-          <p className="text-xs text-gray-400">
-            Submitted {ticket.createdAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-          </p>
-        </div>
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+              {/* Description */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Description</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{ticket.description}</p>
+              </div>
+
+              {/* Attachment link */}
+              {ticket.attachment && (
+                <a
+                  href={ticket.attachment}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit hover:border-blue-300 hover:text-blue-500 transition-all text-gray-600 dark:text-gray-400"
+                >
+                  <Paperclip className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium">View attachment</span>
+                </a>
+              )}
+
+              {/* Admin notes */}
+              {ticket.notes.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+                    Admin Notes ({ticket.notes.length})
+                  </p>
+                  <div className="space-y-3">
+                    {ticket.notes.map((note) => {
+                      const initials = note.author.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+                      return (
+                        <div key={note.id} className="flex gap-3">
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white text-[10px] font-black flex-shrink-0">
+                            {initials}
+                          </div>
+                          <div className="flex-1 bg-blue-50 dark:bg-blue-900/20 rounded-2xl rounded-tl-sm px-4 py-3">
+                            <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mb-1">{note.author.name}</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{note.content}</p>
+                            <p className="text-[10px] text-gray-400 mt-1.5">{timeAgo(note.createdAt)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Resolved note */}
+              {ticket.status === TicketStatus.RESOLVED && ticket.resolvedAt && (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+                    Resolved on {new Date(ticket.resolvedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                  </p>
+                </div>
+              )}
+
+              <p className="text-xs text-gray-400">
+                Submitted {new Date(ticket.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+              </p>
+            </div>
+          </>
+        )}
       </motion.div>
     </motion.div>
+  );
+}
+
+// ─── Create Form ──────────────────────────────────────────────────────────────
+
+interface FormState {
+  subject: string;
+  category: TicketCategory | "";
+  priority: TicketPriority;
+  description: string;
+}
+
+function CreateForm({ onSuccess }: { onSuccess: () => void }) {
+  const [form, setForm] = useState<FormState>({
+    subject: "",
+    category: "",
+    priority: TicketPriority.MEDIUM,
+    description: "",
+  });
+  const [file, setFile] = useState<File | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const validate = () => {
+    const e: Partial<Record<keyof FormState, string>> = {};
+    if (!form.subject.trim())   e.subject     = "Required";
+    if (!form.category)         e.category    = "Required";
+    if (!form.description.trim()) e.description = "Required";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    setSubmitting(true);
+    try {
+      await SupportTicketService.create({
+        subject:     form.subject.trim(),
+        category:    form.category as TicketCategory,
+        priority:    form.priority,
+        description: form.description.trim(),
+        // Note: backend expects a URL string for attachment.
+        // File upload would require a separate upload step first.
+        // If you add file upload later, upload the file, get back a URL, then pass it here.
+      });
+      setSubmitted(true);
+      setTimeout(() => {
+        setSubmitted(false);
+        onSuccess();
+      }, 2200);
+    } catch {
+      setErrors({ subject: "Something went wrong. Please try again." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="py-8 flex flex-col items-center gap-3"
+      >
+        <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+          <CheckCircle2 className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <p className="font-black text-gray-900 dark:text-white text-lg">Complaint submitted!</p>
+        <p className="text-sm text-gray-400">We'll get back to you shortly.</p>
+      </motion.div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Subject */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Subject</label>
+        <input
+          value={form.subject}
+          onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))}
+          placeholder="Brief summary of your issue"
+          className={`w-full px-3.5 py-2.5 rounded-xl text-sm border bg-gray-50 dark:bg-white/[0.04]
+            text-gray-800 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600
+            focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all
+            ${errors.subject ? "border-rose-400" : "border-gray-200 dark:border-white/[0.08]"}`}
+        />
+        {errors.subject && <p className="text-xs text-rose-500 mt-1">{errors.subject}</p>}
+      </div>
+
+      {/* Category + Priority */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Category</label>
+          <div className="relative">
+            <select
+              value={form.category}
+              onChange={(e) => setForm((p) => ({ ...p, category: e.target.value as TicketCategory }))}
+              className={`w-full px-3.5 py-2.5 rounded-xl text-sm border bg-gray-50 dark:bg-white/[0.04]
+                text-gray-800 dark:text-gray-200 appearance-none
+                focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all
+                ${errors.category ? "border-rose-400" : "border-gray-200 dark:border-white/[0.08]"}`}
+            >
+              <option value="">Select category</option>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
+          {errors.category && <p className="text-xs text-rose-500 mt-1">{errors.category}</p>}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Priority</label>
+          <div className="flex gap-2">
+            {PRIORITIES.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setForm((prev) => ({ ...prev, priority: p }))}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  form.priority === p
+                    ? p === TicketPriority.LOW    ? "bg-gray-200 text-gray-700 border-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:border-gray-500"
+                    : p === TicketPriority.MEDIUM  ? "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700"
+                    : "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-700"
+                    : "bg-gray-50 dark:bg-white/[0.04] text-gray-400 border-gray-200 dark:border-white/[0.07]"
+                }`}
+              >
+                {p === TicketPriority.HIGH && <Flame className="w-3 h-3 inline mr-1" />}
+                {PRIORITY_LABEL[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Description */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Description</label>
+        <textarea
+          value={form.description}
+          onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+          placeholder="Describe your issue in detail..."
+          rows={4}
+          className={`w-full px-3.5 py-2.5 rounded-xl text-sm border bg-gray-50 dark:bg-white/[0.04]
+            text-gray-800 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600
+            focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none transition-all
+            ${errors.description ? "border-rose-400" : "border-gray-200 dark:border-white/[0.08]"}`}
+        />
+        {errors.description && <p className="text-xs text-rose-500 mt-1">{errors.description}</p>}
+      </div>
+
+      {/* Attachment — UI only, no upload yet */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+          Attachment <span className="font-normal text-gray-400">(optional)</span>
+        </label>
+        <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        {file ? (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit">
+            <Paperclip className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">{file.name}</span>
+            <span className="text-[10px] text-amber-500 font-medium">(upload not yet supported)</span>
+            <button onClick={() => setFile(null)} className="text-gray-400 hover:text-rose-500 transition-colors ml-1">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400
+              border border-dashed border-gray-300 dark:border-white/[0.12]
+              hover:border-blue-400 hover:text-blue-500 transition-all"
+          >
+            <Paperclip className="w-4 h-4" />
+            Attach screenshot or file
+          </button>
+        )}
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={submitting}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white
+          bg-gradient-to-br from-blue-600 to-indigo-700 hover:opacity-90 transition-all shadow-md
+          disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+        {submitting ? "Submitting…" : "Submit Complaint"}
+      </button>
+    </div>
   );
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function StudentSupport() {
-  const myTickets = SEED_TICKETS.filter((t) => t.submitterRole === "student");
-  const [tickets, setTickets] = useState<SupportTicket[]>(myTickets);
+  const [tickets, setTickets] = useState<SupportTicketSummary[]>([]);
+  const [meta, setMeta] = useState<PaginatedTicketsMeta | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+
   const [showForm, setShowForm] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
-    subject: "",
-    category: "" as TicketCategory | "",
-    priority: "Medium" as TicketPriority,
-    description: "",
-  });
-  const [file, setFile] = useState<File | null>(null);
-  const [errors, setErrors] = useState<Partial<typeof form>>({});
-  const fileRef = useRef<HTMLInputElement>(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setFetchError(false);
+    try {
+      const result = await SupportTicketService.findMine({ limit: 50 });
+      setTickets(result.data);
+      setMeta(result.meta);
+    } catch {
+      setFetchError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const validate = () => {
-    const e: Partial<typeof form> = {};
-    if (!form.subject.trim()) e.subject = "Required";
-    if (!form.category) e.category = "Required" as any;
-    if (!form.description.trim()) e.description = "Required";
-    setErrors(e);
-    return Object.keys(e).length === 0;
+  useEffect(() => { load(); }, [load]);
+
+  // After successful create: close form, refresh list
+  const handleCreateSuccess = () => {
+    setShowForm(false);
+    load();
   };
 
-  const handleSubmit = () => {
-    if (!validate()) return;
-    const newTicket: SupportTicket = {
-      id: `TKT-${String(tickets.length + 100).padStart(3, "0")}`,
-      subject: form.subject.trim(),
-      category: form.category as TicketCategory,
-      priority: form.priority,
-      status: "Open",
-      description: form.description.trim(),
-      attachmentName: file?.name,
-      submittedBy: "You",
-      submitterRole: "student",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      notes: [],
-    };
-    setTickets((p) => [newTicket, ...p]);
-    setForm({ subject: "", category: "", priority: "Medium", description: "" });
-    setFile(null);
-    setErrors({});
-    setSubmitted(true);
-    setTimeout(() => { setSubmitted(false); setShowForm(false); }, 2500);
-  };
-
+  // Stats — prefer meta counts from backend, fall back to derived
   const stats = {
-    total: tickets.length,
-    open: tickets.filter((t) => t.status === "Open").length,
-    inProgress: tickets.filter((t) => t.status === "In Progress").length,
-    resolved: tickets.filter((t) => t.status === "Resolved").length,
+    total:      meta?.total      ?? tickets.length,
+    open:       meta?.openCount        ?? tickets.filter((t) => t.status === TicketStatus.OPEN).length,
+    inProgress: meta?.inProgressCount  ?? tickets.filter((t) => t.status === TicketStatus.IN_PROGRESS).length,
+    resolved:   meta?.resolvedCount    ?? tickets.filter((t) => t.status === TicketStatus.RESOLVED).length,
   };
 
   return (
     <>
       <div className="max-w-[860px] mx-auto space-y-6 pb-12">
 
-        {/* Header */}
+        {/* ── Header ── */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-md">
@@ -273,34 +560,43 @@ export default function StudentSupport() {
               <p className="text-xs text-gray-400">Submit and track your complaints</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowForm((p) => !p)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white
-              bg-gradient-to-br from-blue-600 to-indigo-700 hover:opacity-90 transition-all shadow-md"
-          >
-            {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {showForm ? "Cancel" : "New Complaint"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={load}
+              className="p-2.5 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 border border-gray-200 dark:border-white/[0.08] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all"
+              title="Refresh"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowForm((p) => !p)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white
+                bg-gradient-to-br from-blue-600 to-indigo-700 hover:opacity-90 transition-all shadow-md"
+            >
+              {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {showForm ? "Cancel" : "New Complaint"}
+            </button>
+          </div>
         </motion.div>
 
-        {/* Stats */}
+        {/* ── Stats ── */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}>
           <div className="grid grid-cols-4 gap-3">
             {[
-              { label: "Total", value: stats.total, color: "text-gray-900 dark:text-white" },
-              { label: "Open", value: stats.open, color: "text-blue-600 dark:text-blue-400" },
+              { label: "Total",       value: stats.total,      color: "text-gray-900 dark:text-white" },
+              { label: "Open",        value: stats.open,       color: "text-blue-600 dark:text-blue-400" },
               { label: "In Progress", value: stats.inProgress, color: "text-amber-600 dark:text-amber-400" },
-              { label: "Resolved", value: stats.resolved, color: "text-emerald-600 dark:text-emerald-400" },
+              { label: "Resolved",    value: stats.resolved,   color: "text-emerald-600 dark:text-emerald-400" },
             ].map((s) => (
               <Card key={s.label} className="p-4 text-center">
-                <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+                <p className={`text-2xl font-black ${s.color}`}>{loading ? "—" : s.value}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
               </Card>
             ))}
           </div>
         </motion.div>
 
-        {/* Form */}
+        {/* ── Create form ── */}
         <AnimatePresence>
           {showForm && (
             <motion.div
@@ -315,163 +611,66 @@ export default function StudentSupport() {
                   <FileText className="w-4 h-4 text-blue-500" />
                   New Complaint
                 </h2>
-
-                {submitted ? (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.96 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="py-8 flex flex-col items-center gap-3"
-                  >
-                    <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                      <CheckCircle2 className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                    <p className="font-black text-gray-900 dark:text-white text-lg">Complaint submitted!</p>
-                    <p className="text-sm text-gray-400">We'll get back to you shortly.</p>
-                  </motion.div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Subject */}
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Subject</label>
-                      <input
-                        value={form.subject}
-                        onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))}
-                        placeholder="Brief summary of your issue"
-                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm border bg-gray-50 dark:bg-white/[0.04]
-                          text-gray-800 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600
-                          focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all
-                          ${errors.subject ? "border-rose-400" : "border-gray-200 dark:border-white/[0.08]"}`}
-                      />
-                      {errors.subject && <p className="text-xs text-rose-500 mt-1">{errors.subject}</p>}
-                    </div>
-
-                    {/* Category + Priority */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Category</label>
-                        <div className="relative">
-                          <select
-                            value={form.category}
-                            onChange={(e) => setForm((p) => ({ ...p, category: e.target.value as TicketCategory }))}
-                            className={`w-full px-3.5 py-2.5 rounded-xl text-sm border bg-gray-50 dark:bg-white/[0.04]
-                              text-gray-800 dark:text-gray-200 appearance-none
-                              focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all
-                              ${errors.category ? "border-rose-400" : "border-gray-200 dark:border-white/[0.08]"}`}
-                          >
-                            <option value="">Select category</option>
-                            {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                          </select>
-                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                        </div>
-                        {errors.category && <p className="text-xs text-rose-500 mt-1">{errors.category}</p>}
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Priority</label>
-                        <div className="flex gap-2">
-                          {PRIORITIES.map((p) => (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => setForm((prev) => ({ ...prev, priority: p }))}
-                              className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
-                                form.priority === p
-                                  ? p === "Low" ? "bg-gray-200 text-gray-700 border-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:border-gray-500"
-                                  : p === "Medium" ? "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700"
-                                  : "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-700"
-                                  : "bg-gray-50 dark:bg-white/[0.04] text-gray-400 border-gray-200 dark:border-white/[0.07]"
-                              }`}
-                            >
-                              {p === "High" && <Flame className="w-3 h-3 inline mr-1" />}
-                              {p}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Description</label>
-                      <textarea
-                        value={form.description}
-                        onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                        placeholder="Describe your issue in detail..."
-                        rows={4}
-                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm border bg-gray-50 dark:bg-white/[0.04]
-                          text-gray-800 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-600
-                          focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none transition-all
-                          ${errors.description ? "border-rose-400" : "border-gray-200 dark:border-white/[0.08]"}`}
-                      />
-                      {errors.description && <p className="text-xs text-rose-500 mt-1">{errors.description}</p>}
-                    </div>
-
-                    {/* Attachment */}
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
-                        Attachment <span className="font-normal text-gray-400">(optional)</span>
-                      </label>
-                      <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-                      {file ? (
-                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit">
-                          <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">{file.name}</span>
-                          <button onClick={() => setFile(null)} className="text-gray-400 hover:text-rose-500 transition-colors ml-1">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => fileRef.current?.click()}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400
-                            border border-dashed border-gray-300 dark:border-white/[0.12]
-                            hover:border-blue-400 hover:text-blue-500 transition-all"
-                        >
-                          <Paperclip className="w-4 h-4" />
-                          Attach screenshot or file
-                        </button>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={handleSubmit}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white
-                        bg-gradient-to-br from-blue-600 to-indigo-700 hover:opacity-90 transition-all shadow-md"
-                    >
-                      <Send className="w-4 h-4" />
-                      Submit Complaint
-                    </button>
-                  </div>
-                )}
+                <CreateForm onSuccess={handleCreateSuccess} />
               </Card>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Ticket list */}
+        {/* ── Ticket list ── */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
           <h2 className="font-black text-sm text-gray-400 uppercase tracking-wider mb-3">Your Complaints</h2>
-          <div className="space-y-3">
-            <AnimatePresence>
-              {tickets.length === 0 ? (
-                <Card className="p-10 text-center">
-                  <LifeBuoy className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
-                  <p className="text-gray-400 text-sm">No complaints yet. You're all good!</p>
-                </Card>
-              ) : (
-                tickets.map((t) => (
-                  <TicketCard key={t.id} ticket={t} onClick={() => setSelectedTicket(t)} />
-                ))
-              )}
-            </AnimatePresence>
-          </div>
+
+          {/* Error state */}
+          {fetchError && (
+            <Card className="p-8 text-center">
+              <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
+              <p className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Couldn't load tickets</p>
+              <p className="text-xs text-gray-400 mb-4">Check your connection and try again.</p>
+              <button
+                onClick={load}
+                className="px-4 py-2 rounded-xl text-sm font-bold text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+              >
+                Retry
+              </button>
+            </Card>
+          )}
+
+          {/* Loading skeletons */}
+          {loading && !fetchError && (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => <TicketSkeleton key={i} />)}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!loading && !fetchError && tickets.length === 0 && (
+            <Card className="p-10 text-center">
+              <LifeBuoy className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
+              <p className="text-gray-400 text-sm">No complaints yet. You're all good!</p>
+            </Card>
+          )}
+
+          {/* Ticket cards */}
+          {!loading && !fetchError && tickets.length > 0 && (
+            <div className="space-y-3">
+              <AnimatePresence>
+                {tickets.map((t) => (
+                  <TicketCard key={t.id} ticket={t} onClick={() => setSelectedTicketId(t.id)} />
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
         </motion.div>
       </div>
 
+      {/* ── Detail modal ── */}
       <AnimatePresence>
-        {selectedTicket && (
-          <TicketModal ticket={selectedTicket} onClose={() => setSelectedTicket(null)} />
+        {selectedTicketId && (
+          <TicketModal
+            ticketId={selectedTicketId}
+            onClose={() => setSelectedTicketId(null)}
+          />
         )}
       </AnimatePresence>
     </>

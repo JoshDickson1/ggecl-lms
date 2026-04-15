@@ -101,6 +101,9 @@ import PreviewAdmin              from "./dashboards/commons/PreviewAdmin";
 import PreviewStudent            from "./dashboards/commons/PreviewStudent";
 import SingleSubmittedAssignment from "./dashboards/commons/SingleSubmittedAssignment";
 import { ProtectedRoute }        from "./auth/ProtectedRoute";
+import InstructorStudentPreview from "./dashboards/instructor-dashboard/pages/InstructorPreviewStudent";
+import InstructorStudentSingle from "./dashboards/instructor-dashboard/pages/InstructorStudentSingle";
+import InstructorReviews from "./dashboards/instructor-dashboard/pages/InstructorReviews";
 
 const router = createBrowserRouter([
 
@@ -205,6 +208,9 @@ const router = createBrowserRouter([
           { path: "course-materials",             element: <InstructorCourseMaterials /> },
           { path: "course-video-upload",          element: <InstructorUploadVideo /> },
           { path: "search",                       element: <InstructorSearch /> },
+          { path: "students",                       element: <InstructorStudentPreview /> },
+          { path: "students/:id",                       element: <InstructorStudentSingle /> },
+          { path: "reviews",                       element: <InstructorReviews /> },
         ],
       },
     ],
