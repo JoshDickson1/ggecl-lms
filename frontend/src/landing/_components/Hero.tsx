@@ -7,35 +7,35 @@ import { ArrowRight, Play, Star, CheckCircle2 } from "lucide-react";
 const PHOTO_SETS: string[][] = [
   // Slot A — large center
   [
-    "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=600&q=80&fit=crop",  // young woman smiling
-    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&q=80&fit=crop",  // man portrait
-    "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=600&q=80&fit=crop",  // professional woman
-    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600&q=80&fit=crop",  // man smiling
+    "./A1.jpg",  // young woman smiling
+    "./A2.jpg",  // man portrait
+    "./A3.jpg",  // professional woman
+    "./A4.jpg",  // man smiling
   ],
   // Slot B — top right
   [
-    "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&q=80&fit=crop",  // woman glasses
-    "https://images.unsplash.com/photo-1552058544-f2b08422138a?w=400&q=80&fit=crop",  // man casual
-    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&q=80&fit=crop",  // woman happy
-    "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400&q=80&fit=crop",  // man serious
+    "./B1.jpg",  // woman glasses
+    "./B2.jpg",  // man casual
+    "./B3.jpg",  // woman happy
+    "./B4.jpg",  // man serious
   ],
   // Slot C — top left small
   [
-    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&q=80&fit=crop",  // young woman
+    "./A.jpg",  // young woman
     "https://images.unsplash.com/photo-1521119989659-a83eee488004?w=300&q=80&fit=crop",  // man portrait
     "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=300&q=80&fit=crop",  // woman portrait
     "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=300&q=80&fit=crop",  // man smiling
   ],
   // Slot D — bottom right small
   [
-    "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&q=80&fit=crop",  // man beard
+    "./A.jpg",  // man beard
     "https://images.unsplash.com/photo-1589156280159-27698a70f29e?w=300&q=80&fit=crop",  // woman confident
     "https://images.unsplash.com/photo-1463453091185-61582044d556?w=300&q=80&fit=crop",  // man outdoor
     "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&q=80&fit=crop",  // woman casual
   ],
   // Slot E — bottom left
   [
-    "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&q=80&fit=crop",  // man young
+    "./A.jpg",  // man young
     "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&q=80&fit=crop",  // woman stylish
     "https://images.unsplash.com/photo-1548142813-c348350df52b?w=400&q=80&fit=crop",  // woman laughing
     "https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=400&q=80&fit=crop",  // man smiling
