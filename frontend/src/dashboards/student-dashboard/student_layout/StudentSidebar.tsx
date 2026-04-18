@@ -64,7 +64,7 @@ const NAV_ITEMS: NavItemDef[] = [
   },
 
   {
-    to: "/student/academics",
+    to: "/student/grades",
     icon: Clipboard,
     label: "Grades & Assignments",
     children: [

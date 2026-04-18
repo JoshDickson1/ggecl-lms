@@ -1,6 +1,6 @@
 // src/data/searchUtils.ts
 // Shared search result types and aggregation helpers for all search pages.
-
+  
 import {
   instructors,
   type Instructor,

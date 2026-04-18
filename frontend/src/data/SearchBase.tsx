@@ -1,18 +1,21 @@
 // src/dashboards/shared/SearchBase.tsx
 // Reusable search UI — used by StudentSearch, InstructorSearch, AdminSearch.
-// Receives role-specific result sets and route base as props.
+// Accepts either sync OR async result functions; handles debounce + loading internally.
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, X, BookOpen, Users, Layers, ArrowRight,
-  Clock, GraduationCap, Shield,
+  Clock, GraduationCap, Shield, Loader2,
 } from "lucide-react";
 import type { SearchResult } from "@/data/searchUtils";
 import { getResultPath } from "@/data/searchUtils";
 
 export type SearchRole = "student" | "instructor" | "admin" | "landing";
+
+// Result functions can be sync or async — SearchBase handles both
+type ResultFn = (q: string) => SearchResult[] | Promise<SearchResult[]>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,9 +50,13 @@ function saveRecent(role: string, q: string) {
   localStorage.setItem(RECENT_KEY(role), JSON.stringify([q, ...prev].slice(0, 6)));
 }
 
+const DEBOUNCE_MS = 300;
+
 // ─── Result card ──────────────────────────────────────────────────────────────
 
-function ResultCard({ result, role, onClick }: { result: SearchResult; role: SearchRole; onClick: () => void }) {
+function ResultCard({
+  result, role, onClick,
+}: { result: SearchResult; role: SearchRole; onClick: () => void }) {
   const path = getResultPath(result, role);
   return (
     <Link to={path} onClick={onClick}
@@ -58,7 +65,7 @@ function ResultCard({ result, role, onClick }: { result: SearchResult; role: Sea
       {/* Icon / Avatar / Thumbnail */}
       <div className="flex-shrink-0">
         {result.avatar ? (
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black ${result.avatarBg}`}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black ${result.avatarBg ?? "bg-gray-400"}`}>
             {result.avatar}
           </div>
         ) : result.thumbnail ? (
@@ -115,23 +122,36 @@ function SectionHeader({ label, count, icon }: { label: string; count: number; i
   );
 }
 
+// ─── Grouped results state ────────────────────────────────────────────────────
+
+interface GroupedResults {
+  courses: SearchResult[];
+  categories: SearchResult[];
+  instructors: SearchResult[];
+  students: SearchResult[];
+  admins: SearchResult[];
+}
+
+const EMPTY_RESULTS: GroupedResults = {
+  courses: [], categories: [], instructors: [], students: [], admins: [],
+};
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 interface SearchBaseProps {
   role: SearchRole;
-  accentColor?: string;        // tailwind gradient e.g. "from-blue-600 to-indigo-700"
+  accentColor?: string;
   placeholder?: string;
-  getCourseResults: (q: string) => SearchResult[];
-  getCategoryResults: (q: string) => SearchResult[];
-  getInstructorResults: (q: string) => SearchResult[];
-  getStudentResults?: (q: string) => SearchResult[];
-  getAdminResults?: (q: string) => SearchResult[];
+  getCourseResults: ResultFn;
+  getCategoryResults: ResultFn;
+  getInstructorResults: ResultFn;
+  getStudentResults?: ResultFn;
+  getAdminResults?: ResultFn;
   browseLinks?: { icon: React.ReactNode; label: string; desc: string; path: string }[];
 }
 
 export default function SearchBase({
   role,
-//   accentColor = "from-blue-600 to-indigo-700",
   placeholder = "Search courses, instructors, categories…",
   getCourseResults,
   getCategoryResults,
@@ -142,20 +162,76 @@ export default function SearchBase({
 }: SearchBaseProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [focused, setFocused] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<GroupedResults>(EMPTY_RESULTS);
   const [recent, setRecent] = useState<string[]>(() => getRecent(role));
   const inputRef = useRef<HTMLInputElement>(null);
-//   const navigate = useNavigate();
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  // Compute grouped results
-  const courses     = query.trim() ? getCourseResults(query) : [];
-  const categories  = query.trim() ? getCategoryResults(query) : [];
-  const instructors = query.trim() ? getInstructorResults(query) : [];
-  const studentRes  = query.trim() && getStudentResults ? getStudentResults(query) : [];
-  const adminRes    = query.trim() && getAdminResults   ? getAdminResults(query)   : [];
-  const totalCount  = courses.length + categories.length + instructors.length + studentRes.length + adminRes.length;
+  // Debounce the query before firing requests
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Resolve a ResultFn — works for both sync and async
+  const resolve = useCallback(async (fn: ResultFn, q: string): Promise<SearchResult[]> => {
+    const result = fn(q);
+    return result instanceof Promise ? result : Promise.resolve(result);
+  }, []);
+
+  // Fire all result functions in parallel when debouncedQuery changes
+  useEffect(() => {
+    if (!debouncedQuery.trim()) {
+      setResults(EMPTY_RESULTS);
+      setError(null);
+      return;
+    }
+
+    // Cancel any in-flight request group
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+
+    const q = debouncedQuery;
+
+    Promise.all([
+      resolve(getCourseResults, q),
+      resolve(getCategoryResults, q),
+      resolve(getInstructorResults, q),
+      getStudentResults  ? resolve(getStudentResults, q)  : Promise.resolve([]),
+      getAdminResults    ? resolve(getAdminResults, q)    : Promise.resolve([]),
+    ])
+      .then(([courses, categories, instructors, students, admins]) => {
+        if (controller.signal.aborted) return;
+        setResults({ courses, categories, instructors, students, admins });
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        console.error("[SearchBase] fetch error", err);
+        setError("Something went wrong. Please try again.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [debouncedQuery, getCourseResults, getCategoryResults, getInstructorResults, getStudentResults, getAdminResults, resolve]);
+
+  const totalCount =
+    results.courses.length +
+    results.categories.length +
+    results.instructors.length +
+    results.students.length +
+    results.admins.length;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
@@ -164,6 +240,8 @@ export default function SearchBase({
 
   const clearQuery = () => {
     setQuery("");
+    setDebouncedQuery("");
+    setResults(EMPTY_RESULTS);
     setSearchParams({});
     inputRef.current?.focus();
   };
@@ -215,14 +293,24 @@ export default function SearchBase({
             placeholder={placeholder}
             className="flex-1 bg-transparent outline-none text-base font-medium text-gray-900 dark:text-white placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-600"
           />
-          {query && (
+          {/* Loading spinner / clear button */}
+          {loading && query ? (
+            <Loader2 className="w-4 h-4 text-gray-400 animate-spin flex-shrink-0" />
+          ) : query ? (
             <button onClick={clearQuery}
               className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border border-gray-200 dark:border-white/[0.08] text-gray-400 hover:text-rose-500 hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all">
               <X className="w-3.5 h-3.5" />
             </button>
-          )}
+          ) : null}
         </div>
       </motion.div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl px-4 py-3">
+          {error}
+        </div>
+      )}
 
       {/* Recent searches */}
       {!query.trim() && recent.length > 0 && (
@@ -245,9 +333,9 @@ export default function SearchBase({
         </motion.div>
       )}
 
-      {/* Results */}
+      {/* Results panel */}
       <AnimatePresence>
-        {query.trim() && (
+        {query.trim() && !loading && !error && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="bg-white dark:bg-[#0f1623] rounded-2xl border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] overflow-hidden">
 
@@ -256,57 +344,68 @@ export default function SearchBase({
                 <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center">
                   <Search className="w-7 h-7 text-gray-300 dark:text-gray-600" />
                 </div>
-                <p className="font-bold text-gray-700 dark:text-white">No results for "{query}"</p>
+                <p className="font-bold text-gray-700 dark:text-white">No results for "{debouncedQuery}"</p>
                 <p className="text-sm text-gray-400">Try different keywords</p>
               </div>
             ) : (
               <>
-                {/* Total count */}
+                {/* Total count bar */}
                 <div className="px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/[0.06] bg-gray-50 dark:bg-white/[0.02]">
-                  {totalCount} result{totalCount !== 1 ? "s" : ""} for "{query}"
+                  {totalCount} result{totalCount !== 1 ? "s" : ""} for "{debouncedQuery}"
                 </div>
 
-                {/* Courses */}
-                {courses.length > 0 && (
+                {results.courses.length > 0 && (
                   <>
-                    <SectionHeader label="Courses" count={courses.length} icon={<BookOpen className="w-3.5 h-3.5" />} />
-                    {courses.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
+                    <SectionHeader label="Courses" count={results.courses.length} icon={<BookOpen className="w-3.5 h-3.5" />} />
+                    {results.courses.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
                   </>
                 )}
 
-                {/* Categories */}
-                {categories.length > 0 && (
+                {results.categories.length > 0 && (
                   <>
-                    <SectionHeader label="Categories" count={categories.length} icon={<Layers className="w-3.5 h-3.5" />} />
-                    {categories.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
+                    <SectionHeader label="Categories" count={results.categories.length} icon={<Layers className="w-3.5 h-3.5" />} />
+                    {results.categories.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
                   </>
                 )}
 
-                {/* Instructors */}
-                {instructors.length > 0 && (
+                {results.instructors.length > 0 && (
                   <>
-                    <SectionHeader label="Instructors" count={instructors.length} icon={<Users className="w-3.5 h-3.5" />} />
-                    {instructors.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
+                    <SectionHeader label="Instructors" count={results.instructors.length} icon={<Users className="w-3.5 h-3.5" />} />
+                    {results.instructors.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
                   </>
                 )}
 
-                {/* Students (admin/instructor only) */}
-                {studentRes.length > 0 && (
+                {results.students.length > 0 && (
                   <>
-                    <SectionHeader label="Students" count={studentRes.length} icon={<GraduationCap className="w-3.5 h-3.5" />} />
-                    {studentRes.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
+                    <SectionHeader label="Students" count={results.students.length} icon={<GraduationCap className="w-3.5 h-3.5" />} />
+                    {results.students.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
                   </>
                 )}
 
-                {/* Admins (admin only) */}
-                {adminRes.length > 0 && (
+                {results.admins.length > 0 && (
                   <>
-                    <SectionHeader label="Admins" count={adminRes.length} icon={<Shield className="w-3.5 h-3.5" />} />
-                    {adminRes.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
+                    <SectionHeader label="Admins" count={results.admins.length} icon={<Shield className="w-3.5 h-3.5" />} />
+                    {results.admins.map(r => <ResultCard key={r.id} result={r} role={role} onClick={handleResultClick} />)}
                   </>
                 )}
               </>
             )}
+          </motion.div>
+        )}
+
+        {/* Skeleton while loading */}
+        {query.trim() && loading && (
+          <motion.div key="skeleton" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="bg-white dark:bg-[#0f1623] rounded-2xl border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] overflow-hidden">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-5 py-4 border-b last:border-b-0 border-gray-100 dark:border-white/[0.06]">
+                <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/[0.06] animate-pulse flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 bg-gray-100 dark:bg-white/[0.06] rounded-full animate-pulse w-2/5" />
+                  <div className="h-3 bg-gray-100 dark:bg-white/[0.06] rounded-full animate-pulse w-3/5" />
+                </div>
+              </div>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>

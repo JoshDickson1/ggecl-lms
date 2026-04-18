@@ -48,6 +48,9 @@ interface PublicCourse {
   averageRating: number;
   _count: { enrollments: number };
   totalLectures: number;
+  instructor: {
+    user: { id: string; name: string; image: string | null };
+  };
 }
 
 interface PublicCoursesResponse {
@@ -117,7 +120,7 @@ function CourseSnippetCard({ course, index }: { course: PublicCourse; index: num
           <span className="text-[10px] font-bold text-amber-500">
             {course.averageRating > 0 ? course.averageRating.toFixed(1) : "New"}
           </span>
-          <span className="text-[10px] text-gray-400">{fmt(course._count.enrollments)} students</span>
+          <span className="text-[10px] text-gray-400">{fmt(course._count?.enrollments ?? 0)} students</span>
         </div>
         <p className="text-xs font-extrabold text-gray-900 dark:text-white mt-1">${course.price.toFixed(2)}</p>
       </div>
@@ -132,12 +135,14 @@ export default function SingleInstructor() {
   const [showAllExpertise, setShowAllExpertise] = useState(false);
   const [imgError, setImgError] = useState(false);
 
+  // Fetch instructor public profile by user.id
   const { data: instructor, isLoading, isError } = useQuery<PublicInstructor>({
     queryKey: ["instructor-public", id],
     queryFn:  () => UserService.findOnePublic(id!) as Promise<PublicInstructor>,
     enabled:  !!id,
   });
 
+  // Fetch all public courses, then filter by this instructor's user.id
   const { data: coursesData } = useQuery<PublicCoursesResponse>({
     queryKey: ["courses-public-all"],
     queryFn:  () => CoursesService.findAllPublic() as Promise<PublicCoursesResponse>,
@@ -161,20 +166,20 @@ export default function SingleInstructor() {
     );
   }
 
-  const profile      = instructor.instructorProfile;
-  const bio          = profile?.bio ?? profile?.description ?? "";
-  const expertise    = profile?.areasOfExpertise ?? [];
-  const categories   = profile?.teachingCategories ?? [];
-  const tags         = profile?.tags ?? [];
-  const website      = profile?.website;
+  const profile        = instructor.instructorProfile;
+  const bio            = profile?.bio ?? profile?.description ?? "";
+  const expertise      = profile?.areasOfExpertise ?? [];
+  const categories     = profile?.teachingCategories ?? [];
+  const tags           = profile?.tags ?? [];
+  const website        = profile?.website;
   const specialization = profile?.specialization ?? categories[0] ?? "Instructor";
   const visibleExpertise = showAllExpertise ? expertise : expertise.slice(0, 5);
-  const avatarColor  = AVATAR_COLORS[0];
-  const showPhoto    = !!instructor.image && !imgError;
+  const avatarColor    = AVATAR_COLORS[0];
+  const showPhoto      = !!instructor.image && !imgError;
 
-  // Filter courses by this instructor
+  // Filter courses to only this instructor's — matched by user.id from the URL param
   const instructorCourses = (coursesData?.items ?? [])
-    .filter(c => c.tags.length > 0) // all courses for now since no instructorId filter on public
+    .filter(c => c.instructor?.user?.id === id)
     .slice(0, 4);
 
   return (
@@ -201,11 +206,9 @@ export default function SingleInstructor() {
               transition={{ duration: 0.45, delay: 0.05 }} className="relative flex-shrink-0">
               <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-[28px] overflow-hidden
                 shadow-[0_8px_32px_rgba(59,130,246,0.22)] border-[3px] border-blue-400/25">
-                {/* Initials bg */}
                 <div className={`absolute inset-0 flex items-center justify-center text-4xl font-extrabold text-white ${avatarColor}`}>
                   {initials(instructor.name)}
                 </div>
-                {/* Photo */}
                 {showPhoto && (
                   <img src={instructor.image!} alt={instructor.name}
                     className="absolute inset-0 w-full h-full object-cover object-top"
@@ -231,7 +234,6 @@ export default function SingleInstructor() {
               </h1>
               <p className="text-gray-500 dark:text-gray-400 text-sm font-light mb-5">{specialization}</p>
 
-              {/* Tags / categories */}
               {(categories.length > 0 || tags.length > 0) && (
                 <div className="flex flex-wrap gap-2 mb-6">
                   {[...categories, ...tags].slice(0, 4).map(t => (
@@ -244,7 +246,6 @@ export default function SingleInstructor() {
                 </div>
               )}
 
-              {/* Action buttons */}
               <div className="flex flex-wrap gap-2.5">
                 <motion.button
                   whileHover={{ y: -2, boxShadow: "0 10px 28px rgba(59,130,246,0.5)" }}
@@ -338,7 +339,7 @@ export default function SingleInstructor() {
             </motion.div>
           )}
 
-          {/* Courses */}
+          {/* Courses — only shown if this instructor has courses */}
           {instructorCourses.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
               className="rounded-[22px] p-7 bg-white dark:bg-[#0f1420]
@@ -366,7 +367,7 @@ export default function SingleInstructor() {
             <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">At a Glance</p>
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { n: instructorCourses.length.toString(), s: "", l: "Courses"  },
+                { n: instructorCourses.length.toString(), s: "", l: "Courses"   },
                 { n: specialization,                      s: "", l: "Specialty" },
               ].map(({ n, s, l }) => (
                 <div key={l} className="flex flex-col items-center py-3.5 rounded-2xl

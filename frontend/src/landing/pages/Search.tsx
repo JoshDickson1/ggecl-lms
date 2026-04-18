@@ -1,17 +1,23 @@
 // src/landing/pages/Search.tsx
-// Landing page search — courses, categories, instructors from real seed data.
-// Replaces the mock MOCK_RESULTS array with live data from searchUtils.
+// Landing page search — uses /api/search/public (no auth required).
 
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search as SearchIcon, X, BookOpen, Users, Layers,
-  ArrowRight, Clock,
+  ArrowRight, Clock, Loader2,
 } from "lucide-react";
-import { searchCourses, searchCategories, searchInstructors, getResultPath, type SearchResult } from "@/data/searchUtils";
+import {
+  publicSearchCourses,
+  publicSearchCategories,
+  publicSearchInstructors,
+} from "@/data/searchApi";
+import { getResultPath, type SearchResult } from "@/data/searchUtils";
 
 const RECENT_KEY = "ggecl_search_recent_landing";
+const DEBOUNCE_MS = 300;
+
 function getRecent(): string[] {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]"); } catch { return []; }
 }
@@ -31,25 +37,76 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery]   = useState(searchParams.get("q") ?? "");
-  const [focused, setFocused] = useState(false);
-  const [recent, setRecent]   = useState<string[]>(getRecent);
+  const [query, setQuery]         = useState(searchParams.get("q") ?? "");
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const [focused, setFocused]     = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const [allResults, setAllResults] = useState<SearchResult[]>([]);
+  const [recent, setRecent]       = useState<string[]>(getRecent);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  // Live results from real data
-  const courseResults     = query.trim() ? searchCourses(query).slice(0, 5)     : [];
-  const categoryResults   = query.trim() ? searchCategories(query).slice(0, 3)  : [];
-  const instructorResults = query.trim() ? searchInstructors(query).slice(0, 3) : [];
-  const allResults: SearchResult[] = [...courseResults, ...categoryResults, ...instructorResults];
+  // Debounce
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Fetch on debounced query
+  useEffect(() => {
+    if (!debouncedQuery.trim()) {
+      setAllResults([]);
+      setError(null);
+      return;
+    }
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+
+    Promise.all([
+      publicSearchCourses(debouncedQuery),
+      publicSearchCategories(debouncedQuery),
+      publicSearchInstructors(debouncedQuery),
+    ])
+      .then(([courses, categories, instructors]) => {
+        if (controller.signal.aborted) return;
+        setAllResults([
+          ...courses.slice(0, 5),
+          ...categories.slice(0, 3),
+          ...instructors.slice(0, 3),
+        ]);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        console.error("[LandingSearch]", err);
+        setError("Search failed. Please try again.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [debouncedQuery]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
     setSearchParams(e.target.value ? { q: e.target.value } : {});
   };
 
-  const clearQuery = () => { setQuery(""); setSearchParams({}); inputRef.current?.focus(); };
+  const clearQuery = () => {
+    setQuery("");
+    setDebouncedQuery("");
+    setAllResults([]);
+    setSearchParams({});
+    inputRef.current?.focus();
+  };
 
   const pickRecent = (s: string) => { setQuery(s); setSearchParams({ q: s }); };
 
@@ -90,13 +147,22 @@ export default function Search() {
             placeholder="Search courses, instructors…"
             className="flex-1 bg-transparent outline-none text-[16px] font-medium text-gray-900 dark:text-white placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-600"
           />
-          {query && (
+          {loading && query ? (
+            <Loader2 size={16} className="text-gray-400 animate-spin flex-shrink-0" />
+          ) : query ? (
             <button onClick={clearQuery}
               className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border border-gray-200 dark:border-white/[0.1] text-gray-400 hover:text-rose-500 hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all">
               <X size={13} />
             </button>
-          )}
+          ) : null}
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl px-4 py-3">
+            {error}
+          </div>
+        )}
 
         {/* Recent searches */}
         {!query.trim() && recent.length > 0 && (
@@ -121,36 +187,30 @@ export default function Search() {
 
         {/* Results */}
         <AnimatePresence>
-          {query.trim() && (
+          {query.trim() && !loading && !error && (
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               className="border rounded-[22px] overflow-hidden bg-white/80 dark:bg-white/[0.04] backdrop-blur-xl border-white/80 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.07)] mb-5">
               {allResults.length === 0 ? (
                 <div className="py-14 flex flex-col items-center gap-2">
                   <SearchIcon size={32} className="text-gray-400 opacity-25" />
                   <p className="text-[15px] text-gray-500 dark:text-gray-400">
-                    No results for <span className="font-semibold text-gray-800 dark:text-white">"{query}"</span>
+                    No results for <span className="font-semibold text-gray-800 dark:text-white">"{debouncedQuery}"</span>
                   </p>
                   <p className="text-[13px] text-gray-400">Try different keywords</p>
                 </div>
               ) : (
                 <>
                   <div className="px-5 py-3 text-[12px] font-semibold uppercase tracking-wider border-b border-white/80 dark:border-white/10 text-gray-400">
-                    {allResults.length} result{allResults.length !== 1 && "s"} for "{query}"
+                    {allResults.length} result{allResults.length !== 1 && "s"} for "{debouncedQuery}"
                   </div>
                   <ul>
                     {allResults.map(item => (
                       <li key={`${item.type}-${item.id}`} className="border-b last:border-b-0 border-white/80 dark:border-white/10">
                         <Link to={getResultPath(item, "landing")} onClick={handleResultClick}
                           className="flex items-center gap-4 px-5 py-4 no-underline group transition-colors duration-150 hover:bg-blue-500/[0.07] dark:hover:bg-blue-400/[0.08]">
-                          {/* Icon */}
                           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 border bg-gray-100/75 dark:bg-white/[0.06] border-white/80 dark:border-white/10 text-blue-500 dark:text-blue-400 group-hover:scale-[1.08] transition-transform">
-                            {item.avatar ? (
-                              <span className="text-xs font-black">{item.avatar}</span>
-                            ) : (
-                              TYPE_ICON[item.type]
-                            )}
+                            {TYPE_ICON[item.type]}
                           </div>
-                          {/* Text */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="text-[15px] font-semibold truncate text-gray-900 dark:text-white">{item.title}</span>
@@ -160,10 +220,9 @@ export default function Search() {
                             </div>
                             <p className="text-[13px] truncate mt-0.5 text-gray-500 dark:text-gray-400">{item.subtitle}</p>
                           </div>
-                          {/* Badge + arrow */}
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="hidden sm:block text-[11px] font-medium capitalize px-2 py-0.5 rounded-full border border-white/80 dark:border-white/10 bg-gray-100/75 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400">
-                              {TYPE_LABEL[item.type]}
+                              {TYPE_LABEL[item.type] ?? item.type}
                             </span>
                             <ArrowRight size={15} className="text-blue-500 dark:text-blue-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200" />
                           </div>
@@ -175,6 +234,22 @@ export default function Search() {
               )}
             </motion.div>
           )}
+
+          {/* Skeleton */}
+          {query.trim() && loading && (
+            <motion.div key="skeleton" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="border rounded-[22px] overflow-hidden bg-white/80 dark:bg-white/[0.04] backdrop-blur-xl border-white/80 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.07)] mb-5">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-5 py-4 border-b last:border-b-0 border-white/80 dark:border-white/10">
+                  <div className="w-9 h-9 rounded-xl bg-gray-100 dark:bg-white/[0.06] animate-pulse flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 bg-gray-100 dark:bg-white/[0.06] rounded-full animate-pulse w-2/5" />
+                    <div className="h-3 bg-gray-100 dark:bg-white/[0.06] rounded-full animate-pulse w-3/5" />
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* Browse cards */}
@@ -182,9 +257,9 @@ export default function Search() {
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
             className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { icon: <BookOpen size={20} />, label: "Browse Courses",  path: "/courses",      desc: "Explore all courses"              },
-              { icon: <Users    size={20} />, label: "Instructors",     path: "/instructors",  desc: "Meet our teachers"                },
-              { icon: <Layers   size={20} />, label: "Categories",      path: "/categories",   desc: "Discover different subjects"      },
+              { icon: <BookOpen size={20} />, label: "Browse Courses",  path: "/courses",     desc: "Explore all courses"         },
+              { icon: <Users    size={20} />, label: "Instructors",     path: "/instructors", desc: "Meet our teachers"           },
+              { icon: <Layers   size={20} />, label: "Categories",      path: "/categories",  desc: "Discover different subjects" },
             ].map(cat => (
               <Link key={cat.path} to={cat.path}
                 className="border rounded-[22px] p-5 no-underline flex flex-col gap-2 group transition-all duration-300

@@ -6,11 +6,20 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [
     react(),
-    tailwindcss(),  
+    tailwindcss(),
   ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  server: {
+    proxy: {
+      "/api": {
+        target: "https://ggecl-lms-backend-production.up.railway.app",
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
 })
