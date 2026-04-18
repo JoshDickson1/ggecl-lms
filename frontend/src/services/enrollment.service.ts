@@ -6,6 +6,23 @@ export interface EnrollPayload {
   courseId: string;
 }
 
+export type CourseLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+
+export interface MyEnrollment {
+  id: string;
+  courseId: string;
+  studentId: string;
+  enrolledAt: string;
+  course: {
+    id: string;
+    title: string;
+    img: string;
+    price: number;
+    level: CourseLevel;
+    instructorId: string;
+  };
+}
+
 // ==================== SERVICE ====================
 
 export default class EnrollmentService {
@@ -41,7 +58,7 @@ export default class EnrollmentService {
    * Get all courses the current student is enrolled in.
    * STUDENT only.
    */
-  static async getMine(): Promise<unknown> {
+  static async getMine(): Promise<MyEnrollment[]> {
     const response = await APIConfig.fetch("/enrollments/mine");
     return response.json();
   }

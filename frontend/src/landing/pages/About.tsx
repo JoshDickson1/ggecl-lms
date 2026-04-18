@@ -707,7 +707,7 @@ export default function About() {
                         bg-gradient-to-br from-blue-600 to-blue-700
                         text-white shadow-[0_8px_28px_rgba(59,130,246,0.45)]
                         transition-all">
-                      Start Learning Free <ArrowRight className="w-4 h-4" />
+                      Start Learning Now <ArrowRight className="w-4 h-4" />
                     </motion.button>
                   </Link>
                   <Link to="/instructors">

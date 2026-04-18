@@ -105,6 +105,7 @@ import InstructorStudentPreview from "./dashboards/instructor-dashboard/pages/In
 import InstructorStudentSingle from "./dashboards/instructor-dashboard/pages/InstructorStudentSingle";
 import InstructorReviews from "./dashboards/instructor-dashboard/pages/InstructorReviews";
 import AdminAnalytics from "./dashboards/admin-dashboard/pages/AdminAnalytics";
+import AdminActivities from "./dashboards/admin-dashboard/pages/AdminActivities";
 import Signup from "./auth/student_auth/Signup";
 import StudentLiveClass from "./dashboards/student-dashboard/pages/StudentLiveClass";
 import StudentLiveLobby from "./dashboards/student-dashboard/pages/StudentLiveLobby";
@@ -183,6 +184,7 @@ const router = createBrowserRouter([
           { path: "courses",                          element: <AdminManageCourses /> },
           { path: "search",                           element: <AdminSearch /> },
           { path: "analytics",                           element: <AdminAnalytics /> },
+          { path: "activities",                          element: <AdminActivities /> },
         ],
       },
     ],

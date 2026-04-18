@@ -1,15 +1,16 @@
 // src/pages/admin/AdminSettings.tsx
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import {
   Camera, User, Mail, Phone, MapPin, Globe,
   Lock, Eye, EyeOff, CheckCircle2, AlertTriangle,
   Save, Loader2, Trash2, Shield, ChevronRight, X,
 } from "lucide-react";
-import { instructors } from "@/data/Instructors";
-
-// ─── Dummy data ───────────────────────────────────────────────────────────────
-const INST = instructors[0];
+import { useDashboardUser, getInitials } from "@/hooks/useDashboardUser";
+import StorageService from "@/services/storage.service";
+import UserService from "@/services/user.service";
+import { authClient } from "@/lib/auth-client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function cn(...classes: (string | false | undefined)[]) {
@@ -216,28 +217,75 @@ const NAV_SECTIONS = [
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminSettings() {
+  const { user } = useDashboardUser();
+
   // ── Avatar
   const fileRef = useRef<HTMLInputElement>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => setAvatarPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
   };
+
+  const handleAvatarSave = async () => {
+    if (!avatarFile || !user?.id) return;
+    setAvatarUploading(true);
+    try {
+      const publicUrl = await StorageService.upload("avatars", avatarFile);
+      await UserService.update(user.id, { image: publicUrl });
+      await authClient.updateUser({ image: publicUrl });
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      showToast("Photo updated successfully!");
+    } catch {
+      showToast("Failed to upload photo. Please try again.", "error");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // ── Fetch full profile for bio/phone
+  const { data: profile } = useQuery({
+    queryKey: ["admin-me"],
+    queryFn: () => UserService.getMe() as Promise<{ bio?: string; phone?: string }>,
+    enabled: !!user?.id,
+  });
 
   // ── Personal info
   const [personal, setPersonal] = useState({
-    firstName: INST.name.split(" ")[0],
-    lastName:  INST.name.split(" ")[1] ?? "",
-    email:     "sarah@ggecl.io",
-    phone:     "+1 555 000 0000",
-    location:  "San Francisco, CA",
-    website:   "https://sarahmitchell.dev",
-    bio:       INST.bio,
+    firstName: "",
+    lastName:  "",
+    email:     "",
+    phone:     "",
+    location:  "",
+    website:   "",
+    bio:       "",
   });
+
+  // Sync when session or profile data loads
+  useEffect(() => {
+    if (!user) return;
+    setPersonal(p => ({
+      ...p,
+      firstName: user.firstName || p.firstName,
+      lastName:  user.lastName  || p.lastName,
+      email:     user.email     || p.email,
+    }));
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!profile) return;
+    setPersonal(p => ({
+      ...p,
+      phone: profile.phone ?? p.phone,
+      bio:   profile.bio   ?? p.bio,
+    }));
+  }, [profile]);
 
   // ── Socials
   const [socials, setSocials] = useState({
@@ -265,6 +313,25 @@ export default function AdminSettings() {
       setSaving(p => ({ ...p, [key]: false }));
       showToast("Changes saved successfully!");
     }, 1400);
+  };
+
+  const handlePersonalSave = async () => {
+    if (!user?.id) return;
+    setSaving(p => ({ ...p, personal: true }));
+    try {
+      const name = `${personal.firstName} ${personal.lastName}`.trim();
+      await UserService.update(user.id, {
+        name,
+        bio:   personal.bio   || undefined,
+        phone: personal.phone || undefined,
+      });
+      await authClient.updateUser({ name });
+      showToast("Profile saved successfully!");
+    } catch {
+      showToast("Failed to save profile. Please try again.", "error");
+    } finally {
+      setSaving(p => ({ ...p, personal: false }));
+    }
   };
 
   const handlePasswordSave = () => {
@@ -343,9 +410,11 @@ export default function AdminSettings() {
                     shadow-[0_4px_16px_rgba(59,130,246,0.2)]">
                     {avatarPreview ? (
                       <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                    ) : user?.avatarUrl ? (
+                      <img src={user.avatarUrl} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <div className={`w-full h-full flex items-center justify-center text-3xl font-black text-white ${INST.avatarBg}`}>
-                        {INST.avatar}
+                      <div className="w-full h-full flex items-center justify-center text-3xl font-black text-white bg-blue-600">
+                        {getInitials(user)}
                       </div>
                     )}
                   </div>
@@ -374,8 +443,8 @@ export default function AdminSettings() {
                   </button>
                   {avatarPreview && (
                     <div className="flex gap-2 mt-3">
-                      <SaveBtn loading={!!saving.avatar} onClick={() => simulateSave("avatar")} label="Save Photo" />
-                      <button onClick={() => setAvatarPreview(null)}
+                      <SaveBtn loading={avatarUploading} onClick={handleAvatarSave} label="Save Photo" />
+                      <button onClick={() => { setAvatarPreview(null); setAvatarFile(null); }}
                         className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.08]
                           text-gray-600 dark:text-gray-400 hover:border-red-300 hover:text-red-500 transition-all">
                         Remove
@@ -410,7 +479,7 @@ export default function AdminSettings() {
                     hint="Shown on your public profile. Max 300 characters." rows={4} />
                 </div>
               </div>
-              <SaveBtn loading={!!saving.personal} onClick={() => simulateSave("personal")} />
+              <SaveBtn loading={!!saving.personal} onClick={handlePersonalSave} />
             </Section>
           </div>
 

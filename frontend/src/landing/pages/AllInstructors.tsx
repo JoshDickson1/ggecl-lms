@@ -162,30 +162,55 @@ export default function AllInstructors() {
   const [search,  setSearch]  = useState("");
   const [sortBy,  setSortBy]  = useState("az");
 
-  const { data, isLoading } = useQuery<PublicInstructor[]>({
-    queryKey: ["instructors-public-all"],
-    queryFn:  () => UserService.findAllPublic() as Promise<PublicInstructor[]>,
-    staleTime: 1000 * 60 * 10,
-  });
+  const { data, isLoading } = useQuery({
+  queryKey: ["instructors-public-all"],
+  queryFn: async () => {
+    const res: any = await UserService.findAllPublic({ role: "INSTRUCTOR" as any });
 
-  const allInstructors = (data ?? []).map(mapToInstructor);
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.data)) return res.data;
+    if (Array.isArray(res?.users)) return res.users;
+
+    console.error("Unexpected API response:", res);
+    return [];
+  },
+});
+
+  const allInstructors = useMemo(
+    () => (data ?? []).map(mapToInstructor),
+    [data]
+  );
+
   const hasFilters = search.trim() !== "" || sortBy !== "az";
 
   const filtered = useMemo(() => {
     let r = [...allInstructors];
-    if (search.trim()) r = r.filter(i =>
-      i.name.toLowerCase().includes(search.toLowerCase()) ||
-      i.title.toLowerCase().includes(search.toLowerCase())
-    );
-    switch (sortBy) {
-      case "az":  r.sort((a, b) => a.name.localeCompare(b.name)); break;
-      case "za":  r.sort((a, b) => b.name.localeCompare(a.name)); break;
-      case "new": break; // API already returns newest first
+
+    if (search.trim()) {
+      r = r.filter(i =>
+        i.name.toLowerCase().includes(search.toLowerCase()) ||
+        i.title.toLowerCase().includes(search.toLowerCase())
+      );
     }
+
+    switch (sortBy) {
+      case "az":
+        r.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "za":
+        r.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case "new":
+        break;
+    }
+
     return r;
   }, [allInstructors, search, sortBy]);
 
-  const clearAll = () => { setSearch(""); setSortBy("az"); };
+  const clearAll = () => {
+    setSearch("");
+    setSortBy("az");
+  };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-[#080c17]">
@@ -224,7 +249,9 @@ export default function AllInstructors() {
               {filtered.length > 0 ? (
                 <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                   <AnimatePresence mode="popLayout">
-                    {filtered.map((inst, i) => <InstructorCard key={inst.id} instructor={inst} index={i} />)}
+                    {filtered.map((inst, i) => (
+                      <InstructorCard key={inst.id} instructor={inst} index={i} />
+                    ))}
                   </AnimatePresence>
                 </motion.div>
               ) : (
@@ -247,4 +274,4 @@ export default function AllInstructors() {
       </div>
     </div>
   );
-} 
+}

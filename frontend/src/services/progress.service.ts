@@ -9,6 +9,15 @@ export interface UpdateLessonProgressPayload {
   totalSeconds: number;
 }
 
+export interface TopCourseItem {
+  id: string;
+  title: string;
+  img: string;
+  progress: number;
+  enrolledAt: string;
+  completedAt: string | null;
+}
+
 // ==================== SERVICE ====================
 
 export default class ProgressService {
@@ -28,7 +37,7 @@ export default class ProgressService {
    * Get enrolled courses sorted by relevance (in-progress first, then recent).
    * STUDENT only.
    */
-  static async getTopCourses(): Promise<unknown> {
+  static async getTopCourses(): Promise<TopCourseItem[]> {
     const response = await APIConfig.fetch("/progress/top-courses");
     return response.json();
   }

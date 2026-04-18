@@ -200,7 +200,7 @@ export default function Hero() {
                 hover:shadow-[0_8px_40px_rgba(59,130,246,0.55)] hover:-translate-y-0.5
                 transition-all duration-200"
             >
-              Start Learning Free
+              Start Learning Now
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </Link>
 

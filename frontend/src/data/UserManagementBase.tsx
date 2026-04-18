@@ -20,7 +20,10 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import UserService, { UserRole as ApiUserRole } from "@/services/user.service";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type UserRole = "student" | "instructor" | "admin";
@@ -39,26 +42,49 @@ export interface ManagedUser {
   permissions?: string;   // admin
 }
 
-// ─── Seed Data ────────────────────────────────────────────────────────────────
+// ─── API Types ────────────────────────────────────────────────────────────────
 
-const seed = (role: UserRole): ManagedUser[] => {
-  const base = [
-    { firstName: "Olusegun", lastName: "Adewale", email: "olu@ggecl.io", gender: "Male" as const, status: "Active" as const, daysAgo: 2 },
-    { firstName: "Mei-Ling", lastName: "Chen", email: "mei@ggecl.io", gender: "Female" as const, status: "Active" as const, daysAgo: 5 },
-    { firstName: "Tobias", lastName: "Richter", email: "tobias@ggecl.io", gender: "Male" as const, status: "Inactive" as const, daysAgo: 10 },
-    { firstName: "Amara", lastName: "Osei", email: "amara@ggecl.io", gender: "Female" as const, status: "Active" as const, daysAgo: 14 },
-    { firstName: "Luca", lastName: "Ferreira", email: "luca@ggecl.io", gender: "Male" as const, status: "Suspended" as const, daysAgo: 21 },
-    { firstName: "Yuki", lastName: "Tanaka", email: "yuki@ggecl.io", gender: "Female" as const, status: "Active" as const, daysAgo: 30 },
-  ];
-  return base.map((u, i) => ({
-    id: `${role}-${i + 1}`,
-    ...u,
-    createdAt: new Date(Date.now() - u.daysAgo * 86_400_000),
-    ...(role === "student" ? { enrollments: Math.floor(Math.random() * 6) + 1 } : {}),
-    ...(role === "instructor" ? { courses: Math.floor(Math.random() * 8) + 1 } : {}),
-    ...(role === "admin" ? { permissions: ["Full Access", "Read Only", "Moderator"][i % 3] } : {}),
-  }));
+interface ApiUser {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+  role: string;
+  bio?: string | null;
+  phone?: string | null;
+  createdAt: string;
+}
+
+const ROLE_ENUM: Record<UserRole, ApiUserRole> = {
+  student:    ApiUserRole.STUDENT,
+  instructor: ApiUserRole.INSTRUCTOR,
+  admin:      ApiUserRole.ADMIN,
 };
+
+function generatePassword(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz";
+  const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const digits = "0123456789";
+  const sym = "!@#$";
+  const rand = (s: string) => s[Math.floor(Math.random() * s.length)];
+  return [rand(upper), rand(upper), rand(chars), rand(chars), rand(chars), rand(chars), rand(digits), rand(digits), rand(sym)].join("");
+}
+
+function mapApiUser(u: ApiUser, role: UserRole): ManagedUser {
+  const [firstName, ...rest] = u.name.split(" ");
+  return {
+    id: u.id,
+    firstName: firstName || u.name,
+    lastName: rest.join(" ") || "",
+    email: u.email,
+    gender: "Other",
+    status: "Active",
+    createdAt: new Date(u.createdAt),
+    ...(role === "student"    ? { enrollments: 0 }             : {}),
+    ...(role === "instructor" ? { courses: 0 }                  : {}),
+    ...(role === "admin"      ? { permissions: "Read Only" }    : {}),
+  };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -154,8 +180,52 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
   const cfg = roleConfig[role];
   const RoleIcon = cfg.icon;
 
-  // ── State ──
-  const [users, setUsers] = useState<ManagedUser[]>(() => seed(role));
+  // ── Server state ──
+  const queryClient = useQueryClient();
+
+  const { data: rawUsers = [], isLoading, isError } = useQuery<ManagedUser[]>({
+    queryKey: ["admin-users", role],
+    queryFn: async () => {
+      const res = await UserService.findAll({ role: ROLE_ENUM[role], limit: 200 }) as { data?: ApiUser[] } | ApiUser[];
+      const list: ApiUser[] = Array.isArray(res) ? res : ((res as { data?: ApiUser[] }).data ?? []);
+      return list.map(u => mapApiUser(u, role));
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const name = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
+      const password = generatePassword();
+      await UserService.create({ name, email: form.email.trim(), password, role: ROLE_ENUM[role] });
+      return password;
+    },
+    onSuccess: (password) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users", role] });
+      setForm({ firstName: "", lastName: "", email: "", gender: "" });
+      setFormErrors({});
+      setFormSuccess(true);
+      setTimeout(() => setFormSuccess(false), 3000);
+      setToast({ msg: `${cfg.label} created! Temp password: ${password}`, type: "success" });
+    },
+    onError: () => {
+      setToast({ msg: `Failed to create ${cfg.label}.`, type: "error" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => UserService.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users", role] });
+      setConfirmDelete(null);
+      setOpenMenuId(null);
+      setToast({ msg: `${cfg.label} removed.`, type: "success" });
+    },
+    onError: () => {
+      setToast({ msg: `Failed to delete ${cfg.label}.`, type: "error" });
+    },
+  });
+
+  // ── Local UI state ──
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", gender: "" });
   const [formErrors, setFormErrors] = useState<Partial<typeof form>>({});
   const [formSuccess, setFormSuccess] = useState(false);
@@ -170,7 +240,7 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
 
   // ── Filtered / sorted data ──
   const filtered = useMemo(() => {
-    let list = [...users];
+    let list = [...rawUsers];
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -187,7 +257,7 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
         : a.createdAt.getTime() - b.createdAt.getTime()
     );
     return list;
-  }, [users, search, sortOrder, statusFilter]);
+  }, [rawUsers, search, sortOrder, statusFilter]);
 
   // ── Form logic ──
   const validate = () => {
@@ -202,50 +272,21 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
 
   const handleCreate = () => {
     if (!validate()) return;
-    const newUser: ManagedUser = {
-      id: `${role}-${Date.now()}`,
-      firstName: form.firstName.trim(),
-      lastName: form.lastName.trim(),
-      email: form.email.trim(),
-      gender: form.gender as ManagedUser["gender"],
-      status: "Active",
-      createdAt: new Date(),
-      ...(role === "student" ? { enrollments: 0 } : {}),
-      ...(role === "instructor" ? { courses: 0 } : {}),
-      ...(role === "admin" ? { permissions: "Read Only" } : {}),
-    };
-    setUsers((prev) => [newUser, ...prev]);
-    setForm({ firstName: "", lastName: "", email: "", gender: "" });
-    setFormErrors({});
-    setFormSuccess(true);
-    setTimeout(() => setFormSuccess(false), 3000);
-    setToast({ msg: `${cfg.label} created successfully. Password sent to ${newUser.email}`, type: "success" });
+    createMutation.mutate();
   };
 
   const handleDelete = (id: string) => {
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    setConfirmDelete(null);
-    setOpenMenuId(null);
-    setToast({ msg: `${cfg.label} removed.`, type: "success" });
+    deleteMutation.mutate(id);
   };
 
   const handleAction = (action: string, user: ManagedUser) => {
-  setOpenMenuId(null);
-  
-  // ← paste here, as the first check
-  if (action === "View Profile") {
-    const profilePath =
-      role === "student" ? `/admin/student-profile/${user.id}` :
-      role === "instructor" ? `/admin/instructor-profile/${user.id}` :
-      `/admin/admin-profile/${user.id}`;
-    navigate(profilePath);
-    return;
-  }
-
-  if (action === "Delete") { setConfirmDelete(user.id); return; }
-//   if (action === "Suspend") { ... }
-  // rest of the existing code...
-};
+    setOpenMenuId(null);
+    if (action === "View Profile") {
+      navigate(`/admin/${role}s/${user.id}`);
+      return;
+    }
+    if (action === "Delete") { setConfirmDelete(user.id); return; }
+  };
 
   // ── Extra column header & cell by role ──
   const extraHeader =
@@ -279,7 +320,7 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
             <h1 className="text-2xl font-black text-gray-900 dark:text-white">
               {cfg.plural}
             </h1>
-            <p className="text-xs text-gray-400">{users.length} total</p>
+            <p className="text-xs text-gray-400">{rawUsers.length} total</p>
           </div>
         </div>
       </motion.div>
@@ -383,10 +424,11 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
           <div className="mt-4 flex items-center gap-3">
             <button
               onClick={handleCreate}
+              disabled={createMutation.isPending}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white
-                bg-gradient-to-br ${cfg.accent} hover:opacity-90 transition-all shadow-md`}
+                bg-gradient-to-br ${cfg.accent} hover:opacity-90 transition-all shadow-md disabled:opacity-70`}
             >
-              <Plus className="w-4 h-4" />
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
               Create {cfg.label}
             </button>
 
@@ -488,7 +530,19 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-white/[0.04]">
                 <AnimatePresence initial={false}>
-                  {filtered.length === 0 ? (
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-10 text-center">
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto text-gray-400" />
+                      </td>
+                    </tr>
+                  ) : isError ? (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-10 text-center text-rose-400 text-sm">
+                        Failed to load {cfg.plural.toLowerCase()}. Please refresh.
+                      </td>
+                    </tr>
+                  ) : filtered.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-5 py-10 text-center text-gray-400 text-sm">
                         No {cfg.plural.toLowerCase()} found.
@@ -620,7 +674,7 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
           <div className="px-5 py-3 border-t border-gray-100 dark:border-white/[0.06] flex items-center justify-between">
             <p className="text-xs text-gray-400">
               Showing <span className="font-semibold text-gray-600 dark:text-gray-300">{filtered.length}</span> of{" "}
-              <span className="font-semibold text-gray-600 dark:text-gray-300">{users.length}</span> {cfg.plural.toLowerCase()}
+              <span className="font-semibold text-gray-600 dark:text-gray-300">{rawUsers.length}</span> {cfg.plural.toLowerCase()}
             </p>
             {statusFilter !== "All" || search ? (
               <button
@@ -670,8 +724,10 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
                 </button>
                 <button
                   onClick={() => handleDelete(confirmDelete)}
-                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold transition-all"
+                  disabled={deleteMutation.isPending}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold transition-all disabled:opacity-70 flex items-center justify-center gap-2"
                 >
+                  {deleteMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                   Yes, Delete
                 </button>
               </div>

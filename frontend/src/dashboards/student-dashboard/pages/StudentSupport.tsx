@@ -25,6 +25,7 @@ import SupportTicketService, {
   type SupportTicketDetail,
   type PaginatedTicketsMeta,
 } from "@/services/support-ticket.service";
+import StorageService from "@/services/storage.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,50 @@ const timeAgo = (d: string | Date) => {
 
 const CATEGORIES = Object.values(TicketCategory);
 const PRIORITIES = Object.values(TicketPriority);
+
+function isImage(url: string) {
+  return /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i.test(url);
+}
+
+async function downloadAttachment(url: string) {
+  try {
+    const res  = await fetch(url);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = url.split("/").pop()?.split("?")[0] ?? "attachment";
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
+function AttachmentView({ url, accent = "blue" }: { url: string; accent?: "blue" | "rose" }) {
+  const ring   = accent === "blue" ? "ring-blue-200 dark:ring-blue-800/40" : "ring-rose-200 dark:ring-rose-800/40";
+  const btn    = accent === "blue"
+    ? "bg-blue-600 hover:bg-blue-500 shadow-[0_3px_10px_rgba(59,130,246,0.3)]"
+    : "bg-rose-600 hover:bg-rose-500 shadow-[0_3px_10px_rgba(225,29,72,0.3)]";
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Attachment</p>
+      {isImage(url) && (
+        <div className={`rounded-xl overflow-hidden ring-2 ${ring} max-w-sm`}>
+          <img src={url} alt="Attachment" className="w-full object-contain max-h-64" />
+        </div>
+      )}
+      <button
+        onClick={() => downloadAttachment(url)}
+        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white ${btn} transition-all`}
+      >
+        <Paperclip className="w-3.5 h-3.5" />
+        {isImage(url) ? "Download Image" : "Download File"}
+      </button>
+    </div>
+  );
+}
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
@@ -249,18 +294,7 @@ function TicketModal({ ticketId, onClose }: { ticketId: string; onClose: () => v
                 <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{ticket.description}</p>
               </div>
 
-              {/* Attachment link */}
-              {ticket.attachment && (
-                <a
-                  href={ticket.attachment}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit hover:border-blue-300 hover:text-blue-500 transition-all text-gray-600 dark:text-gray-400"
-                >
-                  <Paperclip className="w-3.5 h-3.5" />
-                  <span className="text-xs font-medium">View attachment</span>
-                </a>
-              )}
+              {ticket.attachment && <AttachmentView url={ticket.attachment} accent="blue" />}
 
               {/* Admin notes */}
               {ticket.notes.length > 0 && (
@@ -336,6 +370,7 @@ function CreateForm({ onSuccess }: { onSuccess: () => void }) {
     if (!form.subject.trim())   e.subject     = "Required";
     if (!form.category)         e.category    = "Required";
     if (!form.description.trim()) e.description = "Required";
+    else if (form.description.trim().length < 20) e.description = "Must be at least 20 characters";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -344,14 +379,22 @@ function CreateForm({ onSuccess }: { onSuccess: () => void }) {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      let attachmentUrl: string | undefined;
+      if (file) {
+        try {
+          attachmentUrl = await StorageService.upload("assignments", file);
+        } catch {
+          setErrors({ subject: "Screenshot upload failed. Submit without it or try a smaller file." });
+          setSubmitting(false);
+          return;
+        }
+      }
       await SupportTicketService.create({
         subject:     form.subject.trim(),
         category:    form.category as TicketCategory,
         priority:    form.priority,
         description: form.description.trim(),
-        // Note: backend expects a URL string for attachment.
-        // File upload would require a separate upload step first.
-        // If you add file upload later, upload the file, get back a URL, then pass it here.
+        attachment:  attachmentUrl,
       });
       setSubmitted(true);
       setTimeout(() => {
@@ -461,20 +504,23 @@ function CreateForm({ onSuccess }: { onSuccess: () => void }) {
         {errors.description && <p className="text-xs text-rose-500 mt-1">{errors.description}</p>}
       </div>
 
-      {/* Attachment — UI only, no upload yet */}
+      {/* Attachment */}
       <div>
         <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
-          Attachment <span className="font-normal text-gray-400">(optional)</span>
+          Screenshot <span className="font-normal text-gray-400">(optional)</span>
         </label>
-        <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         {file ? (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit">
-            <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">{file.name}</span>
-            <span className="text-[10px] text-amber-500 font-medium">(upload not yet supported)</span>
-            <button onClick={() => setFile(null)} className="text-gray-400 hover:text-rose-500 transition-colors ml-1">
-              <X className="w-3.5 h-3.5" />
-            </button>
+          <div className="space-y-2">
+            <div className="rounded-xl overflow-hidden ring-2 ring-blue-100 dark:ring-blue-900/40 max-w-xs">
+              <img src={URL.createObjectURL(file)} alt="Preview" className="w-full object-contain max-h-48" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{file.name}</span>
+              <button onClick={() => setFile(null)} className="text-gray-400 hover:text-rose-500 transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         ) : (
           <button
@@ -485,7 +531,7 @@ function CreateForm({ onSuccess }: { onSuccess: () => void }) {
               hover:border-blue-400 hover:text-blue-500 transition-all"
           >
             <Paperclip className="w-4 h-4" />
-            Attach screenshot or file
+            Attach screenshot
           </button>
         )}
       </div>

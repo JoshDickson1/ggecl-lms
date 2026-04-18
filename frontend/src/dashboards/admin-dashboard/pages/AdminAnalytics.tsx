@@ -7,6 +7,8 @@ import {
   ArrowUpRight, ArrowDownRight, Download,
   BarChart2, Activity, Target, Repeat2, UserCheck, ChevronRight,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import AdminDashboardService from "@/services/admin-dashboard.service";
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -114,22 +116,7 @@ const COHORT_RETENTION = [
   { cohort: "Mar '25", w1: 100, w2: 86, w4: 74, w8: 62, w12: null },
 ];
 
-const TOP_COURSES = [
-  { title: "Advanced React & System Design", students: 4200, revenue: 18900, completion: 87, growth: 12 },
-  { title: "Backend Engineering with Node.js", students: 2800, revenue: 12600, completion: 91, growth: 8 },
-  { title: "Mastering TypeScript for Scale",  students: 1800, revenue: 8100,  completion: 94, growth: 15 },
-  { title: "Python for Data Science",          students: 1600, revenue: 7200,  completion: 74, growth: -3 },
-  { title: "Digital Marketing Masterclass",    students: 1200, revenue: 5400,  completion: 82, growth: 6 },
-];
 
-const KPI_SUMMARY = [
-  { label: "Total Revenue",   value: "$61k",  sub: "+32% vs last month", icon: DollarSign,    color: "from-emerald-500 to-teal-600",    trendUp: true },
-  { label: "New Signups",     value: "1,540", sub: "+23% vs last month", icon: UserCheck,     color: "from-blue-500 to-blue-600",       trendUp: true },
-  { label: "Avg Completion",  value: "84.3%", sub: "+1.8% vs last month",icon: Target,        color: "from-violet-500 to-purple-600",   trendUp: true },
-  { label: "Retention (W4)",  value: "74%",   sub: "+4% vs last cohort", icon: Repeat2,       color: "from-amber-400 to-orange-500",    trendUp: true },
-  { label: "Active Students", value: "3,842", sub: "as of today",        icon: Activity,      color: "from-cyan-500 to-sky-600",        trendUp: true },
-  { label: "Active Courses",  value: "124",   sub: "18 in draft",        icon: BookOpen,      color: "from-rose-500 to-pink-600",       trendUp: true },
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -267,11 +254,29 @@ export default function AdminAnalytics() {
   const [revenueRange, setRevenueRange] = useState<Range>("30d");
   const [signupRange,  setSignupRange]  = useState<Range>("30d");
 
+  const { data: summary } = useQuery({
+    queryKey: ["admin-summary"],
+    queryFn: () => AdminDashboardService.getSummary(),
+  });
+  const { data: topEnrollments = [] } = useQuery({
+    queryKey: ["admin-top-enrollments"],
+    queryFn: () => AdminDashboardService.getTopEnrollments(5),
+  });
+
   const revData   = REVENUE_SERIES[revenueRange];
   const signData  = SIGNUP_SERIES[signupRange];
   const totalRev  = revData.reduce((a, d) => a + d.revenue, 0);
   const totalSigs = signData.reduce((a, d) => a + d.students, 0);
   const pieTotal  = ENROLLMENT_BY_CATEGORY.reduce((a, d) => a + d.value, 0);
+
+  const kpiSummary = [
+    { label: "Total Revenue",   value: `$${((summary?.revenue?.total ?? 0) / 1000).toFixed(1)}k`,   sub: "all time",           icon: DollarSign,  color: "from-emerald-500 to-teal-600",   trendUp: true },
+    { label: "New Signups",     value: (summary?.signups?.total ?? 0).toLocaleString(),               sub: "all time",           icon: UserCheck,   color: "from-blue-500 to-blue-600",      trendUp: true },
+    { label: "Avg Completion",  value: `${Number(summary?.completionRate?.rate ?? 0).toFixed(1)}%`,  sub: "platform avg",       icon: Target,      color: "from-violet-500 to-purple-600",  trendUp: true },
+    { label: "Retention (W4)",  value: "74%",   sub: "cohort avg",         icon: Repeat2,     color: "from-amber-400 to-orange-500",   trendUp: true },
+    { label: "Active Students", value: (summary?.students?.active ?? 0).toLocaleString(),             sub: "as of today",        icon: Activity,    color: "from-cyan-500 to-sky-600",       trendUp: true },
+    { label: "Active Courses",  value: (summary?.courses?.published ?? 0).toString(),                sub: `${summary?.courses?.draft ?? 0} in draft`, icon: BookOpen, color: "from-rose-500 to-pink-600", trendUp: true },
+  ];
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-5 pb-12">
@@ -303,7 +308,7 @@ export default function AdminAnalytics() {
       {/* ── KPI grid ── */}
       <Fade delay={0.04}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {KPI_SUMMARY.map(({ label, value, sub, icon: Ic, color, trendUp }, i) => (
+          {kpiSummary.map(({ label, value, sub, icon: Ic, color, trendUp }, i) => (
             <motion.div key={label}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -532,14 +537,14 @@ export default function AdminAnalytics() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-white/[0.06]">
-                  {["Course", "Students", "Revenue", "Completion", "Growth"].map(h => (
+                  {["Course", "Students"].map(h => (
                     <th key={h} className={`px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider ${h === "Course" ? "text-left" : "text-right"}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-white/[0.04]">
-                {TOP_COURSES.map((c, i) => (
-                  <motion.tr key={c.title}
+                {topEnrollments.map((c, i) => (
+                  <motion.tr key={c.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.24 + i * 0.05 }}
@@ -552,31 +557,35 @@ export default function AdminAnalytics() {
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      <span className="text-sm font-bold text-gray-700 dark:text-gray-300">{c.students.toLocaleString()}</span>
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">${c.revenue.toLocaleString()}</span>
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="w-16 h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.08] overflow-hidden">
-                          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${c.completion}%` }} />
-                        </div>
-                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300">{c.completion}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      <span className={`flex items-center justify-end gap-0.5 text-xs font-bold ${c.growth >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-                        {c.growth >= 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                        {Math.abs(c.growth)}%
-                      </span>
+                      <span className="text-sm font-bold text-gray-700 dark:text-gray-300">{c.enrollmentCount.toLocaleString()}</span>
                     </td>
                   </motion.tr>
                 ))}
+                {topEnrollments.length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="px-4 py-8 text-center text-xs text-gray-400">No course data yet</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </Card>
+      </Fade>
+
+      {/* ── Activities link ── */}
+      <Fade delay={0.22}>
+        <Link to="/admin/activities"
+          className="flex items-center justify-between p-5 rounded-2xl
+            bg-gradient-to-br from-blue-600 to-indigo-700
+            hover:opacity-90 transition-all shadow-lg group">
+          <div>
+            <h3 className="text-base font-black text-white">Platform Activity Feed</h3>
+            <p className="text-xs text-blue-200 mt-0.5">View all real-time platform events and admin actions</p>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/20 text-white text-sm font-bold group-hover:bg-white/30 transition-all">
+            <Activity className="w-4 h-4" /> View all <ChevronRight className="w-4 h-4" />
+          </div>
+        </Link>
       </Fade>
     </div>
   );

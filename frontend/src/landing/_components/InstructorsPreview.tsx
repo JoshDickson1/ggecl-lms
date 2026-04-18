@@ -29,35 +29,51 @@ interface PublicInstructor {
 // ─── Map API → Instructor shape expected by InstructorCard ───────────────────
 
 const AVATAR_COLORS = [
-  "bg-blue-500", "bg-violet-500", "bg-emerald-500",
-  "bg-rose-500",  "bg-amber-500",  "bg-cyan-500",
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-emerald-500",
+  "bg-rose-500",
+  "bg-amber-500",
+  "bg-cyan-500",
 ];
 
 function mapToInstructor(u: PublicInstructor, i: number): Instructor {
-  const profile   = u.instructorProfile;
+  const profile = u.instructorProfile;
   const nameParts = u.name.trim().split(" ");
-  const initials  = nameParts.map(p => p[0]).join("").slice(0, 2).toUpperCase();
+  const initials = nameParts
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return {
-    id:          u.id,
-    name:        u.name,
-    avatar:      initials,
-    avatarBg:    AVATAR_COLORS[i % AVATAR_COLORS.length],
-    photo:       u.image ?? undefined,
-    title:       profile?.specialization ?? profile?.teachingCategories?.[0] ?? "Instructor",
-    bio:         profile?.bio ?? profile?.description ?? "Instructor at GGECL LMS.",
-    bio2:        undefined,
-    experience:  "",
+    id: u.id,
+    name: u.name,
+    avatar: initials,
+    avatarBg: AVATAR_COLORS[i % AVATAR_COLORS.length],
+    photo: u.image ?? undefined,
+    title:
+      profile?.specialization ??
+      profile?.teachingCategories?.[0] ??
+      "Instructor",
+    bio:
+      profile?.bio ??
+      profile?.description ??
+      "Instructor at GGECL LMS.",
+    bio2: undefined,
+    experience: "",
     experience2: undefined,
-    expertise:   profile?.areasOfExpertise ?? [],
+    expertise: profile?.areasOfExpertise ?? [],
     categoryIds: profile?.teachingCategories ?? [],
-    rating:      0,
-    reviews:     0,
-    students:    0,
-    courses:     0,
-    badges:      [],
-    socials:     profile?.website ? [{ platform: "website", url: profile.website }] : [],
-    courseSnippets:  [],
+    rating: 0,
+    reviews: 0,
+    students: 0,
+    courses: 0,
+    badges: [],
+    socials: profile?.website
+      ? [{ platform: "website", url: profile.website }]
+      : [],
+    courseSnippets: [],
     ratingBreakdown: [
       { star: 5, pct: 0 },
       { star: 4, pct: 0 },
@@ -78,7 +94,8 @@ function CardSkeleton({ index }: { index: number }) {
       transition={{ delay: index * 0.05 }}
       className="rounded-[24px] overflow-hidden bg-white/70 dark:bg-[#020618]
         border border-white/80 dark:border-white/[0.08]
-        shadow-[0_8px_30px_rgba(15,23,42,0.08)]">
+        shadow-[0_8px_30px_rgba(15,23,42,0.08)]"
+    >
       <div className="h-48 animate-pulse bg-gray-100 dark:bg-white/[0.05]" />
       <div className="px-5 py-4 space-y-2">
         <div className="h-3 w-1/2 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
@@ -92,18 +109,27 @@ function CardSkeleton({ index }: { index: number }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function InstructorsPreview() {
-  const { data, isLoading } = useQuery<PublicInstructor[]>({
+  const { data = [], isLoading } = useQuery<PublicInstructor[]>({
     queryKey: ["instructors-public-preview"],
-    queryFn:  () => UserService.findAllPublic({ limit: 4 }) as Promise<PublicInstructor[]>,
+    queryFn: async () => {
+      const res = await UserService.findAllPublic({ role: "INSTRUCTOR" as any, limit: 4 });
+
+      // Normalize response properly (THIS was your real bug)
+      if (Array.isArray(res)) return res;
+      if (Array.isArray((res as any)?.data)) return (res as any).data;
+      if (Array.isArray((res as any)?.instructors))
+        return (res as any).instructors;
+
+      return [];
+    },
     staleTime: 1000 * 60 * 10,
   });
 
-  const preview = (data ?? []).slice(0, 4).map(mapToInstructor);
+  const preview = data.slice(0, 4).map(mapToInstructor);
 
   return (
     <section className="relative py-20 overflow-hidden bg-white dark:bg-[#080c17]">
-
-      {/* subtle blue grid + glow background */}
+      {/* background */}
       <div
         className="absolute inset-0 z-0 pointer-events-none"
         style={{
@@ -129,12 +155,17 @@ export default function InstructorsPreview() {
                 Learn from the best
               </span>
             </div>
+
             <h2 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white leading-tight">
               Top{" "}
-              <span className="text-blue-600 dark:text-blue-400">Instructors</span>
+              <span className="text-blue-600 dark:text-blue-400">
+                Instructors
+              </span>
             </h2>
+
             <p className="mt-3 text-gray-500 dark:text-gray-400 text-base max-w-sm">
-              World-class educators with real industry experience, teaching what actually matters.
+              World-class educators with real industry experience,
+              teaching what actually matters.
             </p>
           </div>
 
@@ -151,16 +182,21 @@ export default function InstructorsPreview() {
           </motion.div>
         </div>
 
-        {/* 4-col grid */}
+        {/* Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {isLoading
-            ? Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} index={i} />)
-            : preview.map((inst, i) => (
-                <InstructorCard key={inst.id} instructor={inst} index={i} />
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <CardSkeleton key={i} index={i} />
               ))
-          }
+            : preview.map((inst, i) => (
+                <InstructorCard
+                  key={inst.id}
+                  instructor={inst}
+                  index={i}
+                />
+              ))}
         </div>
       </div>
     </section>
   );
-} 
+}

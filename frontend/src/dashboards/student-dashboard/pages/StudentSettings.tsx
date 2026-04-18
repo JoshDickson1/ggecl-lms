@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import UserService from "@/services/user.service";
+import StorageService from "@/services/storage.service";
 import { useAuth } from "@/context/AuthProvider";
 import { authClient } from "@/lib/auth-client";
 
@@ -234,6 +235,8 @@ export default function StudentSettings() {
   const fileRef            = useRef<HTMLInputElement>(null);
 
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [activeSection, setActiveSection] = useState("avatar");
   const [toast, setToast]   = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [pwd, setPwd]       = useState({ current: "", next: "", confirm: "" });
@@ -288,9 +291,28 @@ export default function StudentSettings() {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setAvatarFile(file);
     const reader = new FileReader();
     reader.onload = ev => setAvatarPreview(ev.target?.result as string);
     reader.readAsDataURL(file);
+  };
+
+  const handleAvatarSave = async () => {
+    if (!avatarFile || !authUser) return;
+    setAvatarUploading(true);
+    try {
+      const publicUrl = await StorageService.upload("avatars", avatarFile);
+      await UserService.update(authUser.id, { image: publicUrl });
+      await authClient.updateUser({ image: publicUrl });
+      queryClient.invalidateQueries({ queryKey: ["user-mine"] });
+      setAvatarPreview(null);
+      setAvatarFile(null);
+      showToast("Profile photo updated!");
+    } catch {
+      showToast("Failed to upload photo. Please try again.", "error");
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   const handlePersonalSave = () => {
@@ -424,10 +446,12 @@ export default function StudentSettings() {
                   </button>
                   {avatarPreview && (
                     <div className="flex gap-2 mt-3">
-                      <SaveBtn loading={false} onClick={() => showToast("Avatar upload coming soon!", "error")} label="Save Photo" />
-                      <button onClick={() => setAvatarPreview(null)}
+                      <SaveBtn loading={avatarUploading} onClick={handleAvatarSave} label="Save Photo" />
+                      <button
+                        disabled={avatarUploading}
+                        onClick={() => { setAvatarPreview(null); setAvatarFile(null); }}
                         className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.08]
-                          text-gray-600 dark:text-gray-400 hover:border-red-300 hover:text-red-500 transition-all">
+                          text-gray-600 dark:text-gray-400 hover:border-red-300 hover:text-red-500 transition-all disabled:opacity-50">
                         Remove
                       </button>
                     </div>

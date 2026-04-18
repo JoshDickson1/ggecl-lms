@@ -1,5 +1,6 @@
 // src/dashboards/shared/PreviewInstructor.tsx
 import { useState } from "react";
+import { useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Star,
@@ -16,76 +17,36 @@ import {
   ChevronRight,
   Link,
   Edit3,
+  Loader2,
 } from "lucide-react";
-import { fmt } from "@/data/Instructors";
+import { useQuery } from "@tanstack/react-query";
+import UserService from "@/services/user.service";
 
-// ─── Data ───────────────────────────────────────────────────────────────────
+interface ApiUser {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+  bio?: string | null;
+  createdAt: string;
+  instructorProfile?: {
+    bio?: string | null;
+    description?: string | null;
+    specialization?: string | null;
+    website?: string | null;
+    areasOfExpertise?: string[];
+  } | null;
+}
 
-const INSTRUCTOR = {
-  name: "Sarah Mitchell",
-  avatar: "SM",
-  avatarBg: "bg-gradient-to-br from-blue-600 to-indigo-700",
-  title: "Senior Fullstack Engineering Instructor",
-  bio: "Sarah specializes in React architecture, TypeScript, backend systems, and career-focused project learning. She has helped thousands of students transition into software engineering roles.",
-  location: "London, UK",
-  email: "sarah@ggecl.io",
-  website: "sarahmitchell.dev",
-  badges: ["Top Rated", "Best Seller", "Mentor"],
-  rating: 4.9,
-  totalReviews: 12400,
-  students: 18420,
-  courses: 12,
-  completionRate: 92,
-  courseList: [
-    {
-      id: "react-001",
-      title: "Advanced React & System Design",
-      thumbnail: "from-blue-600 to-indigo-700",
-      students: 4200,
-      rating: 4.9,
-    },
-    {
-      id: "node-001",
-      title: "Backend Engineering with Node.js",
-      thumbnail: "from-emerald-500 to-teal-600",
-      students: 2800,
-      rating: 4.8,
-    },
-    {
-      id: "ts-001",
-      title: "Mastering TypeScript for Scale",
-      thumbnail: "from-violet-500 to-purple-600",
-      students: 1800,
-      rating: 4.9,
-    },
-  ],
-  reviews: [
-    {
-      name: "Olusegun A.",
-      avatar: "O",
-      color: "bg-emerald-500",
-      text: "Exceptional teaching style. Clear explanations and practical projects that actually prepare you for real work.",
-      time: "2 weeks ago",
-      rating: 5,
-    },
-    {
-      name: "Mei-Ling C.",
-      avatar: "M",
-      color: "bg-pink-500",
-      text: "Best structured course I've ever taken. The progression from basics to advanced topics felt natural.",
-      time: "1 month ago",
-      rating: 5,
-    },
-    {
-      name: "Tobias R.",
-      avatar: "T",
-      color: "bg-violet-500",
-      text: "Excellent content throughout and highly practical. Would recommend to anyone serious about fullstack.",
-      time: "1 month ago",
-      rating: 4,
-    },
-  ],
-};
+function fmt(n: number) {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+function initials(name: string) {
+  return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+}
+
+// ─── (data loaded dynamically below) ─────────────────────────────────────────
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -164,7 +125,7 @@ function Stars({
 
 // ─── Review Modal ─────────────────────────────────────────────────────────────
 
-function ReviewModal({ onClose }: { onClose: () => void }) {
+function ReviewModal({ onClose, name, avatar }: { onClose: () => void; name: string; avatar: string }) {
   const [rating, setRating] = useState(0);
   const [text, setText] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -202,12 +163,12 @@ function ReviewModal({ onClose }: { onClose: () => void }) {
                 <div className="flex items-center gap-3">
                   {/* Instructor mini-avatar */}
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black text-sm">
-                    SM
+                    {avatar}
                   </div>
                   <div>
                     <p className="text-xs text-gray-400 dark:text-gray-500">Reviewing</p>
                     <p className="font-bold text-gray-900 dark:text-white leading-tight">
-                      Sarah Mitchell
+                      {name}
                     </p>
                   </div>
                 </div>
@@ -352,20 +313,51 @@ function StatCard({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PreviewInstructor() {
+  const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<"about" | "courses" | "reviews">("about");
   const [showModal, setShowModal] = useState(false);
 
+  const { data: apiUser, isLoading } = useQuery<ApiUser>({
+    queryKey: ["user", id],
+    queryFn: async () => UserService.findOne(id!) as Promise<ApiUser>,
+    enabled: !!id,
+  });
+
+  const profile = apiUser?.instructorProfile;
+  const ins = {
+    name:           apiUser?.name ?? "Instructor",
+    avatar:         initials(apiUser?.name ?? "I"),
+    avatarBg:       "bg-gradient-to-br from-blue-600 to-indigo-700",
+    title:          profile?.specialization ?? "Instructor",
+    bio:            profile?.bio ?? profile?.description ?? apiUser?.bio ?? "No bio provided.",
+    location:       "—",
+    email:          apiUser?.email ?? "",
+    website:        profile?.website ?? undefined as string | undefined,
+    badges:         [] as string[],
+    rating:         0,
+    totalReviews:   0,
+    students:       0,
+    courses:        0,
+    completionRate: 0,
+    courseList:     [] as { id: string; title: string; thumbnail: string; students: number; rating: number }[],
+    reviews:        [] as { name: string; avatar: string; color: string; text: string; time: string; rating: number }[],
+  };
+
   const tabs = [
-    { id: "about", label: "About" },
-    { id: "courses", label: `Courses (${INSTRUCTOR.courses})` },
-    { id: "reviews", label: "Reviews" },
+    { id: "about",   label: "About"               },
+    { id: "courses", label: `Courses (${ins.courses})` },
+    { id: "reviews", label: "Reviews"              },
   ] as const;
 
-  const ins = INSTRUCTOR;
+  if (isLoading && id) return (
+    <div className="flex items-center justify-center py-20 text-gray-400">
+      <Loader2 className="w-6 h-6 animate-spin" />
+    </div>
+  );
 
   return (
     <>
-      {showModal && <ReviewModal onClose={() => setShowModal(false)} />}
+      {showModal && <ReviewModal onClose={() => setShowModal(false)} name={ins.name} avatar={ins.avatar} />}
 
       <div className="max-w-[1150px] mx-auto space-y-5 pb-12">
 
@@ -400,15 +392,10 @@ export default function PreviewInstructor() {
                 <div className="w-24 h-24 rounded-[20px] overflow-hidden
                   ring-4 ring-white dark:ring-[#0f1623]
                   shadow-[0_8px_32px_rgba(59,130,246,0.3)]">
-                  {ins.avatar ? (
-                    <div className={`w-full h-full flex items-center justify-center text-3xl font-black text-white ${ins.avatarBg}`}>
-                      {ins.avatar}
-                    </div>
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-3xl font-black text-white">
-                      {ins.name[0]}
-                    </div>
-                  )}
+                  {apiUser?.image
+                    ? <img src={apiUser.image} alt={ins.name} className="w-full h-full object-cover" />
+                    : <div className={`w-full h-full flex items-center justify-center text-3xl font-black text-white ${ins.avatarBg}`}>{ins.avatar}</div>
+                  }
                 </div>
                 {/* Online */}
                 <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-400
@@ -442,16 +429,8 @@ export default function PreviewInstructor() {
 
             {/* Quick meta row */}
             <div className="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400 mb-5">
-              {[
-                { icon: MapPin,    text: "Lagos, Nigeria"         },
-                { icon: Mail,      text: "sarah@ggecl.io" },
-                // { icon: Calendar,  text: "Joined March 2022"      },
-                { icon: Globe,     text: "ggecl.io"           },
-              ].map(({ icon: Ic, text }) => (
-                <span key={text} className="flex items-center gap-1.5">
-                  <Ic className="w-3.5 h-3.5 text-blue-500" />{text}
-                </span>
-              ))}
+              {ins.email && <span className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-blue-500" />{ins.email}</span>}
+              {ins.website && <span className="flex items-center gap-1.5"><Globe className="w-3.5 h-3.5 text-blue-500" />{ins.website}</span>}
             </div>
           </div>
         </Card>
@@ -539,6 +518,11 @@ export default function PreviewInstructor() {
               transition={{ duration: 0.2 }}
               className="space-y-3"
             >
+              {ins.courseList.length === 0 && (
+                <div className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] p-10 text-center text-gray-400 text-sm">
+                  No courses yet.
+                </div>
+              )}
               {ins.courseList.map((course, i) => (
                 <motion.div
                   key={course.id}
@@ -608,7 +592,7 @@ export default function PreviewInstructor() {
                 <Card className="sm:col-span-2 p-6 flex flex-col justify-between bg-gradient-to-br from-blue-600 to-indigo-700 border-0">
                   <div>
                     <p className="text-blue-200 text-sm font-medium mb-1">
-                      Enjoyed learning from Sarah?
+                      Enjoyed learning from {ins.name}?
                     </p>
                     <h3 className="text-white font-black text-xl leading-tight">
                       Share your experience with other students

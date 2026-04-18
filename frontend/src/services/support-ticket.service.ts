@@ -5,7 +5,7 @@ import { APIConfig } from "@/lib/api.config";
 export enum TicketCategory {
   TECHNICAL   = "TECHNICAL",
   BILLING     = "BILLING",
-  COURSE      = "COURSE",
+  COURSE      = "COURSE_ISSUE",
   ACCOUNT     = "ACCOUNT",
   OTHER       = "OTHER",
 }

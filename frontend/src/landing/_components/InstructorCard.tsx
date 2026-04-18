@@ -161,4 +161,4 @@ export function InstructorCard({
       </div>
     </motion.div>
   );
-} 
+}

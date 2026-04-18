@@ -8,37 +8,9 @@ import {
   Shield, ShieldCheck, TrendingUp,
   Ticket, DollarSign, CheckCircle2, Clock, Zap,
 } from "lucide-react";
-
-// ─── Dummy data ───────────────────────────────────────────────────────────────
-const ADMIN = {
-  name:         "Chinelo Adeyemi",
-  avatar:       "CA",
-  avatarBg:     "bg-blue-600",
-  title:        "Platform Administrator · GGECL",
-  department:   "Operations & Platform",
-  email:        "chinelo@ggecl.io",
-  location:     "Abuja, Nigeria",
-  joined:       "January 2022",
-  website:      "ggecl.io",
-  isSuperAdmin: false,
-  badges:       ["Admin", "Operations Lead"],
-  socials: [
-    { platform: "website",  url: "#" },
-    { platform: "linkedin", url: "#" },
-  ],
-  usersManaged:    4820,
-  ticketsResolved: 312,
-  revenueOverseen: "₦18.4M",
-  coursesPublished: 47,
-  recentActivity: [
-    { action: "Approved instructor application",    target: "James Okafor",          time: "10m ago", type: "approve"  },
-    { action: "Resolved support ticket #91",        target: "Student: Emeka O.",      time: "1h ago",  type: "ticket"   },
-    { action: "Published new course",               target: "React Bootcamp 2024",    time: "3h ago",  type: "publish"  },
-    { action: "Processed instructor payout",        target: "Sarah Mitchell · $312",  time: "5h ago",  type: "payout"   },
-    { action: "Updated platform settings",          target: "Notifications config",   time: "1d ago",  type: "settings" },
-    { action: "Enrolled student batch",             target: "32 students → cohort 4", time: "2d ago",  type: "enroll"   },
-  ],
-};
+import { useQuery } from "@tanstack/react-query";
+import AdminDashboardService from "@/services/admin-dashboard.service";
+import { useDashboardUser, getInitials } from "@/hooks/useDashboardUser";
 
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -109,10 +81,45 @@ function ActivityIcon({ type }: { type: string }) {
   );
 }
 
+function relTime(d: Date | string) {
+  const diff = Date.now() - new Date(d).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminProfile() {
   const [activeTab, setActiveTab] = useState<"activity" | "permissions">("activity");
-  const ad = ADMIN;
+  const { user } = useDashboardUser();
+
+  const { data: summary } = useQuery({
+    queryKey: ["admin-summary"],
+    queryFn: () => AdminDashboardService.getSummary(),
+  });
+  const { data: activities = [] } = useQuery({
+    queryKey: ["admin-activities", 6],
+    queryFn: () => AdminDashboardService.getRecentActivities(6),
+  });
+
+  const fullName  = user ? `${user.firstName} ${user.lastName}`.trim() : "Admin";
+  const email     = user?.email ?? "";
+  const avatarUrl = user?.avatarUrl ?? null;
+  const isSuperAdmin = !!user?.isSuperAdmin;
+
+  const ad = {
+    name:         fullName,
+    title:        `Platform ${isSuperAdmin ? "Super Admin" : "Administrator"} · GGECL`,
+    email,
+    isSuperAdmin,
+    badges:       isSuperAdmin ? ["Super Admin"] : ["Admin"],
+    usersManaged:    (summary?.students?.total ?? 0) + (summary?.instructors?.total ?? 0),
+    ticketsResolved: 0,
+    revenueOverseen: `$${((summary?.revenue?.total ?? 0) / 1000).toFixed(1)}k`,
+    coursesPublished: summary?.courses?.published ?? 0,
+  };
 
   const TABS = [
     { id: "activity",    label: "Activity"    },
@@ -146,9 +153,12 @@ export default function AdminProfile() {
                 <div className="w-24 h-24 rounded-[20px] overflow-hidden
                   ring-4 ring-white dark:ring-[#0f1623]
                   shadow-[0_8px_32px_rgba(59,130,246,0.25)]">
-                  <div className={`w-full h-full flex items-center justify-center text-3xl font-black text-white ${ad.avatarBg}`}>
-                    {ad.avatar}
-                  </div>
+                  {avatarUrl
+                    ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+                    : <div className="w-full h-full flex items-center justify-center text-3xl font-black text-white bg-blue-600">
+                        {getInitials(user)}
+                      </div>
+                  }
                 </div>
                 <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-400
                   border-[3px] border-white dark:border-[#0f1623]
@@ -180,34 +190,32 @@ export default function AdminProfile() {
 
             {/* Meta row */}
             <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-500 dark:text-gray-400 mb-5">
-              {[
-                { icon: MapPin,   text: ad.location              },
-                { icon: Mail,     text: ad.email                 },
-                { icon: Calendar, text: `Joined ${ad.joined}`    },
-                { icon: Shield,   text: ad.department            },
-                { icon: Globe,    text: ad.website               },
-              ].map(({ icon: Ic, text }) => (
-                <span key={text} className="flex items-center gap-1.5">
-                  <Ic className="w-3.5 h-3.5 text-blue-500" />{text}
+              {ad.email && (
+                <span className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-blue-500" />{ad.email}
                 </span>
-              ))}
+              )}
+              <span className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-blue-500" />Platform Operations
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-blue-500" />Admin Account
+              </span>
             </div>
 
-            {/* Socials */}
+            {/* Socials placeholder */}
             <div className="flex flex-wrap gap-2">
-              {ad.socials.map(s => (
-                <a key={s.platform} href={s.url}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold capitalize
-                    border border-gray-200 dark:border-white/[0.08]
-                    text-gray-600 dark:text-gray-400
-                    hover:border-blue-300 dark:hover:border-blue-700
-                    hover:text-blue-600 dark:hover:text-blue-400
-                    transition-all group">
-                  <Globe className="w-3.5 h-3.5" />
-                  {s.platform}
-                  <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </a>
-              ))}
+              <Link to="/admin/settings"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
+                  border border-gray-200 dark:border-white/[0.08]
+                  text-gray-600 dark:text-gray-400
+                  hover:border-blue-300 dark:hover:border-blue-700
+                  hover:text-blue-600 dark:hover:text-blue-400
+                  transition-all group">
+                <Globe className="w-3.5 h-3.5" />
+                Edit Links
+                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </Link>
             </div>
           </div>
         </Card>
@@ -247,23 +255,26 @@ export default function AdminProfile() {
               <Card className="p-6">
                 <SectionHead icon={TrendingUp} title="Recent Activity" />
                 <div className="flex flex-col gap-2">
-                  {ad.recentActivity.map((a, i) => (
-                    <motion.div key={i}
+                  {activities.map((a, i) => (
+                    <motion.div key={a.id}
                       initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.08 + i * 0.04 }}
                       className="flex items-center gap-3 p-3 rounded-xl
                         bg-gray-50 dark:bg-white/[0.03]
                         border border-gray-100 dark:border-white/[0.05]">
-                      <ActivityIcon type={a.type} />
+                      <ActivityIcon type="settings" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">{a.action}</p>
-                        <p className="text-[10px] text-gray-400 truncate">{a.target}</p>
+                        <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">{a.title}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{a.message}</p>
                       </div>
                       <span className="text-[10px] text-gray-400 flex-shrink-0 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />{a.time}
+                        <Clock className="w-3 h-3" />{relTime(a.createdAt)}
                       </span>
                     </motion.div>
                   ))}
+                  {activities.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-4">No recent activity</p>
+                  )}
                 </div>
               </Card>
             </Fade>

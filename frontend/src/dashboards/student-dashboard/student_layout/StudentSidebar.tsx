@@ -125,7 +125,7 @@ function NavItem({ item, accent, onNavigate }: {
   onNavigate?: () => void;
 }) {
   const location = useLocation();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => !!item.children?.some(child => location.pathname.startsWith(child.to)));
   const Icon = item.icon;
 
   const hasChildren = !!item.children?.length;
@@ -146,12 +146,12 @@ function NavItem({ item, accent, onNavigate }: {
           onClick={() => setOpen((p) => !p)}
           className={cn(
             "w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-2xl text-[12.5px] font-semibold transition-all duration-200",
-            open ? activeGradient : `${accent.idleBg} ${accent.idleText} ${accent.hoverBg} ${accent.hoverText}`
+            (open || !!isChildActive) ? activeGradient : `${accent.idleBg} ${accent.idleText} ${accent.hoverBg} ${accent.hoverText}`
           )}
         >
           <div className={cn(
             "w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0",
-            open ? "bg-blue-800 text-white" : "bg-white/70 dark:bg-white/[0.08]"
+            (open || !!isChildActive) ? "bg-blue-800 text-white" : "bg-white/70 dark:bg-white/[0.08]"
           )}>
             <Icon className="w-[14px] h-[14px]" />
           </div>
