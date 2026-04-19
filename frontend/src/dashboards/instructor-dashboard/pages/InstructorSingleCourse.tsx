@@ -1,359 +1,828 @@
-import { useState } from "react";
+// src/dashboards/instructor-dashboard/pages/InstructorSingleCourse.tsx
+// Route: /instructor/courses/:id
+// Single source of truth for viewing + managing a course — no separate manage page needed.
+
+import { useState, useRef } from "react";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Link, useParams } from "react-router-dom";
 import {
-  BookOpen,
-  Users,
-  Star,
-  BarChart3,
-  Search,
-  TrendingUp,
-  Award,
-  ChevronDown,
-  CheckCircle2,
-  ArrowLeft,
-  Target,
-  AlignLeft,
-  Plus,
+  ArrowLeft, BookOpen, Edit3, Trash2, Plus, Upload,
+  ChevronDown, Loader2, CheckCircle2, Globe, DollarSign,
+  Film, FileText, Paperclip, X, Save, Tag, Layers,
+  Play, AlertTriangle, Check, Image as ImageIcon,
+  Users, Star, TrendingUp, Video,
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import CoursesService, { CourseLevel, MaterialType } from "@/services/course.service";
+import StorageService from "@/services/storage.service";
 
-import {
-  STATUS_META,
-  fmtRevenue,
-  fmt,
-  totalLessons,
-  totalDuration,
-  type ManagedCourse,
-  LESSON_TYPE_META,
-  getManagedCourse,
-} from "@/data/coursesAdminData";
-import { useNavigate } from "react-router-dom";
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-function cn(...c: (string | false | undefined)[]) {
-  return c.filter(Boolean).join(" ");
+interface CourseMaterial {
+  id: string;
+  type: string;
+  title: string;
+  url: string;
+  fileName: string | null;
+  size: number | null;
 }
 
-function Card({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+interface CourseLesson {
+  id: string;
+  title: string;
+  position: number;
+  duration: number | null;
+  isPreview: boolean;
+  description: string | null;
+  materials: CourseMaterial[];
+}
+
+interface CourseSection {
+  id: string;
+  title: string;
+  position: number;
+  lessons: CourseLesson[];
+}
+
+interface CourseDetail {
+  id: string;
+  title: string;
+  description: string;
+  img: string | null;
+  videoUrl: string | null;
+  price: number;
+  level: string;
+  status: string;
+  badge: string | null;
+  tags: string[];
+  syllabus: string[];
+  includes: string[];
+  sections: CourseSection[];
+  _count?: { enrollments?: number; sections?: number };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function fmt(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function formatSize(bytes: number | null): string {
+  if (!bytes) return "";
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function materialTypeFromFile(file: File): MaterialType {
+  if (file.type.startsWith("video/")) return MaterialType.VIDEO;
+  if (file.type.startsWith("audio/")) return MaterialType.AUDIO;
+  return MaterialType.DOCUMENT;
+}
+
+// ─── Status config ────────────────────────────────────────────────────────────
+
+const STATUS_STYLE: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  DRAFT:     { label: "Draft",     color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-50 dark:bg-amber-900/20",    border: "border-amber-200 dark:border-amber-800/40" },
+  PUBLISHED: { label: "Published", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20", border: "border-emerald-200 dark:border-emerald-800/40" },
+  ARCHIVED:  { label: "Archived",  color: "text-gray-500 dark:text-gray-400",       bg: "bg-gray-100 dark:bg-white/[0.05]",    border: "border-gray-200 dark:border-white/[0.08]" },
+};
+
+const MATERIAL_ICONS: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
+  VIDEO:    { icon: <Film className="w-3.5 h-3.5" />,      color: "text-blue-600 dark:text-blue-400",       bg: "bg-blue-100 dark:bg-blue-900/30" },
+  DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />,  color: "text-sky-600 dark:text-sky-400",         bg: "bg-sky-100 dark:bg-sky-900/30" },
+  AUDIO:    { icon: <Play className="w-3.5 h-3.5" />,      color: "text-violet-600 dark:text-violet-400",   bg: "bg-violet-100 dark:bg-violet-900/30" },
+  LINK:     { icon: <Globe className="w-3.5 h-3.5" />,     color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/30" },
+  OTHER:    { icon: <Paperclip className="w-3.5 h-3.5" />, color: "text-gray-500 dark:text-gray-400",       bg: "bg-gray-100 dark:bg-white/[0.06]" },
+};
+
+// ─── Shared atoms ─────────────────────────────────────────────────────────────
+
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div
-      className={`rounded-[22px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.05)] ${className}`}
-    >
+    <div className={`rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] ${className}`}>
       {children}
     </div>
   );
 }
 
-function Fade({
-  children,
-  delay = 0,
-}: {
-  children: React.ReactNode;
-  delay?: number;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.36, delay }}
-    >
+    <div>
+      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">{label}</label>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
-// function CourseCard({course,index}:{course:ManagedCourse;index:number}) {
-//   const [hovered,setHovered]=useState(false);
-//   const lessons=totalLessons(course);
-//   const dur=totalDuration(course);
-//   const completion=course.enrolledStudents.length
-//     ?Math.round(course.enrolledStudents.filter(s=>s.progressPct===100).length/course.enrolledStudents.length*100):0;
-// }
+// ─── Lesson Row ───────────────────────────────────────────────────────────────
 
-export function InstructorSingleCourse() {
-  const navigate = useNavigate()
-  const {id}=useParams<{id:string}>();
-  const [course,_setCourse]=useState<ManagedCourse|undefined>(getManagedCourse(id??"dev-001"));
-  const [tab,setTab]=useState<"overview"|"students"|"curriculum">("overview");
-  const [search,setSearch]=useState("");
-  const [openSections,setOpenSec]=useState<string[]>([]);
+function LessonRow({ lesson, courseId, sectionId }: {
+  lesson: CourseLesson; courseId: string; sectionId: string;
+}) {
+  const qc = useQueryClient();
+  const [expanded, setExpanded]   = useState(false);
+  const [editTitle, setEditTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(lesson.title);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  if(!course) return <div className="p-8 text-center text-gray-400">Course not found.</div>;
+  const { mutate: removeLesson, isPending: removingLesson } = useMutation({
+    mutationFn: () => CoursesService.removeLesson(courseId, sectionId, lesson.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }),
+  });
 
-  const toggleSec=(id:string)=>setOpenSec(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
-  const lessons=totalLessons(course);
-  const dur=totalDuration(course);
-  const completionPct=course.enrolledStudents.length
-    ?Math.round(course.enrolledStudents.filter(s=>s.progressPct===100).length/course.enrolledStudents.length*100):0;
-  const avgProgress=course.enrolledStudents.length
-    ?Math.round(course.enrolledStudents.reduce((s,st)=>s+st.progressPct,0)/course.enrolledStudents.length):0;
+  const { mutate: updateTitle } = useMutation({
+    mutationFn: (title: string) => CoursesService.updateLesson(courseId, sectionId, lesson.id, { title }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }); setEditTitle(false); },
+  });
 
-  const filteredStudents=course.enrolledStudents.filter(s=>
-    !search.trim()||s.studentName.toLowerCase().includes(search.toLowerCase())||s.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const { mutate: removeMaterial } = useMutation({
+    mutationFn: (materialId: string) => CoursesService.removeMaterial(courseId, sectionId, lesson.id, materialId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }),
+  });
 
-  const TABS=[
-    {id:"overview",   label:"Overview"},
-    {id:"students",   label:`Students (${course.enrolledStudents.length})`},
-    {id:"curriculum", label:`Curriculum (${lessons})`},
-  ] as const;
+  const handleUpload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const url = await StorageService.upload(
+          file.type.startsWith("video/") ? "course-videos" : "lesson-materials",
+          file
+        );
+        await CoursesService.addMaterial(courseId, sectionId, lesson.id, {
+          type: materialTypeFromFile(file),
+          title: file.name.replace(/\.[^/.]+$/, ""),
+          url,
+          fileName: file.name,
+          size: file.size,
+        });
+      }
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
-    <div className="max-w-[1000px] mx-auto space-y-6 pb-10">
-
-      <Fade>
-        <Link to="/instructor/courses" className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-2">
-          <ArrowLeft className="w-4 h-4"/> Back to My Courses
-        </Link>
-
-        {/* Hero */}
-        <Card>
-          <div className={cn("h-24 rounded-t-[22px] mb-14 bg-gradient-to-br relative overflow-hidden",course.thumbnail)}>
-            <div className="absolute inset-0 opacity-10" style={{backgroundImage:"radial-gradient(circle,white 1px,transparent 1px)",backgroundSize:"18px 18px"}}/>
-          </div>
-          <div className="px-6 pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-9 mb-5">
-              <div className={cn("w-16 h-16 rounded-[16px] bg-gradient-to-br flex items-center justify-center flex-shrink-0 ring-4 ring-white dark:ring-[#0f1623] shadow-[0_4px_16px_rgba(0,0,0,0.18)]",course.thumbnail)}>
-                <course.icon className="w-8 h-8 text-white drop-shadow"/>
-              </div>
-              <div className="flex-1 sm:pb-1">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className={cn("px-2.5 py-1 rounded-lg text-[11px] font-bold border",STATUS_META[course.status].color,STATUS_META[course.status].bg,STATUS_META[course.status].border)}>
-                    {STATUS_META[course.status].label}
-                  </span>
-                  <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-gray-100 dark:bg-white/[0.05] text-gray-500">{course.level}</span>
-                </div>
-                <h1 className="text-xl font-black text-gray-900 dark:text-white">{course.title}</h1>
-                <p className="text-xs text-gray-400">{course.categoryName} · {course.language}</p>
-              </div>
-              {/* Revenue — read-only for instructor */}
-              <div className="text-right px-4 py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/30 flex-shrink-0">
-                <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">{fmtRevenue(course.revenue)}</p>
-                <p className="text-[10px] text-gray-400">Your Earnings</p>
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {[
-                {icon:Users,     val:fmt(course.students),      sub:"Students"},
-                {icon:Star,      val:course.rating.toFixed(1)+"★",sub:`${fmt(course.reviews)} reviews`},
-                {icon:TrendingUp,val:`${completionPct}%`,        sub:"Completion"},
-                {icon:BookOpen,  val:String(lessons),            sub:`lessons · ${dur}`},
-                {icon:BarChart3, val:`${avgProgress}%`,          sub:"Avg. progress"},
-              ].map(({icon:Icon,val,sub})=>(
-                <div key={sub} className="flex flex-col items-center py-3.5 px-2 rounded-2xl bg-gray-50/80 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] text-center">
-                  <Icon className="w-4 h-4 text-blue-500 mb-1"/>
-                  <p className="text-base font-black text-gray-900 dark:text-white">{val}</p>
-                  <p className="text-[9px] text-gray-400 mt-0.5">{sub}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-      </Fade>
-
-      {/* Tabs */}
-      <Fade delay={0.08}>
-        <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
-          {TABS.map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)}
-              className={cn("px-5 py-2 rounded-xl text-sm font-bold transition-all",
-                tab===t.id?"bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm":"text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              )}>{t.label}</button>
-          ))}
+    <div className="rounded-xl border border-gray-100 dark:border-white/[0.06] overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-3 bg-gray-50/60 dark:bg-white/[0.02]">
+        <button onClick={() => setExpanded(p => !p)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+          <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+          </motion.div>
+          {editTitle ? (
+            <input
+              autoFocus value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={() => titleDraft.trim() && updateTitle(titleDraft.trim())}
+              onKeyDown={e => {
+                if (e.key === "Enter") titleDraft.trim() && updateTitle(titleDraft.trim());
+                if (e.key === "Escape") { setTitleDraft(lesson.title); setEditTitle(false); }
+              }}
+              onClick={e => e.stopPropagation()}
+              className="flex-1 text-sm font-bold bg-transparent text-gray-900 dark:text-white focus:outline-none border-b border-blue-400"
+            />
+          ) : (
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{lesson.title}</span>
+          )}
+          {lesson.materials.length > 0 && (
+            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded-md flex-shrink-0">
+              {lesson.materials.length} files
+            </span>
+          )}
+        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button onClick={() => setEditTitle(p => !p)}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all">
+            <Edit3 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => removeLesson()} disabled={removingLesson}
+            className="p-1.5 rounded-lg text-gray-300 dark:text-white/20 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
+            {removingLesson ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          </button>
         </div>
-      </Fade>
+      </div>
 
-      {/* Overview */}
-      {tab==="overview"&&(
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
-          <div className="space-y-5">
-            <Fade delay={0.1}>
-              <Card>
-                <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
-                  <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center"><AlignLeft className="w-3.5 h-3.5 text-white"/></div>
-                  <h2 className="text-sm font-black text-gray-900 dark:text-white">Description</h2>
-                </div>
-                <div className="p-6">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{course.description}</p>
-                  {course.longDescription&&<p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mt-4">{course.longDescription}</p>}
-                </div>
-              </Card>
-            </Fade>
-            <Fade delay={0.13}>
-              <Card>
-                <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
-                  <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center"><Target className="w-3.5 h-3.5 text-white"/></div>
-                  <h2 className="text-sm font-black text-gray-900 dark:text-white">Learning Outcomes</h2>
-                </div>
-                <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {course.learningOutcomes.map((o,i)=>(
-                    <div key={i} className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0"/>
-                      <span className="text-sm text-gray-700 dark:text-gray-300">{o}</span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </Fade>
-          </div>
-
-          <div className="space-y-4">
-            <Fade delay={0.12}>
-              <Card className="p-5">
-                <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Note</p>
-                <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/15 border border-blue-100 dark:border-blue-900/20">
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
-                    Course editing is managed by the admin. Contact your admin to make changes to course details, pricing, or curriculum.
-                  </p>
-                </div>
-              </Card>
-            </Fade>
-            <Fade delay={0.15}>
-              <Card className="p-5">
-                <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Tags</p>
-                <div className="flex flex-wrap gap-2">
-                  {course.tags.map(t=>(
-                    <span key={t} className="px-3 py-1.5 rounded-xl text-xs font-semibold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-white/[0.03]">{t}</span>
-                  ))}
-                </div>
-              </Card>
-            </Fade>
-            <div className="flex">
-      <button
-        onClick={() => navigate("/course-materials")}
-        className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-200 hover:scale-[1.02] hover:bg-blue-700 active:scale-[0.98]"
-      >
-        <Plus size={18} />
-        Add Course Materials
-      </button>
-    </div>
-          </div>
-        </div>
-      )}
-
-      {/* Students */}
-      {tab==="students"&&(
-        <Fade delay={0.08}>
-          <Card>
-            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
-              <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center"><Users className="w-3.5 h-3.5 text-white"/></div>
-              <h2 className="text-sm font-black text-gray-900 dark:text-white">Enrolled Students ({course.enrolledStudents.length})</h2>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"/>
-                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search students…"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 outline-none transition-all"/>
-              </div>
-              <div className="flex flex-col gap-3">
-                {filteredStudents.map((s,i)=>(
-                  <motion.div key={s.studentId} initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} transition={{delay:i*0.04}}
-                    className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/[0.07] hover:border-blue-200 dark:hover:border-blue-800/40 transition-all">
-                    <div className={cn("w-10 h-10 rounded-xl text-sm font-black text-white flex items-center justify-center flex-shrink-0",s.studentAvatarBg)}>
-                      {s.studentAvatar}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+            <div className="px-4 pb-4 pt-3 space-y-2">
+              {lesson.materials.length > 0 ? lesson.materials.map(mat => {
+                const meta = MATERIAL_ICONS[mat.type] ?? MATERIAL_ICONS.OTHER;
+                return (
+                  <div key={mat.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 dark:border-white/[0.05] group">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.bg} ${meta.color}`}>
+                      {meta.icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-bold text-gray-900 dark:text-white">{s.studentName}</p>
-                        {s.certificateIssued&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 flex items-center gap-1"><Award className="w-2.5 h-2.5"/>Certified</span>}
-                        {s.progressPct===100&&!s.certificateIssued&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border border-emerald-200 dark:border-emerald-800/40">Completed</span>}
-                      </div>
-                      <p className="text-[10px] text-gray-400 mt-0.5">{s.email}</p>
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{mat.title}</p>
+                      {mat.size && <p className="text-[10px] text-gray-400">{formatSize(mat.size)}</p>}
                     </div>
-                    {/* Progress */}
-                    <div className="flex-shrink-0 w-36 hidden sm:block">
-                      <div className="flex justify-between text-[10px] text-gray-400 mb-1">
-                        <span>{s.completedLessons}/{s.totalLessons}</span>
-                        <span className="font-bold">{s.progressPct}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                        <motion.div initial={{width:0}} animate={{width:`${s.progressPct}%`}} transition={{duration:0.7,delay:i*0.04}}
-                          className={cn("h-full rounded-full",s.progressPct===100?"bg-emerald-500":s.progressPct>60?"bg-blue-500":"bg-amber-500")}/>
-                      </div>
-                      <p className="text-[9px] text-gray-400 mt-0.5">
-                        Last active {new Date(s.lastActive).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}
-                      </p>
-                    </div>
-                    {/* Progress mobile badge */}
-                    <div className="sm:hidden flex-shrink-0">
-                      <span className={cn("text-xs font-black",s.progressPct===100?"text-emerald-500":s.progressPct>60?"text-blue-500":"text-amber-500")}>{s.progressPct}%</span>
-                    </div>
-                  </motion.div>
-                ))}
-                {filteredStudents.length===0&&(
-                  <div className="py-12 text-center">
-                    <Users className="w-10 h-10 text-gray-200 dark:text-gray-700 mx-auto mb-2"/>
-                    <p className="text-sm text-gray-400">No students found</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </Card>
-        </Fade>
-      )}
-
-      {/* Curriculum */}
-      {tab==="curriculum"&&(
-        <Fade delay={0.08}>
-          <Card>
-            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
-              <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center"><BookOpen className="w-3.5 h-3.5 text-white"/></div>
-              <h2 className="text-sm font-black text-gray-900 dark:text-white">Course Curriculum</h2>
-            </div>
-            <div className="p-6 space-y-3">
-              <p className="text-xs text-gray-400 mb-4">{course.sections.length} sections · {lessons} lessons · {dur}</p>
-              {course.sections.map((sec,si)=>{
-                const isOpen=openSections.includes(sec.id);
-                return (
-                  <div key={sec.id} className="rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden">
-                    <button onClick={()=>toggleSec(sec.id)}
-                      className="w-full flex items-center gap-3 px-5 py-4 bg-gray-50/80 dark:bg-white/[0.03] hover:bg-gray-100 dark:hover:bg-white/[0.05] transition-colors text-left">
-                      <span className="w-7 h-7 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 text-xs font-black flex items-center justify-center flex-shrink-0">{si+1}</span>
-                      <span className="flex-1 text-sm font-bold text-gray-900 dark:text-white">{sec.title}</span>
-                      <span className="text-xs text-gray-400">{sec.lessons.length} lessons</span>
-                      <motion.div animate={{rotate:isOpen?180:0}} transition={{duration:0.2}}>
-                        <ChevronDown className="w-4 h-4 text-gray-400"/>
-                      </motion.div>
+                    <a href={mat.url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline flex-shrink-0">Open</a>
+                    <button onClick={() => removeMaterial(mat.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all">
+                      <X className="w-3 h-3" />
                     </button>
-                    <AnimatePresence initial={false}>
-                      {isOpen&&(
-                        <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.22}} className="overflow-hidden">
-                          <div className="divide-y divide-gray-50 dark:divide-white/[0.03]">
-                            {sec.lessons.map(l=>{
-                              const lm=LESSON_TYPE_META[l.type];
-                              return (
-                                <div key={l.id} className="flex items-center gap-3 px-5 py-3 bg-white dark:bg-transparent">
-                                  <span className="text-base leading-none w-6 text-center flex-shrink-0">{lm.icon}</span>
-                                  <span className={cn("flex-1 text-sm",l.isFree?"text-blue-600 dark:text-blue-400 font-medium":"text-gray-600 dark:text-gray-400")}>
-                                    {l.title}
-                                    {l.isFree&&<span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/60 text-blue-600">FREE</span>}
-                                  </span>
-                                  <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-50 dark:bg-white/[0.04]",lm.color)}>{lm.label}</span>
-                                  <span className="text-xs text-gray-400 tabular-nums">{l.duration}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
                   </div>
                 );
-              })}
+              }) : (
+                <p className="text-xs text-gray-400 italic py-1">No materials yet.</p>
+              )}
+
+              <input ref={fileRef} type="file" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
+              <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-gray-500 text-xs font-bold hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400 disabled:opacity-50 transition-all">
+                {uploading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</> : <><Upload className="w-3.5 h-3.5" /> Upload video or file</>}
+              </button>
             </div>
-          </Card>
-        </Fade>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Section Block ────────────────────────────────────────────────────────────
+
+function SectionBlock({ section, courseId, index }: {
+  section: CourseSection; courseId: string; index: number;
+}) {
+  const qc = useQueryClient();
+  const [expanded, setExpanded]     = useState(true);
+  const [editTitle, setEditTitle]   = useState(false);
+  const [titleDraft, setTitleDraft] = useState(section.title);
+  const [addingLesson, setAddingLesson] = useState(false);
+  const [lessonTitle, setLessonTitle]   = useState("");
+
+  const { mutate: removeSection, isPending: removingSection } = useMutation({
+    mutationFn: () => CoursesService.removeSection(courseId, section.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }),
+  });
+
+  const { mutate: updateTitle } = useMutation({
+    mutationFn: (title: string) => CoursesService.updateSection(courseId, section.id, { title }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }); setEditTitle(false); },
+  });
+
+  const { mutate: addLesson, isPending: addingLessonPending } = useMutation({
+    mutationFn: () => CoursesService.createLesson(courseId, section.id, {
+      title: lessonTitle.trim(),
+      position: section.lessons.length + 1,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+      setLessonTitle(""); setAddingLesson(false);
+    },
+  });
+
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0f1623]">
+      <div className="flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors select-none"
+        onClick={() => setExpanded(p => !p)}>
+        <div className="w-7 h-7 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+          <span className="text-xs font-black text-blue-600 dark:text-blue-400">{index + 1}</span>
+        </div>
+        <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()}>
+          {editTitle ? (
+            <input autoFocus value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={() => titleDraft.trim() && updateTitle(titleDraft.trim())}
+              onKeyDown={e => {
+                if (e.key === "Enter") titleDraft.trim() && updateTitle(titleDraft.trim());
+                if (e.key === "Escape") { setTitleDraft(section.title); setEditTitle(false); }
+              }}
+              className="w-full text-sm font-black bg-transparent text-gray-900 dark:text-white focus:outline-none border-b border-blue-400"
+            />
+          ) : (
+            <div className="flex items-center gap-2 group/title">
+              <h3 className="text-sm font-black text-gray-900 dark:text-white truncate">{section.title}</h3>
+              <button onClick={() => setEditTitle(true)}
+                className="opacity-0 group-hover/title:opacity-100 p-1 text-gray-400 hover:text-blue-500 transition-all">
+                <Edit3 className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <span className="text-[10px] text-gray-400">{section.lessons.length} lessons</span>
+          <button onClick={() => removeSection()} disabled={removingSection}
+            className="p-1.5 rounded-lg text-gray-300 dark:text-white/20 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
+            {removingSection ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        <motion.div animate={{ rotate: expanded ? 0 : -90 }} transition={{ duration: 0.2 }}>
+          <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        </motion.div>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+            <div className="px-5 pb-4 pt-1 space-y-2 border-t border-gray-100 dark:border-white/[0.06]">
+              {section.lessons.map(lesson => (
+                <LessonRow key={lesson.id} lesson={lesson} courseId={courseId} sectionId={section.id} />
+              ))}
+
+              <AnimatePresence>
+                {addingLesson ? (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                    <div className="flex items-center gap-2 mt-2">
+                      <input autoFocus value={lessonTitle}
+                        onChange={e => setLessonTitle(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && lessonTitle.trim()) addLesson();
+                          if (e.key === "Escape") { setAddingLesson(false); setLessonTitle(""); }
+                        }}
+                        placeholder="Lesson title…"
+                        className="flex-1 px-3 py-2 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-blue-400 transition-all"
+                      />
+                      <button onClick={() => lessonTitle.trim() && addLesson()}
+                        disabled={!lessonTitle.trim() || addingLessonPending}
+                        className="px-3 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-all flex items-center gap-1.5">
+                        {addingLessonPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        Add
+                      </button>
+                      <button onClick={() => { setAddingLesson(false); setLessonTitle(""); }}
+                        className="p-2 rounded-xl text-gray-400 hover:text-gray-600 transition-all">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <button onClick={() => setAddingLesson(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-dashed border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all mt-2">
+                    <Plus className="w-3 h-3" /> Add Lesson
+                  </button>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Curriculum Tab ───────────────────────────────────────────────────────────
+
+function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: string }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [addingSection, setAddingSection] = useState(false);
+  const [sectionTitle, setSectionTitle]   = useState("");
+
+  const { mutate: createSection, isPending: creatingSec } = useMutation({
+    mutationFn: () => CoursesService.createSection(courseId, {
+      title: sectionTitle.trim(),
+      position: (course.sections?.length ?? 0) + 1,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+      setSectionTitle(""); setAddingSection(false);
+    },
+  });
+
+  const totalLessons = (course.sections ?? []).reduce((a, s) => a + s.lessons.length, 0);
+  const totalMaterials = (course.sections ?? []).reduce((a, s) =>
+    a + s.lessons.reduce((b, l) => b + l.materials.length, 0), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <p className="text-xs text-gray-400">
+          {course.sections?.length ?? 0} sections · {totalLessons} lessons · {totalMaterials} files
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate(`/instructor/upload-video`)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all"
+          >
+            <Video className="w-3.5 h-3.5" /> Bulk Upload Videos
+          </button>
+          {!addingSection && (
+            <button onClick={() => setAddingSection(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all">
+              <Plus className="w-3.5 h-3.5" /> Add Section
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Add section form */}
+      <AnimatePresence>
+        {addingSection && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <div className="flex items-center gap-3 px-5 py-4 bg-white dark:bg-[#0f1623] border border-blue-300 dark:border-blue-500/30 rounded-2xl">
+              <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                <Layers className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              </div>
+              <input autoFocus value={sectionTitle}
+                onChange={e => setSectionTitle(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && sectionTitle.trim()) createSection();
+                  if (e.key === "Escape") { setAddingSection(false); setSectionTitle(""); }
+                }}
+                placeholder="Section title, e.g. Module 1: Introduction"
+                className="flex-1 text-sm font-bold bg-transparent text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => { setAddingSection(false); setSectionTitle(""); }}
+                  className="p-2 rounded-xl text-gray-400 hover:text-gray-600 transition-all">
+                  <X className="w-4 h-4" />
+                </button>
+                <button onClick={() => sectionTitle.trim() && createSection()}
+                  disabled={!sectionTitle.trim() || creatingSec}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 transition-all">
+                  {creatingSec ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  Add
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Sections */}
+      {(course.sections ?? []).length > 0 ? (
+        <div className="space-y-3">
+          {course.sections.map((section, i) => (
+            <SectionBlock key={section.id} section={section} courseId={courseId} index={i} />
+          ))}
+          <button onClick={() => setAddingSection(true)}
+            className="w-full py-3 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-white/25 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/10 flex items-center justify-center gap-2 text-sm font-bold transition-all">
+            <Plus className="w-4 h-4" /> Add Another Section
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-4 py-16 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center">
+            <Layers className="w-7 h-7 text-gray-300 dark:text-gray-600" />
+          </div>
+          <div>
+            <p className="font-bold text-gray-500 dark:text-gray-400">No sections yet</p>
+            <p className="text-sm text-gray-400 mt-1">Add a section to start building the curriculum.</p>
+          </div>
+          <button onClick={() => setAddingSection(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all">
+            <Plus className="w-4 h-4" /> Add First Section
+          </button>
+        </div>
       )}
     </div>
-
   );
-};
+}
+
+// ─── Overview Tab ─────────────────────────────────────────────────────────────
+
+function OverviewTab({ course, courseId }: { course: CourseDetail; courseId: string }) {
+  const qc = useQueryClient();
+  const [title, setTitle]         = useState(course.title);
+  const [desc, setDesc]           = useState(course.description);
+  const [price, setPrice]         = useState(String(course.price ?? ""));
+  const [level, setLevel]         = useState(course.level);
+  const [tagInput, setTagInput]   = useState("");
+  const [tags, setTags]           = useState<string[]>(course.tags ?? []);
+  const [imgUploading, setImgUploading] = useState(false);
+  const imgRef = useRef<HTMLInputElement>(null);
+
+  const { mutate: save, isPending: saving } = useMutation({
+    mutationFn: () => CoursesService.update(courseId, {
+      title: title.trim(),
+      description: desc.trim(),
+      price: parseFloat(price) || 0,
+      level: level as any,
+      tags,
+    }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }),
+  });
+
+  const handleImgUpload = async (file: File | null) => {
+    if (!file) return;
+    setImgUploading(true);
+    try {
+      const url = await StorageService.upload("course-images", file);
+      await CoursesService.update(courseId, { img: url });
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+    } finally {
+      setImgUploading(false);
+    }
+  };
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (t && !tags.includes(t)) { setTags(p => [...p, t]); setTagInput(""); }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Thumbnail */}
+      <Card className="overflow-hidden">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
+          <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+            <ImageIcon className="w-3.5 h-3.5 text-white" />
+          </div>
+          <h2 className="text-sm font-black text-gray-900 dark:text-white">Course Thumbnail</h2>
+        </div>
+        <div className="p-6 flex items-center gap-5">
+          <div className="w-28 h-20 rounded-xl overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 flex-shrink-0">
+            {course.img
+              ? <img src={course.img} alt={course.title} className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex items-center justify-center"><BookOpen className="w-8 h-8 text-white/40" /></div>
+            }
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Upload course thumbnail</p>
+            <p className="text-xs text-gray-400 mb-3">JPG, PNG or WebP · min 640×360px</p>
+            <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={e => handleImgUpload(e.target.files?.[0] ?? null)} />
+            <button onClick={() => imgRef.current?.click()} disabled={imgUploading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all disabled:opacity-50">
+              {imgUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              {imgUploading ? "Uploading…" : "Change Image"}
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Course details */}
+      <Card className="overflow-hidden">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
+          <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+            <BookOpen className="w-3.5 h-3.5 text-white" />
+          </div>
+          <h2 className="text-sm font-black text-gray-900 dark:text-white">Course Details</h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <Field label="Title">
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Course title…"
+              className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all" />
+          </Field>
+          <Field label="Description">
+            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={4} placeholder="What will students learn?"
+              className="w-full px-4 py-2.5 rounded-xl text-sm resize-none bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all" />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Price (USD)">
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="14.99"
+                  className="w-full pl-8 pr-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all" />
+              </div>
+            </Field>
+            <Field label="Level">
+              <select value={level} onChange={e => setLevel(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer transition-all">
+                {Object.values(CourseLevel).map(l => (
+                  <option key={l} value={l}>{l.charAt(0) + l.slice(1).toLowerCase()}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Tags">
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {tags.map(t => (
+                <span key={t} className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40">
+                  <Tag className="w-2.5 h-2.5" />{t}
+                  <button onClick={() => setTags(p => p.filter(x => x !== t))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input value={tagInput} onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+                placeholder="Add a tag and press Enter…"
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all" />
+              <button onClick={addTag} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all flex-shrink-0">Add</button>
+            </div>
+          </Field>
+
+          <div className="pt-2">
+            <button onClick={() => save()} disabled={saving || !title.trim()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 transition-all">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Students Tab ─────────────────────────────────────────────────────────────
+
+function StudentsTab({ course }: { course: CourseDetail }) {
+  const count = course._count?.enrollments ?? 0;
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
+        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <Users className="w-3.5 h-3.5 text-white" />
+        </div>
+        <h2 className="text-sm font-black text-gray-900 dark:text-white">Enrolled Students</h2>
+        <span className="ml-auto text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1 rounded-full">
+          {count} enrolled
+        </span>
+      </div>
+      <div className="p-6">
+        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-500/20 mb-4">
+          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-0.5">Backend endpoint needed</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400/80">
+              Student-level progress per course requires: <code className="font-mono">GET /courses/:id/students</code> with progress fields.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center">
+            <Users className="w-7 h-7 text-gray-300 dark:text-gray-600" />
+          </div>
+          <div>
+            <p className="font-bold text-gray-500 dark:text-gray-400">{count} students enrolled</p>
+            <p className="text-sm text-gray-400 mt-1">Individual progress data will appear here once the backend endpoint is available.</p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export function InstructorSingleCourse() {
+  const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
+  const [tab, setTab] = useState<"curriculum" | "overview" | "students">("curriculum");
+
+  const { data: course, isLoading } = useQuery<CourseDetail>({
+    queryKey: ["instructor-course", id],
+    queryFn:  () => CoursesService.findOne(id!) as Promise<CourseDetail>,
+    enabled:  !!id,
+    staleTime: 1000 * 60 * 3,
+  });
+
+  const { mutate: publish, isPending: publishing } = useMutation({
+    mutationFn: () => CoursesService.publish(id!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", id] }),
+  });
+
+  const { mutate: archive, isPending: archiving } = useMutation({
+    mutationFn: () => CoursesService.archive(id!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", id] }),
+  });
+
+  if (isLoading || !course) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
+
+  const statusCfg   = STATUS_STYLE[course.status] ?? STATUS_STYLE.DRAFT;
+  const isPublished = course.status === "PUBLISHED";
+  const isArchived  = course.status === "ARCHIVED";
+  const enrollments = course._count?.enrollments ?? 0;
+  const totalLessons = (course.sections ?? []).reduce((a, s) => a + s.lessons.length, 0);
+
+  const TABS = [
+    { id: "curriculum" as const, label: "Curriculum", count: totalLessons > 0 ? `${totalLessons}` : undefined },
+    { id: "overview"   as const, label: "Course Info" },
+    { id: "students"   as const, label: "Students",   count: enrollments > 0 ? `${enrollments}` : undefined },
+  ];
+
+  return (
+    <div className="max-w-[900px] mx-auto px-4 py-8 space-y-6 pb-16">
+
+      {/* Back nav */}
+      <Link to="/instructor/courses"
+        className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+        <ArrowLeft className="w-4 h-4" /> Back to My Courses
+      </Link>
+
+      {/* Hero header */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] overflow-hidden">
+
+        {/* Banner */}
+        <div className="h-20 bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 relative overflow-hidden">
+          {course.img && <img src={course.img} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />}
+          <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle,white 1px,transparent 1px)", backgroundSize: "18px 18px" }} />
+        </div>
+
+        <div className="px-6 pb-6">
+          {/* Course identity row */}
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-8 mb-5">
+            <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0 ring-4 ring-white dark:ring-[#0f1623] shadow-lg">
+              {course.img
+                ? <img src={course.img} alt="" className="w-full h-full object-cover" />
+                : <BookOpen className="w-7 h-7 text-white/60" />}
+            </div>
+            <div className="flex-1 sm:pb-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${statusCfg.color} ${statusCfg.bg} ${statusCfg.border}`}>
+                  {statusCfg.label}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 dark:bg-white/[0.05] text-gray-500 dark:text-gray-400">
+                  {course.level}
+                </span>
+                {course.badge && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600/10 text-blue-600 dark:text-blue-400">
+                    {course.badge}
+                  </span>
+                )}
+              </div>
+              <h1 className="text-xl font-black text-gray-900 dark:text-white truncate">{course.title}</h1>
+              <p className="text-xs text-gray-400 mt-0.5">${(course.price ?? 0).toFixed(2)} · {enrollments} enrolled</p>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {!isArchived && (
+                <button
+                  onClick={() => isPublished ? archive() : publish()}
+                  disabled={publishing || archiving}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                    isPublished
+                      ? "border border-gray-200 dark:border-white/[0.08] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04]"
+                      : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-200 dark:shadow-emerald-900/30"
+                  }`}
+                >
+                  {(publishing || archiving) ? <Loader2 className="w-4 h-4 animate-spin" /> : isPublished ? <AlertTriangle className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
+                  {isPublished ? "Archive" : "Publish"}
+                </button>
+              )}
+              {isArchived && (
+                <button onClick={() => publish()} disabled={publishing}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md">
+                  {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Re-publish
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* KPI strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-gray-100 dark:border-white/[0.06]">
+            {[
+              { icon: Users,      val: String(enrollments),    sub: "Students"   },
+              { icon: Layers,     val: String(course.sections?.length ?? 0), sub: "Sections"  },
+              { icon: Star,       val: String(totalLessons),   sub: "Lessons"    },
+              { icon: TrendingUp, val: `$${(course.price ?? 0).toFixed(0)}`, sub: "Price"  },
+            ].map(({ icon: Icon, val, sub }) => (
+              <div key={sub} className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-3.5 h-3.5 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{val}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-bold transition-all ${
+              tab === t.id
+                ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm"
+                : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}>
+            {t.label}
+            {t.count && (
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <AnimatePresence mode="wait">
+        <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+          {tab === "curriculum" && <CurriculumTab course={course} courseId={id!} />}
+          {tab === "overview"   && <OverviewTab   course={course} courseId={id!} />}
+          {tab === "students"   && <StudentsTab   course={course} />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default InstructorSingleCourse;

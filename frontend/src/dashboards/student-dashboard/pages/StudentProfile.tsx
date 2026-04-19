@@ -1,16 +1,18 @@
 // src/dashboards/student-dashboard/pages/StudentProfile.tsx
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Star, BookOpen, Award, Globe, Mail, MapPin, Calendar,
-  CheckCircle2, Edit3, Play, TrendingUp, ShoppingBag, Loader2,
+  CheckCircle2, Edit3, Play, TrendingUp, ShoppingBag, Loader2, Camera,
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import UserService from "@/services/user.service";
+import StorageService from "@/services/storage.service";
+import { authClient } from "@/lib/auth-client";
 import ProgressService from "@/services/progress.service";
 import EnrollmentService from "@/services/enrollment.service";
 import ReviewService from "@/services/review.service";
@@ -310,12 +312,32 @@ function ReviewTab({ enrollments }: { enrollments: Enrollment[] }) {
 
 export default function StudentProfile() {
   const { user: authUser } = useAuth();
+  const queryClient = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<"about" | "courses" | "review">("about");
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const { data: userData, isLoading: userLoading } = useQuery<UserResponse>({
     queryKey: ["user-mine"],
     queryFn:  () => UserService.getMe() as Promise<UserResponse>,
   });
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !authUser) return;
+    setAvatarUploading(true);
+    try {
+      const publicUrl = await StorageService.upload("avatars", file);
+      await UserService.update(authUser.id, { image: publicUrl });
+      await authClient.updateUser({ image: publicUrl });
+      queryClient.invalidateQueries({ queryKey: ["user-mine"] });
+    } catch {
+      // silent fail — user stays on profile
+    } finally {
+      setAvatarUploading(false);
+      e.target.value = "";
+    }
+  };
 
   const { data: dashboard, isLoading: dashLoading } = useQuery<DashboardResponse>({
     queryKey: ["progress-dashboard"],
@@ -395,8 +417,18 @@ export default function StudentProfile() {
                       </div>
                   }
                 </div>
-                <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-400
-                  border-[3px] border-white dark:border-[#0f1623]" />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full
+                    bg-blue-600 hover:bg-blue-500 flex items-center justify-center
+                    shadow-[0_3px_10px_rgba(59,130,246,0.45)] transition-all disabled:opacity-70">
+                  {avatarUploading
+                    ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                    : <Camera className="w-3.5 h-3.5 text-white" />
+                  }
+                </button>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
               </div>
 
               <div className="flex-1 mt-0 md:mt-20 sm:pb-1">

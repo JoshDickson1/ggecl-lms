@@ -27,7 +27,7 @@ interface Announcement {
   openRate?:    number;
 }
 
-// ─── Mock people for specific targeting ───────────────────────────────────────
+// ─── Placeholder people (replaced by real API when backend is ready) ─────────
 const STUDENTS = [
   { id:"s1", name:"Emeka Okonkwo",  avatar:"EO", bg:"bg-cyan-500"    },
   { id:"s2", name:"Fatou Diallo",   avatar:"FD", bg:"bg-violet-500"  },
@@ -84,18 +84,18 @@ function ComposeModal({ onClose, onSend }: {
   onClose: () => void;
   onSend: (ann: Omit<Announcement, "id" | "sentAt" | "sentBy" | "openRate">) => void;
 }) {
-  const [audience,      setAudience]      = useState<AudienceType>("all_students");
-  const [annType,       setAnnType]       = useState<AnnType>("info");
-  const [title,         setTitle]         = useState("");
-  const [body,          setBody]          = useState("");
-  const [personSearch,  setPersonSearch]  = useState("");
+  const [audience,      setAudience]       = useState<AudienceType>("all_students");
+  const [annType,       setAnnType]        = useState<AnnType>("info");
+  const [title,         setTitle]          = useState("");
+  const [body,          setBody]           = useState("");
+  const [personSearch,  setPersonSearch]   = useState("");
   const [selectedPerson,setSelectedPerson] = useState<{id:string;name:string;avatar:string;bg:string} | null>(null);
-  const [step,          setStep]          = useState<"compose" | "preview">("compose");
-  const [sending,       setSending]       = useState(false);
-  const [sent,          setSent]          = useState(false);
-//   const [saveDraft,     setSaveDraft]     = useState(false);
+  const [step,          setStep]           = useState<"compose" | "preview">("compose");
+  const [sending,       setSending]        = useState(false);
+  const [sent,          setSent]           = useState(false);
 
   const needsPerson = audience === "specific_student" || audience === "specific_instructor";
+  // Using local placeholder lists — replace with UserService.findAll({ role, search }) when ready
   const peopleList  = audience === "specific_student" ? STUDENTS : INSTRUCTORS;
   const filteredPeople = peopleList.filter(p => p.name.toLowerCase().includes(personSearch.toLowerCase()));
 
@@ -185,6 +185,18 @@ function ComposeModal({ onClose, onSend }: {
         </div>
 
         <div className="p-6 flex flex-col gap-5">
+
+          {/* Backend callout */}
+          <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+            <Info className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5">
+              <p className="font-bold">Backend should provide these endpoints:</p>
+              <p><code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">POST /announcements</code> — create &amp; send/draft</p>
+              <p><code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /announcements</code> — paginated list with filters</p>
+              <p><code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">DELETE /announcements/:id</code> — remove announcement</p>
+              <p><code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /announcements/:id/stats</code> — open rate, click rate</p>
+            </div>
+          </div>
 
           {step === "compose" ? (
             <>
@@ -680,6 +692,24 @@ export default function AdminAnnouncements() {
         <p className="text-xs text-gray-400 mt-3">
           Showing <span className="font-bold text-gray-700 dark:text-gray-300">{filtered.length}</span> of {announcements.length} announcements
         </p>
+      </motion.div>
+
+      {/* Backend callout */}
+      <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+        className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+        <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+          <p className="font-bold">Announcements are stored locally — backend persistence not yet available.</p>
+          <p>
+            Needed:{" "}
+            <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">POST /announcements</code>,{" "}
+            <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /announcements</code>,{" "}
+            <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">DELETE /announcements/:id</code>,{" "}
+            <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /announcements/:id/stats</code>.
+            Specific-user targeting also needs{" "}
+            <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /users?role=STUDENT&search=</code> for live user search.
+          </p>
+        </div>
       </motion.div>
 
       {/* List */}

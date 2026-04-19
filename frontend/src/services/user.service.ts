@@ -19,6 +19,16 @@ export interface CreateUserPayload {
   image?: string;
 }
 
+export interface InstructorProfilePayload {
+  bio?: string;
+  description?: string;
+  specialization?: string;
+  website?: string;
+  areasOfExpertise?: string[];
+  teachingCategories?: string[];
+  tags?: string[];
+}
+
 export interface UpdateUserPayload {
   name?: string;
   email?: string;
@@ -28,6 +38,7 @@ export interface UpdateUserPayload {
   role?: UserRole;
   bio?: string;
   phone?: string;
+  instructorProfile?: InstructorProfilePayload;
 }
 
 export interface UserQuery {

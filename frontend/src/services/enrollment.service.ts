@@ -92,4 +92,19 @@ export default class EnrollmentService {
     const response = await APIConfig.fetch(`/enrollments/course/${courseId}`);
     return response.json();
   }
+
+  /**
+   * Bulk-enroll students into a course. ADMIN only.
+   * Backend: POST /enrollments/admin { courseId, studentIds[] }
+   * @param courseId   - Target course ID
+   * @param studentIds - Array of student user IDs to enroll
+   */
+  static async adminEnroll(courseId: string, studentIds: string[]): Promise<unknown> {
+    const response = await APIConfig.fetch("/enrollments/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ courseId, studentIds }),
+    });
+    return response.json();
+  }
 }

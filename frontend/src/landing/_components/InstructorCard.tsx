@@ -37,7 +37,7 @@ export function InstructorCard({
       }}
     >
       {/* ── Image area ───────────────────────────────────────────────── */}
-      <div className="relative w-full h-52 overflow-hidden flex-shrink-0">
+      <div className="relative w-full h-64 overflow-hidden flex-shrink-0">
 
         {/* Initials bg */}
         <div className={`absolute inset-0 flex items-center justify-center ${instructor.avatarBg}`}>

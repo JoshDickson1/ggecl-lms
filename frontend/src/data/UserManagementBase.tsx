@@ -207,8 +207,12 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
       setTimeout(() => setFormSuccess(false), 3000);
       setToast({ msg: `${cfg.label} created! Temp password: ${password}`, type: "success" });
     },
-    onError: () => {
-      setToast({ msg: `Failed to create ${cfg.label}.`, type: "error" });
+    onError: (err: unknown) => {
+      const raw = err instanceof Error ? err.message : "";
+      const msg = raw.includes("409") || raw.toLowerCase().includes("exist")
+        ? "A user with this email already exists."
+        : raw || `Failed to create ${cfg.label}.`;
+      setToast({ msg, type: "error" });
     },
   });
 

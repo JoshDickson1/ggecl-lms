@@ -298,6 +298,23 @@ export default class InstructorDashboardService {
   }
 
   /**
+   * Post or update a reply to a student review
+   * @param reviewId - The review ID to reply to
+   * @param comment  - Reply text
+   */
+  static async postReply(reviewId: string, comment: string): Promise<unknown> {
+    const response = await APIConfig.fetch(
+      `${this.base}/reviews/${reviewId}/reply`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment }),
+      }
+    );
+    return response.json();
+  }
+
+  /**
    * Instructor activity feed / notifications
    * @param limit - Max notifications to return (default: 20)
    * @param onlyUnread - If true, returns only unread notifications

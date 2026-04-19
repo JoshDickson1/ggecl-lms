@@ -32,6 +32,7 @@ interface InstructorProfile {
 interface PublicInstructor {
   id: string;
   name: string;
+  email: string;
   image: string | null;
   role: string;
   createdAt: string;
@@ -134,6 +135,7 @@ export default function SingleInstructor() {
   const { id } = useParams<{ id: string }>();
   const [showAllExpertise, setShowAllExpertise] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [showContact, setShowContact] = useState(false);
 
   // Fetch instructor public profile by user.id
   const { data: instructor, isLoading, isError } = useQuery<PublicInstructor>({
@@ -248,6 +250,7 @@ export default function SingleInstructor() {
 
               <div className="flex flex-wrap gap-2.5">
                 <motion.button
+                  onClick={() => setShowContact(true)}
                   whileHover={{ y: -2, boxShadow: "0 10px 28px rgba(59,130,246,0.5)" }}
                   whileTap={{ scale: 0.97 }}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full
@@ -255,6 +258,62 @@ export default function SingleInstructor() {
                     text-sm font-semibold shadow-[0_4px_18px_rgba(59,130,246,0.38)] transition-shadow">
                   <Mail className="w-3.5 h-3.5" /> Contact Instructor
                 </motion.button>
+
+                <AnimatePresence>
+                  {showContact && (
+                    <motion.div
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-50 flex items-center justify-center p-4
+                        bg-black/40 backdrop-blur-sm"
+                      onClick={() => setShowContact(false)}>
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.92, y: 16 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.92, y: 16 }}
+                        transition={{ duration: 0.2 }}
+                        onClick={e => e.stopPropagation()}
+                        className="w-full max-w-sm rounded-2xl p-6
+                          bg-white dark:bg-[#0f1420] border border-gray-100 dark:border-white/[0.08]
+                          shadow-[0_24px_60px_rgba(0,0,0,0.25)]">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40
+                            flex items-center justify-center text-blue-600 dark:text-blue-400">
+                            <Mail className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-gray-900 dark:text-white">
+                              Email {instructor.name.split(" ")[0]}?
+                            </p>
+                            <p className="text-xs text-gray-400 truncate max-w-[200px]">
+                              {instructor.email ?? "No email on file"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {instructor.email ? (
+                            <a href={`mailto:${instructor.email}`}
+                              onClick={() => setShowContact(false)}
+                              className="flex-1 text-center px-4 py-2.5 rounded-xl text-sm font-bold
+                                bg-blue-600 hover:bg-blue-500 text-white transition-colors">
+                              Go
+                            </a>
+                          ) : (
+                            <span className="flex-1 text-center px-4 py-2.5 rounded-xl text-sm font-bold
+                              bg-gray-100 dark:bg-white/[0.05] text-gray-400 cursor-not-allowed">
+                              No email available
+                            </span>
+                          )}
+                          <button onClick={() => setShowContact(false)}
+                            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold
+                              bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-400
+                              hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors">
+                            No thanks
+                          </button>
+                        </div>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 {website && (
                   <motion.a href={website} target="_blank" rel="noopener noreferrer" whileHover={{ y: -1 }}
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full
@@ -406,11 +465,23 @@ export default function SingleInstructor() {
               border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
             <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">Connect</p>
             <div className="flex flex-col gap-2">
-              {[
-                { icon: <Mail className="w-3.5 h-3.5" />, label: "Send Message", href: "#" },
-                ...(website ? [{ icon: <Globe className="w-3.5 h-3.5" />, label: "Website", href: website }] : []),
-              ].map(link => (
-                <a key={link.label} href={link.href}
+              <button onClick={() => setShowContact(true)}
+                className="flex items-center gap-3 px-4 py-2.5 rounded-xl w-full
+                  border border-gray-100 dark:border-white/[0.07]
+                  text-sm font-medium text-gray-600 dark:text-gray-300
+                  hover:border-blue-200 dark:hover:border-blue-800/50
+                  hover:bg-blue-50/40 dark:hover:bg-blue-950/20
+                  hover:text-blue-600 dark:hover:text-blue-400 transition-all group">
+                <div className="w-7 h-7 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-950/40
+                  border border-blue-100 dark:border-blue-900/30
+                  flex items-center justify-center text-blue-500 dark:text-blue-400">
+                  <Mail className="w-3.5 h-3.5" />
+                </div>
+                Send Message
+                <span className="ml-auto text-gray-300 dark:text-gray-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all">›</span>
+              </button>
+              {website && (
+                <a href={website} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-3 px-4 py-2.5 rounded-xl w-full
                     border border-gray-100 dark:border-white/[0.07]
                     text-sm font-medium text-gray-600 dark:text-gray-300
@@ -420,12 +491,12 @@ export default function SingleInstructor() {
                   <div className="w-7 h-7 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-950/40
                     border border-blue-100 dark:border-blue-900/30
                     flex items-center justify-center text-blue-500 dark:text-blue-400">
-                    {link.icon}
+                    <Globe className="w-3.5 h-3.5" />
                   </div>
-                  {link.label}
+                  Website
                   <span className="ml-auto text-gray-300 dark:text-gray-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all">›</span>
                 </a>
-              ))}
+              )}
             </div>
           </motion.div>
 

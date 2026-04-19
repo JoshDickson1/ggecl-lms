@@ -54,6 +54,7 @@ import AdminTransactions         from "./dashboards/admin-dashboard/pages/AdminT
 import AdminAnnouncements        from "./dashboards/admin-dashboard/pages/AdminAnnouncements";
 import AdminChat                 from "./dashboards/admin-dashboard/pages/AdminChat";
 import AdminCreateCourse         from "./dashboards/admin-dashboard/pages/AdminCreateCourse";
+import AdminEditCourse           from "./dashboards/admin-dashboard/pages/AdminEditCourse";
 import AdminManageCourses        from "./dashboards/admin-dashboard/pages/AdminManageCourses";
 import AdminSingleCourse         from "./dashboards/admin-dashboard/pages/AdminSingleCourse";
 import AdminSearch               from "./dashboards/admin-dashboard/pages/AdminSearch";
@@ -69,6 +70,7 @@ import InstructorCourses          from "./dashboards/instructor-dashboard/pages/
 import { InstructorSingleCourse } from "./dashboards/instructor-dashboard/pages/InstructorSingleCourse";
 import InstructorSearch           from "./dashboards/instructor-dashboard/pages/InstructorSearch";
 import InstructorCourseMaterials  from "./dashboards/instructor-dashboard/pages/InstructorCourseMaterials";
+import InstructorCourseManage    from "./dashboards/instructor-dashboard/pages/InstructorCourseManage";
 import InstructorSupport          from "./dashboards/instructor-dashboard/pages/InstructorSupport";
 import InstructorUploadVideo      from "./dashboards/instructor-dashboard/pages/InstructorVideoUpload";
 // ── Student pages ─────────────────────────────────────────────
@@ -180,7 +182,7 @@ const router = createBrowserRouter([
           { path: "discussions",                      element: <AdminChat /> },
           { path: "courses/create",                   element: <AdminCreateCourse /> },
           { path: "courses/:id",                      element: <AdminSingleCourse /> },
-          { path: "courses/:id/edit",                 element: <AdminCreateCourse /> },
+          { path: "courses/:id/edit",                 element: <AdminEditCourse /> },
           { path: "courses",                          element: <AdminManageCourses /> },
           { path: "search",                           element: <AdminSearch /> },
           { path: "analytics",                           element: <AdminAnalytics /> },
@@ -214,6 +216,7 @@ const router = createBrowserRouter([
           { path: "discussions",                  element: <InstructorChat /> },
           { path: "courses",                      element: <InstructorCourses /> },
           { path: "courses/:id",                  element: <InstructorSingleCourse /> },
+          { path: "courses/:id/manage",           element: <InstructorCourseManage /> },
           { path: "upload-video",                 element: <InstructorUploadVideo /> },
           { path: "course-materials",             element: <InstructorCourseMaterials /> },
           { path: "course-video-upload",          element: <InstructorUploadVideo /> },

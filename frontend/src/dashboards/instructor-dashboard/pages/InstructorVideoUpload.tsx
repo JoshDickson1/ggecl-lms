@@ -1,7 +1,4 @@
-// InstructorUploadVideo.tsx
-// Batch video upload: drop multiple files at once.
-// Each file gets its own card with title, chapter markers, and import.
-// Light / dark mode via Tailwind dark: prefix.
+// InstructorUploadVideo.tsx — real API: courses from CoursesService, upload via StorageService
 
 import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -10,12 +7,35 @@ import {
   ChevronDown, ChevronRight, Check, X, Plus, Trash2,
   Film, Clock, Upload, AlertCircle, GripVertical, ArrowRight,
   Sparkles, BookOpen, Info, Download, RefreshCw, Grip,
-  ChevronUp, FileVideo, Loader2,
+  ChevronUp, FileVideo, Loader2, AlertTriangle,
 } from "lucide-react";
 import {
-  ASSIGNED_COURSES, Course, VideoChapter,
-  parseChaptersFromText, labelToSeconds,
+  VideoChapter, parseChaptersFromText, labelToSeconds,
 } from "@/data/courseTypes";
+import { useQuery } from "@tanstack/react-query";
+import CoursesService from "@/services/course.service";
+import StorageService from "@/services/storage.service";
+import { MaterialType } from "@/services/course.service";
+
+// ─── API Types ────────────────────────────────────────────────────────────────
+
+interface ApiCourse {
+  id: string;
+  title: string;
+  img: string | null;
+  level: string;
+  status: string;
+}
+
+interface ApiSection {
+  id: string;
+  title: string;
+  position: number;
+}
+
+interface ApiCourseDetail extends ApiCourse {
+  sections: ApiSection[];
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,10 +59,19 @@ function formatBytes(bytes: number): string {
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
+function normalizeCourses(raw: unknown): ApiCourse[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as ApiCourse[];
+  const obj = raw as Record<string, unknown>;
+  if (Array.isArray(obj.items)) return obj.items as ApiCourse[];
+  if (Array.isArray(obj.data)) return obj.data as ApiCourse[];
+  return [];
+}
+
 // ─── Course Selector ──────────────────────────────────────────────────────────
 
-function CourseSelector({ courses, selected, onSelect }: {
-  courses: Course[]; selected: Course | null; onSelect: (c: Course) => void;
+function CourseSelector({ courses, selected, onSelect, loading }: {
+  courses: ApiCourse[]; selected: ApiCourse | null; onSelect: (c: ApiCourse) => void; loading: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -54,35 +83,52 @@ function CourseSelector({ courses, selected, onSelect }: {
           : selected ? "border-blue-400/60 dark:border-blue-500/40 bg-white dark:bg-[#0d1929] hover:border-blue-400 dark:hover:border-blue-500/60"
           : "border-slate-200 dark:border-white/10 bg-white dark:bg-[#0d1929] hover:border-slate-300 dark:hover:border-white/20"}`}
       >
-        {selected ? (
+        {loading ? (
+          <div className="flex items-center gap-3 text-slate-400 dark:text-white/30 flex-1">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Loading courses…</span>
+          </div>
+        ) : selected ? (
           <>
-            <span className={`w-11 h-11 rounded-xl bg-gradient-to-br ${selected.color} flex items-center justify-center text-2xl flex-shrink-0 shadow-md`}>{selected.icon}</span>
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md">
+              {selected.img ? (
+                <img src={selected.img} alt={selected.title} className="w-full h-full object-cover rounded-xl" />
+              ) : (
+                <BookOpen className="w-5 h-5 text-white" />
+              )}
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-slate-900 dark:text-white text-sm">{selected.name}</p>
-              <p className="text-xs text-slate-400 dark:text-blue-300/60 mt-0.5">{selected.code} · {selected.subject} · {selected.level}</p>
+              <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{selected.title}</p>
+              <p className="text-xs text-slate-400 dark:text-blue-300/60 mt-0.5">{selected.level} · {selected.status}</p>
             </div>
           </>
         ) : (
           <div className="flex items-center gap-3 text-slate-400 dark:text-white/30 flex-1">
             <BookOpen className="w-5 h-5" />
-            <span className="text-sm">Select an assigned course…</span>
+            <span className="text-sm">{courses.length === 0 ? "No courses assigned yet" : "Select an assigned course…"}</span>
           </div>
         )}
         <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-white/30 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`} />
       </button>
 
       <AnimatePresence>
-        {open && (
+        {open && courses.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }} transition={{ duration: 0.15 }}
-            className="absolute top-full mt-2 left-0 right-0 z-50 bg-white dark:bg-[#0d1929] border border-slate-200 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden">
+            className="absolute top-full mt-2 left-0 right-0 z-50 bg-white dark:bg-[#0d1929] border border-slate-200 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
             {courses.map(c => (
               <button key={c.id} type="button" onClick={() => { onSelect(c); setOpen(false); }}
                 className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors">
-                <span className={`w-10 h-10 rounded-xl bg-gradient-to-br ${c.color} flex items-center justify-center text-xl flex-shrink-0 shadow-md`}>{c.icon}</span>
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md overflow-hidden">
+                  {c.img ? (
+                    <img src={c.img} alt={c.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <BookOpen className="w-4 h-4 text-white" />
+                  )}
+                </div>
                 <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-slate-900 dark:text-white">{c.name}</p>
-                  <p className="text-xs text-slate-400 dark:text-white/40">{c.code} · {c.totalStudents} students</p>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{c.title}</p>
+                  <p className="text-xs text-slate-400 dark:text-white/40">{c.level} · {c.status}</p>
                 </div>
                 {selected?.id === c.id && (
                   <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
@@ -100,7 +146,7 @@ function CourseSelector({ courses, selected, onSelect }: {
 
 // ─── Course Info Banner ───────────────────────────────────────────────────────
 
-function CourseInfoBanner({ course }: { course: Course }) {
+function CourseInfoBanner({ course }: { course: ApiCourse }) {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
       className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-[#0d1929] overflow-hidden">
@@ -110,12 +156,9 @@ function CourseInfoBanner({ course }: { course: Course }) {
       </div>
       <div className="px-5 py-4 grid grid-cols-3 gap-4">
         {[
-          { label: "Course Name", value: course.name },
-          { label: "Code",        value: course.code },
+          { label: "Course Name", value: course.title },
           { label: "Level",       value: course.level },
-          { label: "Students",    value: String(course.totalStudents) },
-          { label: "Subject",     value: course.subject },
-          { label: "Instructor",  value: course.instructor.name },
+          { label: "Status",      value: course.status },
         ].map(({ label, value }) => (
           <div key={label}>
             <p className="text-[10px] font-bold text-slate-400 dark:text-white/30 uppercase tracking-wider mb-1">{label}</p>
@@ -294,15 +337,17 @@ function ImportModal({ onImport, onClose }: { onImport: (c: VideoChapter[]) => v
 function VideoCard({
   entry, index, total, sections,
   onUpdate, onRemove, onMoveUp, onMoveDown,
+  uploadProgress,
 }: {
   entry: VideoEntry;
   index: number;
   total: number;
-  sections: { id: string; title: string }[];
+  sections: ApiSection[];
   onUpdate: (id: string, patch: Partial<VideoEntry>) => void;
   onRemove: (id: string) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
+  uploadProgress?: number;
 }) {
   const [showImport, setShowImport] = useState(false);
 
@@ -330,8 +375,6 @@ function VideoCard({
     });
   };
 
-  // const sizeMB = entry.file.size / 1024 / 1024;
-
   return (
     <>
       {showImport && <ImportModal onImport={importChapters} onClose={() => setShowImport(false)} />}
@@ -343,17 +386,30 @@ function VideoCard({
         exit={{ opacity: 0, scale: 0.97, height: 0 }}
         className="bg-white dark:bg-[#0d1929] rounded-2xl border border-slate-200 dark:border-white/[0.08] overflow-hidden shadow-sm"
       >
+        {/* Upload progress bar */}
+        {uploadProgress !== undefined && (
+          <div className="h-1 bg-slate-100 dark:bg-white/[0.06]">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${uploadProgress}%` }}
+              className={`h-full rounded-full transition-colors ${uploadProgress === 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+            />
+          </div>
+        )}
+
         {/* Card header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02]">
-          {/* Drag handle + order */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <Grip className="w-4 h-4 text-slate-300 dark:text-white/20 cursor-grab" />
             <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center">
-              <span className="text-xs font-black text-blue-600 dark:text-blue-400">{index + 1}</span>
+              {uploadProgress === 100 ? (
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <span className="text-xs font-black text-blue-600 dark:text-blue-400">{index + 1}</span>
+              )}
             </div>
           </div>
 
-          {/* File name + size */}
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
               <FileVideo className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -364,7 +420,6 @@ function VideoCard({
             </div>
           </div>
 
-          {/* Move up/down */}
           <div className="flex flex-col gap-0.5 flex-shrink-0">
             <button onClick={() => onMoveUp(entry.id)} disabled={index === 0}
               className="p-1 rounded text-slate-300 dark:text-white/20 hover:text-slate-600 dark:hover:text-white disabled:opacity-20 transition-all">
@@ -376,13 +431,11 @@ function VideoCard({
             </button>
           </div>
 
-          {/* Collapse / expand */}
           <button onClick={() => onUpdate(entry.id, { collapsed: !entry.collapsed })}
             className="p-2 rounded-xl text-slate-400 dark:text-white/30 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-all flex-shrink-0">
             {entry.collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
           </button>
 
-          {/* Remove */}
           <button onClick={() => onRemove(entry.id)}
             className="p-2 rounded-xl text-slate-300 dark:text-white/20 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-all flex-shrink-0">
             <X className="w-4 h-4" />
@@ -395,7 +448,6 @@ function VideoCard({
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
               <div className="px-5 py-5 space-y-5">
-                {/* Lesson title + section */}
                 <div className="grid grid-cols-[1fr_200px] gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 dark:text-white/40 mb-1.5 uppercase tracking-wider">
@@ -418,14 +470,17 @@ function VideoCard({
                         onChange={e => onUpdate(entry.id, { sectionId: e.target.value })}
                         className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] text-slate-800 dark:text-white appearance-none focus:outline-none focus:border-blue-400 dark:focus:border-blue-500/60 transition-all"
                       >
-                        {sections.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                        {sections.length === 0 ? (
+                          <option value="">No sections yet</option>
+                        ) : (
+                          sections.map(s => <option key={s.id} value={s.id}>{s.title}</option>)
+                        )}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-white/30 pointer-events-none" />
                     </div>
                   </div>
                 </div>
 
-                {/* Chapter markers */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div>
@@ -484,29 +539,41 @@ function SectionLabel({ step, title, subtitle }: { step: number; title: string; 
   );
 }
 
-// ─── Mock sections (from course) ──────────────────────────────────────────────
-
-const MOCK_COURSE_SECTIONS = [
-  { id: "s1", title: "Foundations & Architecture" },
-  { id: "s2", title: "System Design Fundamentals" },
-  { id: "s3", title: "Advanced Patterns" },
-];
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function InstructorVideoUpload() {
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState<ApiCourse | null>(null);
   const [videos, setVideos]                 = useState<VideoEntry[]>([]);
   const [saved, setSaved]                   = useState(false);
   const [saving, setSaving]                 = useState(false);
+  const [saveError, setSaveError]           = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const navigate = useNavigate();
 
+  // Load instructor's courses
+  const { data: coursesRaw, isLoading: coursesLoading } = useQuery({
+    queryKey: ["instructor-courses"],
+    queryFn:  () => CoursesService.findAll({ limit: 100 }),
+    staleTime: 1000 * 60 * 5,
+  });
+  const courses = normalizeCourses(coursesRaw) as ApiCourse[];
+
+  // Load sections for selected course
+  const { data: courseDetail } = useQuery({
+    queryKey: ["course-detail", selectedCourse?.id],
+    queryFn:  () => CoursesService.findOne(selectedCourse!.id) as Promise<ApiCourseDetail>,
+    enabled:  !!selectedCourse?.id,
+    staleTime: 1000 * 60 * 5,
+  });
+  const courseSections: ApiSection[] = (courseDetail as ApiCourseDetail)?.sections ?? [];
+
   const addFiles = (files: File[]) => {
+    const defaultSection = courseSections[0]?.id ?? "";
     const newEntries: VideoEntry[] = files.map((file, i) => ({
       id: uid(),
       file,
       title: file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "),
-      sectionId: MOCK_COURSE_SECTIONS[0].id,
+      sectionId: defaultSection,
       order: videos.length + i + 1,
       chapters: [],
       collapsed: false,
@@ -541,16 +608,42 @@ export default function InstructorVideoUpload() {
   const handleSave = async () => {
     if (!selectedCourse || videos.length === 0) return;
     setSaving(true);
-    await new Promise(r => setTimeout(r, 1800)); // simulate upload
-    setSaving(false);
-    setSaved(true);
+    setSaveError(null);
+    try {
+      for (let i = 0; i < videos.length; i++) {
+        const v = videos[i];
+        // Upload video file to storage
+        setUploadProgress(p => ({ ...p, [v.id]: 10 }));
+        const publicUrl = await StorageService.upload("course-videos", v.file);
+        setUploadProgress(p => ({ ...p, [v.id]: 60 }));
+        // Create lesson in the section
+        const lesson = await CoursesService.createLesson(
+          selectedCourse.id,
+          v.sectionId,
+          { title: v.title, position: v.order }
+        ) as { id: string };
+        setUploadProgress(p => ({ ...p, [v.id]: 80 }));
+        // Attach the video as a material
+        await CoursesService.addMaterial(
+          selectedCourse.id,
+          v.sectionId,
+          lesson.id,
+          { type: MaterialType.VIDEO, title: v.title, url: publicUrl, fileName: v.file.name, size: v.file.size }
+        );
+        setUploadProgress(p => ({ ...p, [v.id]: 100 }));
+      }
+      setSaved(true);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Upload failed. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const canSave    = selectedCourse && videos.length > 0 && videos.every(v => v.title.trim());
+  const canSave    = selectedCourse && videos.length > 0 && videos.every(v => v.title.trim()) && courseSections.length > 0;
   const totalSize  = videos.reduce((a, v) => a + v.file.size, 0);
   const totalChaps = videos.reduce((a, v) => a + v.chapters.length, 0);
 
-  // Success screen
   if (saved && selectedCourse) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#060d18] flex items-center justify-center">
@@ -562,13 +655,13 @@ export default function InstructorVideoUpload() {
           </motion.div>
           <div>
             <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-2">Videos Saved</p>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">{selectedCourse.name}</h2>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">{selectedCourse.title}</h2>
             <p className="text-slate-400 dark:text-white/40 text-sm">
               {videos.length} lesson{videos.length !== 1 ? "s" : ""} uploaded · {totalChaps} chapter markers · {formatBytes(totalSize)} total
             </p>
           </div>
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            onClick={() => navigate("/instructor/course-materials")}
+            onClick={() => navigate("/instructor/course-materials", { state: { courseId: selectedCourse.id } })}
             className="flex items-center gap-2 px-8 py-3.5 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg shadow-blue-200 dark:shadow-blue-900/40 mx-auto transition-all">
             Continue to Materials <ArrowRight className="w-4 h-4" />
           </motion.button>
@@ -607,21 +700,34 @@ export default function InstructorVideoUpload() {
           {/* 1: Course selection */}
           <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
             <SectionLabel step={1} title="Select Course" />
-            <CourseSelector courses={ASSIGNED_COURSES} selected={selectedCourse} onSelect={setSelectedCourse} />
+            <CourseSelector
+              courses={courses}
+              selected={selectedCourse}
+              onSelect={c => { setSelectedCourse(c); setVideos([]); }}
+              loading={coursesLoading}
+            />
             {selectedCourse && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-3">
                 <CourseInfoBanner course={selectedCourse} />
+              </motion.div>
+            )}
+            {selectedCourse && courseSections.length === 0 && !coursesLoading && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="mt-3 flex items-center gap-2.5 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-500/20">
+                <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-200/60">
+                  This course has no sections yet. Go to Course Materials to add sections first, then come back to upload videos.
+                </p>
               </motion.div>
             )}
           </motion.section>
 
           {/* 2: Batch drop zone */}
           <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-            className={!selectedCourse ? "opacity-40 pointer-events-none" : ""}>
+            className={!selectedCourse || courseSections.length === 0 ? "opacity-40 pointer-events-none" : ""}>
             <SectionLabel step={2} title="Upload Lesson Videos" subtitle="Drag multiple files — each becomes a separate lesson" />
             <BatchDropZone onFiles={addFiles} />
 
-            {/* Add more button when there are already videos */}
             {videos.length > 0 && (
               <motion.label initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 className="mt-3 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all w-fit cursor-pointer">
@@ -645,7 +751,6 @@ export default function InstructorVideoUpload() {
                 </div>
               </div>
 
-              {/* Collapse all / expand all */}
               <div className="flex gap-2 mb-4">
                 <button onClick={() => setVideos(p => p.map(v => ({ ...v, collapsed: true })))}
                   className="text-xs font-bold text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white transition-all">
@@ -666,27 +771,38 @@ export default function InstructorVideoUpload() {
                       entry={v}
                       index={i}
                       total={videos.length}
-                      sections={MOCK_COURSE_SECTIONS}
+                      sections={courseSections}
                       onUpdate={updateVideo}
                       onRemove={removeVideo}
                       onMoveUp={moveUp}
                       onMoveDown={moveDown}
+                      uploadProgress={uploadProgress[v.id]}
                     />
                   ))}
                 </AnimatePresence>
               </div>
 
-              {/* Validation hint */}
               {videos.some(v => !v.title.trim()) && (
                 <div className="flex items-start gap-2.5 mt-4 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-500/20">
                   <AlertCircle className="w-4 h-4 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-700 dark:text-amber-200/60">
-                    All lessons need a title before saving. Lessons without titles are highlighted above.
+                    All lessons need a title before saving.
                   </p>
                 </div>
               )}
             </motion.section>
           )}
+
+          {/* Error */}
+          <AnimatePresence>
+            {saveError && (
+              <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-500/30">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-600 dark:text-red-300">{saveError}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* CTA */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}

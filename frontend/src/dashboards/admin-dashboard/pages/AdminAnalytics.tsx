@@ -1,105 +1,84 @@
 // src/dashboards/admin-dashboard/pages/AdminAnalytics.tsx
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   Users, DollarSign, BookOpen, GraduationCap,
   ArrowUpRight, ArrowDownRight, Download,
   BarChart2, Activity, Target, Repeat2, UserCheck, ChevronRight,
+  Info, Loader2, ShoppingCart, TrendingUp,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import AdminDashboardService from "@/services/admin-dashboard.service";
+import AdminDashboardService, { type SignupDaySeries } from "@/services/admin-dashboard.service";
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell,
 } from "recharts";
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
+// ─── Types / helpers ──────────────────────────────────────────────────────────
 
 type Range = "7d" | "30d" | "90d" | "1y";
 
-const REVENUE_SERIES: Record<Range, { label: string; revenue: number; students: number }[]> = {
-  "7d": [
-    { label: "Mon", revenue: 1800, students: 42 },
-    { label: "Tue", revenue: 2400, students: 58 },
-    { label: "Wed", revenue: 1600, students: 35 },
-    { label: "Thu", revenue: 3100, students: 74 },
-    { label: "Fri", revenue: 2700, students: 63 },
-    { label: "Sat", revenue: 1200, students: 28 },
-    { label: "Sun", revenue: 1900, students: 45 },
-  ],
-  "30d": [
-    { label: "W1",  revenue: 11200, students: 248 },
-    { label: "W2",  revenue: 13400, students: 302 },
-    { label: "W3",  revenue: 10800, students: 231 },
-    { label: "W4",  revenue: 15600, students: 367 },
-  ],
-  "90d": [
-    { label: "Jan", revenue: 49000, students: 1240 },
-    { label: "Feb", revenue: 47200, students: 1180 },
-    { label: "Mar", revenue: 61000, students: 1540 },
-  ],
-  "1y": [
-    { label: "Apr", revenue: 32000, students: 820 },
-    { label: "May", revenue: 34500, students: 870 },
-    { label: "Jun", revenue: 31000, students: 790 },
-    { label: "Jul", revenue: 37000, students: 940 },
-    { label: "Aug", revenue: 38500, students: 960 },
-    { label: "Sep", revenue: 42000, students: 1060 },
-    { label: "Oct", revenue: 38000, students: 970 },
-    { label: "Nov", revenue: 41000, students: 1040 },
-    { label: "Dec", revenue: 36500, students: 930 },
-    { label: "Jan", revenue: 49000, students: 1240 },
-    { label: "Feb", revenue: 47200, students: 1180 },
-    { label: "Mar", revenue: 61000, students: 1540 },
-  ],
-};
+function getRangeDates(range: Range): { from: string; to: string } {
+  const to   = new Date();
+  const from = new Date();
+  const days = ({ "7d": 7, "30d": 30, "90d": 90, "1y": 365 } as const)[range];
+  from.setDate(from.getDate() - days);
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  return { from: fmt(from), to: fmt(to) };
+}
 
-const SIGNUP_SERIES: Record<Range, { label: string; students: number; instructors: number }[]> = {
-  "7d": [
-    { label: "Mon", students: 42, instructors: 1 },
-    { label: "Tue", students: 58, instructors: 0 },
-    { label: "Wed", students: 35, instructors: 2 },
-    { label: "Thu", students: 74, instructors: 1 },
-    { label: "Fri", students: 63, instructors: 0 },
-    { label: "Sat", students: 28, instructors: 0 },
-    { label: "Sun", students: 45, instructors: 1 },
-  ],
-  "30d": [
-    { label: "W1", students: 248, instructors: 3 },
-    { label: "W2", students: 302, instructors: 2 },
-    { label: "W3", students: 231, instructors: 4 },
-    { label: "W4", students: 367, instructors: 1 },
-  ],
-  "90d": [
-    { label: "Jan", students: 1240, instructors: 8 },
-    { label: "Feb", students: 1180, instructors: 6 },
-    { label: "Mar", students: 1540, instructors: 11 },
-  ],
-  "1y": [
-    { label: "Apr", students: 820,  instructors: 5 },
-    { label: "May", students: 870,  instructors: 4 },
-    { label: "Jun", students: 790,  instructors: 6 },
-    { label: "Jul", students: 940,  instructors: 7 },
-    { label: "Aug", students: 960,  instructors: 5 },
-    { label: "Sep", students: 1060, instructors: 8 },
-    { label: "Oct", students: 970,  instructors: 4 },
-    { label: "Nov", students: 1040, instructors: 6 },
-    { label: "Dec", students: 930,  instructors: 3 },
-    { label: "Jan", students: 1240, instructors: 8 },
-    { label: "Feb", students: 1180, instructors: 6 },
-    { label: "Mar", students: 1540, instructors: 11 },
-  ],
-};
+function aggregateSignupSeries(
+  series: SignupDaySeries[],
+  range: Range,
+  total: number,
+): { label: string; students: number }[] {
+  if (series.length > 0) {
+    if (range === "7d") {
+      return series.slice(-7).map(s => ({
+        label: new Date(s.date).toLocaleDateString("en-US", { weekday: "short" }),
+        students: s.count,
+      }));
+    }
+
+    if (range === "30d") {
+      const buckets = [0, 0, 0, 0];
+      series.forEach(s => {
+        const daysAgo = Math.floor((Date.now() - new Date(s.date).getTime()) / 86_400_000);
+        const idx = Math.min(3, Math.floor(daysAgo / 7));
+        buckets[3 - idx] += s.count;
+      });
+      return buckets.map((v, i) => ({ label: `W${i + 1}`, students: v }));
+    }
+
+    // 90d / 1y → aggregate by month
+    const monthMap = new Map<string, number>();
+    series.forEach(s => {
+      const key = new Date(s.date).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+      monthMap.set(key, (monthMap.get(key) ?? 0) + s.count);
+    });
+    return Array.from(monthMap.entries()).map(([label, students]) => ({ label, students }));
+  }
+
+  // No series from backend — fall back to a single bar showing the period total
+  if (total > 0) {
+    const labels: Record<Range, string> = { "7d": "This Week", "30d": "This Month", "90d": "Last 90d", "1y": "This Year" };
+    return [{ label: labels[range], students: total }];
+  }
+
+  return [];
+}
+
+// ─── Mock data kept for charts without a backend series endpoint ──────────────
 
 const COURSE_COMPLETION = [
-  { name: "React & TS",    completed: 87, dropped: 13 },
-  { name: "Node.js",       completed: 91, dropped: 9  },
-  { name: "Data Science",  completed: 74, dropped: 26 },
-  { name: "Marketing",     completed: 82, dropped: 18 },
-  { name: "TypeScript",    completed: 94, dropped: 6  },
-  { name: "UI/UX Design",  completed: 78, dropped: 22 },
+  { name: "React & TS",   completed: 87, dropped: 13 },
+  { name: "Node.js",      completed: 91, dropped: 9  },
+  { name: "Data Science", completed: 74, dropped: 26 },
+  { name: "Marketing",    completed: 82, dropped: 18 },
+  { name: "TypeScript",   completed: 94, dropped: 6  },
+  { name: "UI/UX Design", completed: 78, dropped: 22 },
 ];
 
 const ENROLLMENT_BY_CATEGORY = [
@@ -107,7 +86,7 @@ const ENROLLMENT_BY_CATEGORY = [
   { name: "Data Science", value: 2400, color: "#8b5cf6" },
   { name: "Marketing",    value: 1900, color: "#f59e0b" },
   { name: "Design",       value: 1400, color: "#10b981" },
-  { name: "Other",        value: 820,  color: "#94a3b8" },
+  { name: "Other",        value:  820, color: "#94a3b8" },
 ];
 
 const COHORT_RETENTION = [
@@ -116,9 +95,7 @@ const COHORT_RETENTION = [
   { cohort: "Mar '25", w1: 100, w2: 86, w4: 74, w8: 62, w12: null },
 ];
 
-
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Shared UI atoms ──────────────────────────────────────────────────────────
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -131,12 +108,8 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 const Fade = ({ children, delay = 0, className = "" }: {
   children: React.ReactNode; delay?: number; className?: string;
 }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 14 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.35, delay, ease: "easeOut" }}
-    className={className}
-  >
+  <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.35, delay, ease: "easeOut" }} className={className}>
     {children}
   </motion.div>
 );
@@ -145,17 +118,12 @@ function RangeToggle({ value, onChange }: { value: Range; onChange: (r: Range) =
   return (
     <div className="flex gap-1 p-1 rounded-xl bg-gray-100 dark:bg-white/[0.05]">
       {(["7d", "30d", "90d", "1y"] as Range[]).map(r => (
-        <button
-          key={r}
-          onClick={() => onChange(r)}
+        <button key={r} onClick={() => onChange(r)}
           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 ${
             value === r
               ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm"
               : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          {r}
-        </button>
+          }`}>{r}</button>
       ))}
     </div>
   );
@@ -180,29 +148,23 @@ function SectionHeader({ icon: Icon, title, sub, children }: {
   );
 }
 
-// ─── Custom Tooltips ──────────────────────────────────────────────────────────
-
-function RevenueTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
+function BackendCallout({ text }: { text: string }) {
   return (
-    <div className="bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] rounded-xl px-3 py-2.5 shadow-lg text-xs">
-      <p className="font-bold text-gray-900 dark:text-white mb-1">{label}</p>
-      {payload.map((p: any) => (
-        <p key={p.dataKey} style={{ color: p.color }}>
-          {p.dataKey === "revenue" ? `$${p.value.toLocaleString()}` : `${p.value} students`}
-        </p>
-      ))}
+    <div className="flex items-start gap-2 mt-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+      <Info className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+      <p className="text-[11px] text-amber-700 dark:text-amber-400">{text}</p>
     </div>
   );
 }
+
+// ─── Custom Tooltips ──────────────────────────────────────────────────────────
 
 function SignupTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] rounded-xl px-3 py-2.5 shadow-lg text-xs">
       <p className="font-bold text-gray-900 dark:text-white mb-1">{label}</p>
-      <p className="text-blue-500">{payload[0]?.value} students</p>
-      {payload[1]?.value > 0 && <p className="text-violet-500">{payload[1]?.value} instructors</p>}
+      <p className="text-blue-500">{payload[0]?.value} signups</p>
     </div>
   );
 }
@@ -254,28 +216,50 @@ export default function AdminAnalytics() {
   const [revenueRange, setRevenueRange] = useState<Range>("30d");
   const [signupRange,  setSignupRange]  = useState<Range>("30d");
 
-  const { data: summary } = useQuery({
+  // ── Real API: summary (KPIs) ───────────────────────────────────────────────
+  const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["admin-summary"],
-    queryFn: () => AdminDashboardService.getSummary(),
+    queryFn:  () => AdminDashboardService.getSummary(),
   });
+
+  // ── Real API: top enrollments ──────────────────────────────────────────────
   const { data: topEnrollments = [] } = useQuery({
     queryKey: ["admin-top-enrollments"],
-    queryFn: () => AdminDashboardService.getTopEnrollments(5),
+    queryFn:  () => AdminDashboardService.getTopEnrollments(5),
   });
 
-  const revData   = REVENUE_SERIES[revenueRange];
-  const signData  = SIGNUP_SERIES[signupRange];
-  const totalRev  = revData.reduce((a, d) => a + d.revenue, 0);
-  const totalSigs = signData.reduce((a, d) => a + d.students, 0);
-  const pieTotal  = ENROLLMENT_BY_CATEGORY.reduce((a, d) => a + d.value, 0);
+  // ── Real API: revenue for selected range ───────────────────────────────────
+  const revDates = useMemo(() => getRangeDates(revenueRange), [revenueRange]);
+  const { data: revenueData, isLoading: revLoading } = useQuery({
+    queryKey: ["admin-revenue", revenueRange],
+    queryFn:  () => AdminDashboardService.getRevenue(revDates),
+    staleTime: 1000 * 60 * 5,
+  });
 
+  // ── Real API: signups for selected range ───────────────────────────────────
+  const signDates = useMemo(() => getRangeDates(signupRange), [signupRange]);
+  const { data: signupData, isLoading: signLoading } = useQuery({
+    queryKey: ["admin-signups", signupRange],
+    queryFn:  () => AdminDashboardService.getSignups(signDates),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // ── Derived chart data ─────────────────────────────────────────────────────
+  const signChartData = useMemo(
+    () => aggregateSignupSeries(signupData?.series ?? [], signupRange, signupData?.total ?? 0),
+    [signupData, signupRange]
+  );
+
+  const pieTotal = ENROLLMENT_BY_CATEGORY.reduce((a, d) => a + d.value, 0);
+
+  // ── KPI cards ──────────────────────────────────────────────────────────────
   const kpiSummary = [
-    { label: "Total Revenue",   value: `$${((summary?.revenue?.total ?? 0) / 1000).toFixed(1)}k`,   sub: "all time",           icon: DollarSign,  color: "from-emerald-500 to-teal-600",   trendUp: true },
-    { label: "New Signups",     value: (summary?.signups?.total ?? 0).toLocaleString(),               sub: "all time",           icon: UserCheck,   color: "from-blue-500 to-blue-600",      trendUp: true },
-    { label: "Avg Completion",  value: `${Number(summary?.completionRate?.rate ?? 0).toFixed(1)}%`,  sub: "platform avg",       icon: Target,      color: "from-violet-500 to-purple-600",  trendUp: true },
-    { label: "Retention (W4)",  value: "74%",   sub: "cohort avg",         icon: Repeat2,     color: "from-amber-400 to-orange-500",   trendUp: true },
-    { label: "Active Students", value: (summary?.students?.active ?? 0).toLocaleString(),             sub: "as of today",        icon: Activity,    color: "from-cyan-500 to-sky-600",       trendUp: true },
-    { label: "Active Courses",  value: (summary?.courses?.published ?? 0).toString(),                sub: `${summary?.courses?.draft ?? 0} in draft`, icon: BookOpen, color: "from-rose-500 to-pink-600", trendUp: true },
+    { label: "Total Revenue",   value: summaryLoading ? "…" : `$${((summary?.revenue?.total ?? 0) / 1000).toFixed(1)}k`,                           sub: "all time",                                icon: DollarSign, color: "from-emerald-500 to-teal-600",  trendUp: true  },
+    { label: "New Signups",     value: summaryLoading ? "…" : (summary?.signups?.total ?? 0).toLocaleString(),                                       sub: "all time",                                icon: UserCheck,  color: "from-blue-500 to-blue-600",     trendUp: true  },
+    { label: "Avg Completion",  value: summaryLoading ? "…" : `${Number(summary?.completionRate?.rate ?? 0).toFixed(1)}%`,                           sub: "platform avg",                            icon: Target,     color: "from-violet-500 to-purple-600", trendUp: true  },
+    { label: "Retention (W4)",  value: "74%",                                                                                                        sub: "mock — backend needed",                   icon: Repeat2,    color: "from-amber-400 to-orange-500",  trendUp: true  },
+    { label: "Active Students", value: summaryLoading ? "…" : (summary?.students?.active ?? 0).toLocaleString(),                                     sub: "as of today",                             icon: Activity,   color: "from-cyan-500 to-sky-600",      trendUp: true  },
+    { label: "Active Courses",  value: summaryLoading ? "…" : (summary?.courses?.published ?? 0).toString(),                                         sub: `${summary?.courses?.draft ?? 0} in draft`, icon: BookOpen, color: "from-rose-500 to-pink-600",     trendUp: true  },
   ];
 
   return (
@@ -296,10 +280,10 @@ export default function AdminAnalytics() {
           </div>
           <div className="flex items-center gap-2">
             <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border border-gray-200 dark:border-white/[0.08] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all">
-              <Download className="w-4 h-4" />Export
+              <Download className="w-4 h-4" /> Export
             </button>
             <Link to="/admin" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-700 hover:opacity-90 transition-all shadow-md">
-              <BarChart2 className="w-4 h-4" />Dashboard
+              <BarChart2 className="w-4 h-4" /> Dashboard
             </Link>
           </div>
         </div>
@@ -309,11 +293,8 @@ export default function AdminAnalytics() {
       <Fade delay={0.04}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {kpiSummary.map(({ label, value, sub, icon: Ic, color, trendUp }, i) => (
-            <motion.div key={label}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.06 + i * 0.04 }}
-            >
+            <motion.div key={label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.06 + i * 0.04 }}>
               <Card className="p-4">
                 <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-2.5`}>
                   <Ic className="w-4 h-4 text-white" />
@@ -329,82 +310,129 @@ export default function AdminAnalytics() {
         </div>
       </Fade>
 
-      {/* ── Revenue + Signups ── */}
+      {/* ── Revenue (real totals) + Signups (real chart) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {/* Revenue area chart */}
+        {/* Revenue — real totals, no time series yet */}
         <Fade delay={0.1}>
-          <Card className="p-6">
-            <SectionHeader icon={DollarSign} title="Revenue" sub="Gross revenue over time">
+          <Card className="p-6 flex flex-col">
+            <SectionHeader icon={DollarSign} title="Revenue" sub="Gross revenue for selected period">
               <RangeToggle value={revenueRange} onChange={setRevenueRange} />
             </SectionHeader>
 
-            <div className="flex items-baseline gap-2 mb-4">
-              <p className="text-3xl font-black text-gray-900 dark:text-white">
-                ${totalRev >= 1000 ? `${(totalRev / 1000).toFixed(1)}k` : totalRev.toLocaleString()}
-              </p>
-              <span className="text-xs font-bold text-emerald-500 flex items-center gap-0.5">
-                <ArrowUpRight className="w-3.5 h-3.5" />+32%
-              </span>
-            </div>
+            {revLoading ? (
+              <div className="flex-1 flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { icon: TrendingUp,  label: "Total Revenue",       value: `$${((revenueData?.total ?? 0) / 1000).toFixed(1)}k`,    color: "from-emerald-500 to-teal-600"  },
+                  { icon: ShoppingCart, label: "Enrollments",         value: (revenueData?.enrollmentCount ?? 0).toLocaleString(),     color: "from-blue-500 to-indigo-600"   },
+                  { icon: DollarSign,  label: "Avg Order",            value: `$${(revenueData?.averageOrderValue ?? 0).toFixed(2)}`,  color: "from-violet-500 to-purple-600" },
+                ].map(({ icon: Icon, label, value, color }) => (
+                  <div key={label} className="flex flex-col items-center py-5 px-3 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] text-center">
+                    <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-2`}>
+                      <Icon className="w-4 h-4 text-white" />
+                    </div>
+                    <p className="text-lg font-black text-gray-900 dark:text-white leading-none">{value}</p>
+                    <p className="text-[10px] text-gray-400 mt-1 leading-tight">{label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={revData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
-                <Tooltip content={<RevenueTooltip />} />
-                <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} fill="url(#revGrad)"
-                  dot={{ r: 3, fill: "#10b981", strokeWidth: 0 }} activeDot={{ r: 5, fill: "#10b981", strokeWidth: 0 }} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <BackendCallout text="Backend should provide: GET /dashboard/admin/revenue/series?range=7d|30d|90d|1y — time-series breakdown (daily/weekly revenue points) for the area chart." />
           </Card>
         </Fade>
 
-        {/* Signups stacked bar */}
+        {/* Signups — real series data from API */}
         <Fade delay={0.12}>
           <Card className="p-6">
-            <SectionHeader icon={Users} title="New Signups" sub="Students and instructors joining">
+            <SectionHeader icon={Users} title="New Signups" sub="Users joining the platform">
               <RangeToggle value={signupRange} onChange={setSignupRange} />
             </SectionHeader>
 
-            <div className="flex items-baseline gap-2 mb-1">
-              <p className="text-3xl font-black text-gray-900 dark:text-white">
-                {totalSigs.toLocaleString()}
-              </p>
-              <span className="text-xs font-bold text-blue-500 flex items-center gap-0.5">
-                <ArrowUpRight className="w-3.5 h-3.5" />+23%
-              </span>
-            </div>
-            <div className="flex items-center gap-4 mb-4 text-xs text-gray-400">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500 inline-block" />Students</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />Instructors</span>
-            </div>
+            {signLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-3 mb-4">
+                  <p className="text-3xl font-black text-gray-900 dark:text-white">
+                    {(signupData?.total ?? 0).toLocaleString()}
+                  </p>
+                  <span className="text-xs font-bold text-blue-500 flex items-center gap-0.5">
+                    <ArrowUpRight className="w-3.5 h-3.5" /> new users
+                  </span>
+                  {/* Only show breakdown when backend provides non-zero role counts */}
+                  {((signupData?.students ?? 0) > 0 || (signupData?.instructors ?? 0) > 0) && (
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                        {signupData!.students} students
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-violet-500 inline-block" />
+                        {signupData!.instructors} instructors
+                      </span>
+                    </div>
+                  )}
+                </div>
 
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={signData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }} barSize={16}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <Tooltip content={<SignupTooltip />} />
-                <Bar dataKey="students"    fill="#3b82f6" radius={[4, 4, 0, 0]} stackId="a" />
-                <Bar dataKey="instructors" fill="#8b5cf6" radius={[4, 4, 0, 0]} stackId="a" />
-              </BarChart>
-            </ResponsiveContainer>
+                {signChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={180}>
+                    {signChartData.length === 1 ? (
+                      // Single-bucket fallback: show as a bar
+                      <BarChart data={signChartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }} barSize={48}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<SignupTooltip />} />
+                        <Bar dataKey="students" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    ) : (
+                      // Multi-point: area chart
+                      <AreaChart data={signChartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="signupGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.2} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}   />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<SignupTooltip />} />
+                        <Area type="monotone" dataKey="students" stroke="#3b82f6" strokeWidth={2.5}
+                          fill="url(#signupGrad)"
+                          dot={{ r: 3, fill: "#3b82f6", strokeWidth: 0 }}
+                          activeDot={{ r: 5, fill: "#3b82f6", strokeWidth: 0 }} />
+                      </AreaChart>
+                    )}
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[180px] flex items-center justify-center">
+                    <p className="text-sm text-gray-400">No signup data for this period</p>
+                  </div>
+                )}
+
+                {!(signupData?.students) && !(signupData?.instructors) && (
+                  <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+                    <Info className="w-3 h-3" />
+                    Backend doesn't return per-role breakdown in signups series — showing combined total.
+                  </p>
+                )}
+              </>
+            )}
           </Card>
         </Fade>
       </div>
 
-      {/* ── Completion + Enrollment breakdown ── */}
+      {/* ── Completion + Enrollment breakdown (mock + callouts) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-5">
 
-        {/* Completion rate per course */}
         <Fade delay={0.14}>
           <Card className="p-6">
             <SectionHeader icon={Target} title="Course Completion" sub="Completed vs dropped per course" />
@@ -423,10 +451,10 @@ export default function AdminAnalytics() {
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />Completed</span>
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-rose-400 opacity-70 inline-block" />Dropped</span>
             </div>
+            <BackendCallout text="Backend should provide: GET /dashboard/admin/completion-by-course — completion and drop rates per course." />
           </Card>
         </Fade>
 
-        {/* Enrollment by category pie */}
         <Fade delay={0.16}>
           <Card className="p-6">
             <SectionHeader icon={BookOpen} title="Enrollments by Category" sub={`${pieTotal.toLocaleString()} total`} />
@@ -441,8 +469,6 @@ export default function AdminAnalytics() {
                 <Tooltip content={<PieTooltip />} />
               </PieChart>
             </ResponsiveContainer>
-
-            {/* Legend */}
             <div className="mt-2 space-y-2">
               {ENROLLMENT_BY_CATEGORY.map((d) => (
                 <div key={d.name} className="flex items-center gap-2.5">
@@ -453,11 +479,12 @@ export default function AdminAnalytics() {
                 </div>
               ))}
             </div>
+            <BackendCallout text="Backend should provide: GET /dashboard/admin/enrollments-by-category — enrollment counts grouped by course category/tag." />
           </Card>
         </Fade>
       </div>
 
-      {/* ── Cohort Retention Table ── */}
+      {/* ── Cohort Retention Table (mock + callout) ── */}
       <Fade delay={0.18}>
         <Card className="p-6">
           <SectionHeader icon={Repeat2} title="Cohort Retention"
@@ -476,11 +503,9 @@ export default function AdminAnalytics() {
               <tbody className="divide-y divide-gray-50 dark:divide-white/[0.04]">
                 {COHORT_RETENTION.map((row, i) => (
                   <motion.tr key={row.cohort}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
+                    initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.22 + i * 0.06 }}
-                    className="hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors"
-                  >
+                    className="hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors">
                     <td className="px-4 py-3">
                       <span className="text-sm font-bold text-gray-900 dark:text-white">{row.cohort}</span>
                     </td>
@@ -505,16 +530,17 @@ export default function AdminAnalytics() {
             </table>
           </div>
 
-          <div className="mt-4 flex items-center gap-4 text-[11px] text-gray-400">
+          <div className="mt-3 flex items-center gap-4 text-[11px] text-gray-400">
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-100 dark:bg-emerald-900/30 inline-block" />≥90%</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 inline-block" />70–89%</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30 inline-block" />50–69%</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-rose-100 dark:bg-rose-900/30 inline-block" />&lt;50%</span>
           </div>
+          <BackendCallout text="Backend should provide: GET /dashboard/admin/cohort-retention?cohorts[]=2025-01 — weekly retention rates per student cohort (signup month)." />
         </Card>
       </Fade>
 
-      {/* ── Top Courses Table ── */}
+      {/* ── Top Courses Table (real data) ── */}
       <Fade delay={0.2}>
         <Card className="p-6">
           <div className="flex items-center justify-between mb-5">
@@ -545,11 +571,8 @@ export default function AdminAnalytics() {
               <tbody className="divide-y divide-gray-50 dark:divide-white/[0.04]">
                 {topEnrollments.map((c, i) => (
                   <motion.tr key={c.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.24 + i * 0.05 }}
-                    className="hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors group"
-                  >
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.24 + i * 0.05 }}
+                    className="hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors group">
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-black text-gray-300 dark:text-gray-600 w-4">{i + 1}</span>
@@ -575,9 +598,7 @@ export default function AdminAnalytics() {
       {/* ── Activities link ── */}
       <Fade delay={0.22}>
         <Link to="/admin/activities"
-          className="flex items-center justify-between p-5 rounded-2xl
-            bg-gradient-to-br from-blue-600 to-indigo-700
-            hover:opacity-90 transition-all shadow-lg group">
+          className="flex items-center justify-between p-5 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 hover:opacity-90 transition-all shadow-lg group">
           <div>
             <h3 className="text-base font-black text-white">Platform Activity Feed</h3>
             <p className="text-xs text-blue-200 mt-0.5">View all real-time platform events and admin actions</p>

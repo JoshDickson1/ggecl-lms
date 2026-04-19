@@ -96,7 +96,7 @@ function CardSkeleton({ index }: { index: number }) {
         border border-white/80 dark:border-white/[0.08]
         shadow-[0_8px_30px_rgba(15,23,42,0.08)]"
     >
-      <div className="h-48 animate-pulse bg-gray-100 dark:bg-white/[0.05]" />
+      <div className="h-64 animate-pulse bg-gray-100 dark:bg-white/[0.05]" />
       <div className="px-5 py-4 space-y-2">
         <div className="h-3 w-1/2 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
         <div className="h-3 w-1/3 animate-pulse rounded-lg bg-gray-100 dark:bg-white/[0.06]" />

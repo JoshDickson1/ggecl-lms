@@ -34,8 +34,8 @@ export enum MaterialType {
 export interface CreateCoursePayload {
   title: string;
   description: string;
-  videoUrl: string;
-  img: string;
+  videoUrl?: string;
+  img?: string;
   price: number;
   level: CourseLevel;
   status?: CourseStatus;

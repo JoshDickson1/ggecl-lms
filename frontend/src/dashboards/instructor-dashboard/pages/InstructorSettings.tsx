@@ -1,25 +1,58 @@
 // src/pages/instructor/InstructorSettings.tsx
-// Full settings page. Duplicate → strip instructor-specific sections for Admin/Student.
-// Sections marked // [INSTRUCTOR ONLY] — remove those for admin/student duplicates.
-
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Camera, User, Mail, Phone, MapPin, Globe,
+  Camera, User, Mail, Phone, Globe,
   Lock, Eye, EyeOff, CheckCircle2, AlertTriangle,
   Save, Loader2, Trash2, BookOpen, FileText, Shield, ChevronRight, X,
+  Plus, Tag,
 } from "lucide-react";
-import { instructors } from "@/data/Instructors";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/context/AuthProvider";
+import StorageService from "@/services/storage.service";
+import UserService from "@/services/user.service";
+import { authClient } from "@/lib/auth-client";
 
-// ─── Dummy data ───────────────────────────────────────────────────────────────
-const INST = instructors[0];
+// ─── API Type ─────────────────────────────────────────────────────────────────
+
+interface MeResponse {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  phone?: string | null;
+  createdAt: string;
+  instructorProfile: {
+    bio: string | null;
+    description: string | null;
+    tags: string[];
+    areasOfExpertise: string[];
+    teachingCategories: string[];
+    specialization: string | null;
+    website: string | null;
+  } | null;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function cn(...classes: (string | false | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
+// ─── Backend unavailable note ─────────────────────────────────────────────────
+
+function BackendNote() {
+  return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full
+      bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40
+      text-amber-600 dark:text-amber-400">
+      Backend should provide data for this
+    </span>
+  );
+}
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
+
 function Toast({ message, type, onClose }: {
   message: string; type: "success" | "error"; onClose: () => void;
 }) {
@@ -48,6 +81,7 @@ function Toast({ message, type, onClose }: {
 }
 
 // ─── Section card ─────────────────────────────────────────────────────────────
+
 function Section({ title, description, icon: Icon, children, delay = 0 }: {
   title: string; description?: string; icon: React.ElementType;
   children: React.ReactNode; delay?: number;
@@ -60,7 +94,6 @@ function Section({ title, description, icon: Icon, children, delay = 0 }: {
       className="rounded-[22px] bg-white dark:bg-[#0f1623]
         border border-gray-100 dark:border-white/[0.07]
         shadow-[0_4px_24px_rgba(0,0,0,0.05)] overflow-hidden">
-      {/* Header */}
       <div className="flex items-start gap-3 px-6 py-5 border-b border-gray-100 dark:border-white/[0.06]">
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700
           flex items-center justify-center shadow-[0_3px_10px_rgba(59,130,246,0.35)] flex-shrink-0 mt-0.5">
@@ -77,16 +110,19 @@ function Section({ title, description, icon: Icon, children, delay = 0 }: {
 }
 
 // ─── Input field ──────────────────────────────────────────────────────────────
-function Field({ label, placeholder, icon: Icon, type = "text", value, onChange, hint, error, required, disabled }: {
+
+function Field({ label, placeholder, icon: Icon, type = "text", value, onChange, hint, error, required, disabled, note }: {
   label: string; placeholder: string; icon: React.ElementType;
   type?: string; value: string; onChange?: (v: string) => void;
   hint?: string; error?: string; required?: boolean; disabled?: boolean;
+  note?: React.ReactNode;
 }) {
   const [focused, setFocused] = useState(false);
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-bold text-gray-600 dark:text-gray-400 flex items-center gap-1">
+      <label className="text-xs font-bold text-gray-600 dark:text-gray-400 flex items-center gap-2 flex-wrap">
         {label} {required && <span className="text-blue-500">*</span>}
+        {note}
       </label>
       <div className={cn(
         "relative rounded-xl border transition-all duration-200",
@@ -117,6 +153,7 @@ function Field({ label, placeholder, icon: Icon, type = "text", value, onChange,
 }
 
 // ─── Textarea ─────────────────────────────────────────────────────────────────
+
 function Textarea({ label, placeholder, value, onChange, hint, rows = 3 }: {
   label: string; placeholder: string; value: string; onChange: (v: string) => void;
   hint?: string; rows?: number;
@@ -145,22 +182,79 @@ function Textarea({ label, placeholder, value, onChange, hint, rows = 3 }: {
   );
 }
 
+// ─── Tag input (areas of expertise) ──────────────────────────────────────────
 
+function TagInput({ label, tags, onChange, hint }: {
+  label: string; tags: string[]; onChange: (tags: string[]) => void; hint?: string;
+}) {
+  const [input, setInput] = useState("");
+  const [focused, setFocused] = useState(false);
+
+  const add = () => {
+    const trimmed = input.trim();
+    if (trimmed && !tags.includes(trimmed)) {
+      onChange([...tags, trimmed]);
+    }
+    setInput("");
+  };
+
+  const remove = (tag: string) => onChange(tags.filter(t => t !== tag));
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-bold text-gray-600 dark:text-gray-400">{label}</label>
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-1">
+          {tags.map(tag => (
+            <span key={tag} className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
+              bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40
+              text-blue-700 dark:text-blue-300">
+              {tag}
+              <button onClick={() => remove(tag)} className="hover:text-red-500 transition-colors">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className={cn(
+        "flex items-center gap-2 rounded-xl border transition-all duration-200",
+        focused ? "border-blue-400 ring-2 ring-blue-500/15" : "border-gray-200 dark:border-white/[0.08]",
+        "bg-gray-50/80 dark:bg-white/[0.04] px-3"
+      )}>
+        <Tag className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => { setFocused(false); }}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(); } }}
+          placeholder="Type and press Enter to add…"
+          className="flex-1 py-2.5 text-sm bg-transparent text-gray-800 dark:text-white placeholder:text-gray-400 outline-none" />
+        <button onClick={add} disabled={!input.trim()}
+          className="flex-shrink-0 p-1 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30
+            disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+      {hint && <p className="text-[11px] text-gray-400">{hint}</p>}
+    </div>
+  );
+}
 
 // ─── Password strength ────────────────────────────────────────────────────────
+
 function PasswordStrength({ password }: { password: string }) {
   const checks = [
-    { label: "8+ characters",     pass: password.length >= 8             },
-    { label: "Uppercase letter",  pass: /[A-Z]/.test(password)           },
-    { label: "Number",            pass: /[0-9]/.test(password)           },
-    { label: "Special character", pass: /[^a-zA-Z0-9]/.test(password)   },
+    { label: "8+ characters",     pass: password.length >= 8           },
+    { label: "Uppercase letter",  pass: /[A-Z]/.test(password)         },
+    { label: "Number",            pass: /[0-9]/.test(password)         },
+    { label: "Special character", pass: /[^a-zA-Z0-9]/.test(password) },
   ];
   const score = checks.filter(c => c.pass).length;
   const colors = ["bg-red-400", "bg-orange-400", "bg-yellow-400", "bg-emerald-400"];
   const labels = ["Weak", "Fair", "Good", "Strong"];
-
   if (!password) return null;
-
   return (
     <div className="mt-2 space-y-2">
       <div className="flex gap-1">
@@ -187,6 +281,7 @@ function PasswordStrength({ password }: { password: string }) {
 }
 
 // ─── Save button ──────────────────────────────────────────────────────────────
+
 function SaveBtn({ loading, onClick, label = "Save Changes" }: {
   loading: boolean; onClick: () => void; label?: string;
 }) {
@@ -209,94 +304,193 @@ function SaveBtn({ loading, onClick, label = "Save Changes" }: {
 }
 
 // ─── Sidebar nav ──────────────────────────────────────────────────────────────
+
 const NAV_SECTIONS = [
-  { id: "avatar",    label: "Photo & Avatar",       icon: Camera   },
-  { id: "personal",  label: "Personal Info",         icon: User     },
-  { id: "instructor",label: "Instructor Details",    icon: BookOpen }, // [INSTRUCTOR ONLY]
-  { id: "socials",   label: "Social Links",          icon: Globe    },
-  { id: "password",  label: "Password & Security",   icon: Lock     },
-  { id: "danger",    label: "Danger Zone",           icon: Trash2   },
+  { id: "avatar",     label: "Photo & Avatar",      icon: Camera   },
+  { id: "personal",   label: "Personal Info",        icon: User     },
+  { id: "instructor", label: "Instructor Details",   icon: BookOpen },
+  { id: "socials",    label: "Social Links",         icon: Globe    },
+  { id: "password",   label: "Password & Security",  icon: Lock     },
+  { id: "danger",     label: "Danger Zone",          icon: Trash2   },
 ];
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+
 export default function InstructorSettings() {
+  const { user: authUser } = useAuth();
+  const queryClient = useQueryClient();
+
+  // ── Fetch real user data
+  const { data: me, isLoading: meLoading } = useQuery<MeResponse>({
+    queryKey: ["user-mine"],
+    queryFn:  () => UserService.getMe() as Promise<MeResponse>,
+  });
+
   // ── Avatar
   const fileRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => setAvatarPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
-  };
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   // ── Personal info
   const [personal, setPersonal] = useState({
-    firstName: INST.name.split(" ")[0],
-    lastName:  INST.name.split(" ")[1] ?? "",
-    email:     "sarah@ggecl.io",
-    phone:     "+1 555 000 0000",
-    location:  "San Francisco, CA",
-    website:   "https://sarahmitchell.dev",
-    bio:       INST.bio,
+    firstName: "",
+    lastName:  "",
+    email:     "",
+    phone:     "",
+    bio:       "",
   });
 
-  // [INSTRUCTOR ONLY] — instructor-specific fields
+  // ── Instructor-specific fields
   const [instDetails, setInstDetails] = useState({
-    title:      INST.title,
-    expertise:  INST.expertise.join(", "),
-    experience: INST.experience,
+    title:      "",
+    experience: "",
+    website:    "",
   });
-
-  // ── Socials
-  const [socials, setSocials] = useState({
-    github:   "#", twitter: "#", linkedin: "#", youtube: "#",
-  });
-
+  const [expertise, setExpertise] = useState<string[]>([]);
 
   // ── Password
   const [pwd, setPwd] = useState({ current: "", next: "", confirm: "" });
   const [showPwd, setShowPwd] = useState({ current: false, next: false, confirm: false });
   const [pwdErrors, setPwdErrors] = useState<Record<string, string>>({});
 
-  // ── Toast + loading states
+  // ── Toast + saving states
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [activeSection, setActiveSection] = useState("avatar");
+
+  // ── Populate form from API
+  useEffect(() => {
+    if (!me) return;
+    const parts = me.name.trim().split(" ");
+    setPersonal({
+      firstName: parts[0] ?? "",
+      lastName:  parts.slice(1).join(" "),
+      email:     me.email,
+      phone:     me.phone ?? "",
+      bio:       me.instructorProfile?.bio ?? me.instructorProfile?.description ?? "",
+    });
+    setInstDetails({
+      title:      me.instructorProfile?.specialization ?? "",
+      experience: me.instructorProfile?.description ?? "",
+      website:    me.instructorProfile?.website ?? "",
+    });
+    setExpertise(me.instructorProfile?.areasOfExpertise ?? []);
+  }, [me]);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
   };
 
-  const simulateSave = (key: string) => {
-    setSaving(p => ({ ...p, [key]: true }));
-    setTimeout(() => {
-      setSaving(p => ({ ...p, [key]: false }));
-      showToast("Changes saved successfully!");
-    }, 1400);
+  const setP = (k: keyof typeof personal) => (v: string) =>
+    setPersonal(p => ({ ...p, [k]: v }));
+  const setI = (k: keyof typeof instDetails) => (v: string) =>
+    setInstDetails(p => ({ ...p, [k]: v }));
+
+  // ── Avatar handlers
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setAvatarPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
-  const handlePasswordSave = () => {
+  const handleAvatarSave = async () => {
+    if (!avatarPreview || !authUser) return;
+    setAvatarUploading(true);
+    try {
+      const blob = await fetch(avatarPreview).then(r => r.blob());
+      const f = new File([blob], "avatar.jpg", { type: blob.type });
+      const publicUrl = await StorageService.upload("avatars", f);
+      await UserService.update(authUser.id, { image: publicUrl });
+      await authClient.updateUser({ image: publicUrl });
+      queryClient.invalidateQueries({ queryKey: ["user-mine"] });
+      setAvatarPreview(null);
+      showToast("Profile photo updated!");
+    } catch {
+      showToast("Failed to upload photo", "error");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // ── Personal save
+  const savePersonal = async () => {
+    if (!authUser) return;
+    setSaving(p => ({ ...p, personal: true }));
+    try {
+      const name = `${personal.firstName} ${personal.lastName}`.trim();
+      await UserService.update(authUser.id, {
+        name,
+        bio:   personal.bio,
+        phone: personal.phone || undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-mine"] });
+      showToast("Personal info updated!");
+    } catch {
+      showToast("Failed to save changes", "error");
+    } finally {
+      setSaving(p => ({ ...p, personal: false }));
+    }
+  };
+
+  // ── Instructor details save
+  const saveInstructor = async () => {
+    if (!authUser) return;
+    setSaving(p => ({ ...p, instructor: true }));
+    try {
+      await UserService.update(authUser.id, {
+        instructorProfile: {
+          specialization:   instDetails.title   || undefined,
+          description:      instDetails.experience || undefined,
+          website:          instDetails.website  || undefined,
+          areasOfExpertise: expertise,
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-mine"] });
+      showToast("Instructor details updated!");
+    } catch {
+      showToast("Failed to save changes", "error");
+    } finally {
+      setSaving(p => ({ ...p, instructor: false }));
+    }
+  };
+
+  // ── Password save
+  const handlePasswordSave = async () => {
     const errs: Record<string, string> = {};
     if (!pwd.current) errs.current = "Required";
     if (pwd.next.length < 8) errs.next = "Must be at least 8 characters";
     if (pwd.next !== pwd.confirm) errs.confirm = "Passwords don't match";
     setPwdErrors(errs);
     if (Object.keys(errs).length) return showToast("Please fix the errors above", "error");
-    simulateSave("password");
-    setPwd({ current: "", next: "", confirm: "" });
+
+    if (!authUser) return;
+    setSaving(p => ({ ...p, password: true }));
+    try {
+      await UserService.update(authUser.id, { password: pwd.next });
+      showToast("Password updated!");
+      setPwd({ current: "", next: "", confirm: "" });
+    } catch {
+      showToast("Failed to update password", "error");
+    } finally {
+      setSaving(p => ({ ...p, password: false }));
+    }
   };
 
-  const setP = (k: keyof typeof personal) => (v: string) =>
-    setPersonal(p => ({ ...p, [k]: v }));
-  const setI = (k: keyof typeof instDetails) => (v: string) =>
-    setInstDetails(p => ({ ...p, [k]: v }));
-  const setS = (k: keyof typeof socials) => (v: string) =>
-    setSocials(p => ({ ...p, [k]: v }));
+  const currentImage = me?.image ?? (authUser as any)?.image ?? null;
+  const displayName  = me?.name ?? authUser?.name ?? "";
+  const initials     = displayName.split(" ").map((p: string) => p[0]).join("").slice(0, 2).toUpperCase();
 
-  const [activeSection, setActiveSection] = useState("avatar");
+  if (meLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1000px] mx-auto pb-10">
@@ -350,15 +544,16 @@ export default function InstructorSettings() {
           <div id="section-avatar">
             <Section title="Photo & Avatar" description="Your public profile photo" icon={Camera} delay={0.05}>
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                {/* Preview */}
                 <div className="relative flex-shrink-0">
                   <div className="w-24 h-24 rounded-[20px] overflow-hidden ring-4 ring-blue-100 dark:ring-blue-900/40
                     shadow-[0_4px_16px_rgba(59,130,246,0.2)]">
                     {avatarPreview ? (
                       <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                    ) : currentImage ? (
+                      <img src={currentImage} alt={displayName} className="w-full h-full object-cover" />
                     ) : (
-                      <div className={`w-full h-full flex items-center justify-center text-3xl font-black text-white ${INST.avatarBg}`}>
-                        {INST.avatar}
+                      <div className="w-full h-full flex items-center justify-center text-3xl font-black text-white bg-blue-500">
+                        {initials}
                       </div>
                     )}
                   </div>
@@ -372,7 +567,6 @@ export default function InstructorSettings() {
                   <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                 </div>
 
-                {/* Upload area */}
                 <div className="flex-1">
                   <button
                     onClick={() => fileRef.current?.click()}
@@ -387,7 +581,7 @@ export default function InstructorSettings() {
                   </button>
                   {avatarPreview && (
                     <div className="flex gap-2 mt-3">
-                      <SaveBtn loading={!!saving.avatar} onClick={() => simulateSave("avatar")} label="Save Photo" />
+                      <SaveBtn loading={avatarUploading} onClick={handleAvatarSave} label="Save Photo" />
                       <button onClick={() => setAvatarPreview(null)}
                         className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.08]
                           text-gray-600 dark:text-gray-400 hover:border-red-300 hover:text-red-500 transition-all">
@@ -404,45 +598,50 @@ export default function InstructorSettings() {
           <div id="section-personal">
             <Section title="Personal Information" description="Your basic account details" icon={User} delay={0.1}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-                <Field label="First Name" placeholder="Jane" icon={User} value={personal.firstName}
-                  onChange={setP("firstName")} required />
-                <Field label="Last Name" placeholder="Doe" icon={User} value={personal.lastName}
-                  onChange={setP("lastName")} required />
+                <Field label="First Name" placeholder="Jane" icon={User}
+                  value={personal.firstName} onChange={setP("firstName")} required />
+                <Field label="Last Name" placeholder="Doe" icon={User}
+                  value={personal.lastName} onChange={setP("lastName")} required />
                 <Field label="Email Address" placeholder="jane@example.com" icon={Mail} type="email"
-                  value={personal.email} onChange={setP("email")} required
-                  hint="Changes require email verification" />
+                  value={personal.email} disabled
+                  hint="Email changes require backend support" />
                 <Field label="Phone Number" placeholder="+1 555 000 0000" icon={Phone} type="tel"
                   value={personal.phone} onChange={setP("phone")} />
-                <Field label="Location" placeholder="City, Country" icon={MapPin} value={personal.location}
-                  onChange={setP("location")} />
-                <Field label="Website" placeholder="https://yoursite.com" icon={Globe} value={personal.website}
-                  onChange={setP("website")} />
+                <div className="sm:col-span-2">
+                  <Field label="Location" placeholder="City, Country" icon={Globe}
+                    value="" disabled
+                    note={<BackendNote />} />
+                </div>
                 <div className="sm:col-span-2">
                   <Textarea label="Short Bio" placeholder="Tell students about yourself…"
                     value={personal.bio} onChange={setP("bio")}
-                    hint="Shown on your public profile. Max 300 characters." rows={4} />
+                    hint="Shown on your public profile." rows={4} />
                 </div>
               </div>
-              <SaveBtn loading={!!saving.personal} onClick={() => simulateSave("personal")} />
+              <SaveBtn loading={!!saving.personal} onClick={savePersonal} />
             </Section>
           </div>
 
-          {/* [INSTRUCTOR ONLY] Instructor Details */}
+          {/* Instructor Details */}
           <div id="section-instructor">
-            <Section title="Instructor Details" description="Instructor-specific information shown on your profile" icon={BookOpen} delay={0.15}>
+            <Section title="Instructor Details" description="Instructor-specific information shown on your public profile" icon={BookOpen} delay={0.15}>
               <div className="flex flex-col gap-4 mb-5">
-                <Field label="Professional Title" placeholder="e.g. Senior Software Engineer · React Expert"
+                <Field label="Professional Title / Specialization"
+                  placeholder="e.g. Senior Software Engineer · React Expert"
                   icon={FileText} value={instDetails.title} onChange={setI("title")}
                   hint="Shown under your name on your public profile" />
-                <Textarea label="Areas of Expertise (comma-separated)"
-                  placeholder="React 18, TypeScript, Node.js, System Design…"
-                  value={instDetails.expertise} onChange={setI("expertise")}
-                  hint="Used to match you with relevant students and searches" rows={2} />
+                <TagInput
+                  label="Areas of Expertise"
+                  tags={expertise}
+                  onChange={setExpertise}
+                  hint="Press Enter or comma to add a skill. Click × to remove." />
                 <Textarea label="Professional Experience"
-                  placeholder="Describe your industry background…"
+                  placeholder="Describe your industry background and teaching philosophy…"
                   value={instDetails.experience} onChange={setI("experience")} rows={4} />
+                <Field label="Website" placeholder="https://yoursite.com" icon={Globe}
+                  value={instDetails.website} onChange={setI("website")} />
               </div>
-              <SaveBtn loading={!!saving.instructor} onClick={() => simulateSave("instructor")} />
+              <SaveBtn loading={!!saving.instructor} onClick={saveInstructor} />
             </Section>
           </div>
 
@@ -450,21 +649,16 @@ export default function InstructorSettings() {
           <div id="section-socials">
             <Section title="Social Links" description="Connect your professional profiles" icon={Globe} delay={0.2}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-                {([
-                  { key: "github",   icon: Globe,   placeholder: "https://github.com/username"   },
-                  { key: "twitter",  icon: Globe,  placeholder: "https://twitter.com/username"  },
-                  { key: "linkedin", icon: Globe, placeholder: "https://linkedin.com/in/username" },
-                  { key: "youtube",  icon: Globe,  placeholder: "https://youtube.com/@channel"  },
-                ] as const).map(({ key, icon: Icon, placeholder }) => (
-                  <Field key={key}
-                    label={key.charAt(0).toUpperCase() + key.slice(1)}
-                    placeholder={placeholder}
-                    icon={Icon}
-                    value={socials[key]}
-                    onChange={setS(key)} />
+                {(["GitHub", "Twitter", "LinkedIn", "YouTube"] as const).map(platform => (
+                  <Field key={platform}
+                    label={platform} placeholder={`https://${platform.toLowerCase()}.com/…`}
+                    icon={Globe} value="" disabled
+                    note={<BackendNote />} />
                 ))}
               </div>
-              <SaveBtn loading={!!saving.socials} onClick={() => simulateSave("socials")} />
+              <p className="text-xs text-gray-400 mt-2">
+                Social platform links are not yet supported by the backend API.
+              </p>
             </Section>
           </div>
 
@@ -563,8 +757,7 @@ export default function InstructorSettings() {
               </div>
               <div className="p-6 flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4 p-4 rounded-2xl
-                  bg-red-50/60 dark:bg-red-950/15
-                  border border-red-100 dark:border-red-900/20">
+                  bg-red-50/60 dark:bg-red-950/15 border border-red-100 dark:border-red-900/20">
                   <div>
                     <p className="text-sm font-bold text-gray-800 dark:text-white">Deactivate Account</p>
                     <p className="text-xs text-gray-400 mt-0.5">
@@ -572,15 +765,13 @@ export default function InstructorSettings() {
                     </p>
                   </div>
                   <button className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold
-                    border border-red-200 dark:border-red-800/50
-                    text-red-600 dark:text-red-400
+                    border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400
                     hover:bg-red-100 dark:hover:bg-red-950/40 transition-all">
                     Deactivate
                   </button>
                 </div>
                 <div className="flex items-center justify-between gap-4 p-4 rounded-2xl
-                  bg-red-50/60 dark:bg-red-950/15
-                  border border-red-100 dark:border-red-900/20">
+                  bg-red-50/60 dark:bg-red-950/15 border border-red-100 dark:border-red-900/20">
                   <div>
                     <p className="text-sm font-bold text-gray-800 dark:text-white">Delete Account</p>
                     <p className="text-xs text-gray-400 mt-0.5">
@@ -600,7 +791,6 @@ export default function InstructorSettings() {
         </div>
       </div>
 
-      {/* Toast */}
       <AnimatePresence>
         {toast && (
           <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
