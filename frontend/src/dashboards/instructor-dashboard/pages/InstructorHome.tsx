@@ -9,11 +9,11 @@ import {
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  AreaChart, Area,
 } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import UserService from "@/services/user.service";
 import InstructorDashboardService from "@/services/instructor-dashboard.service";
+import { ApiErrorPage } from "@/components/ui/ApiError";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ export default function InstructorHome() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: summary, isLoading: summaryLoading } = useQuery({
+  const { data: summary, isLoading: summaryLoading, isError: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ["instructor-dashboard-summary"],
     queryFn:  () => InstructorDashboardService.getSummary(),
     staleTime: 1000 * 60 * 5,
@@ -126,12 +126,6 @@ export default function InstructorHome() {
   const { data: activity } = useQuery({
     queryKey: ["instructor-student-activity"],
     queryFn:  () => InstructorDashboardService.getTotalStudentActivity(),
-    staleTime: 1000 * 60 * 5,
-  });
-
-  const { data: revenueTimeline = [] } = useQuery({
-    queryKey: ["instructor-revenue-timeline"],
-    queryFn:  () => InstructorDashboardService.getRevenueTimeline({ granularity: "week" }),
     staleTime: 1000 * 60 * 5,
   });
 
@@ -157,13 +151,6 @@ export default function InstructorHome() {
     (summary?.completionRate?.perCourse ?? []).map(c => [c.courseId, c.completionRate])
   );
 
-  // Revenue timeline chart data
-  const timelineChartData = revenueTimeline.map(item => ({
-    label: new Date(item.period).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    revenue: item.revenue,
-    enrollments: item.enrollments,
-  }));
-
   const pendingItems = activitiesData?.activities ?? [];
 
   if (loading) {
@@ -173,6 +160,7 @@ export default function InstructorHome() {
       </div>
     );
   }
+  if (summaryError) return <ApiErrorPage onRetry={refetchSummary} message="Failed to load dashboard data." />;
 
   return (
     <div className="max-w-[1150px] mx-auto space-y-5 pb-12">
@@ -284,31 +272,6 @@ export default function InstructorHome() {
               </div>
             )}
 
-            {timelineChartData.length > 0 ? (
-              <>
-                <p className="text-[10px] text-gray-400 mb-2">Revenue & enrollments over time</p>
-                <ResponsiveContainer width="100%" height={120}>
-                  <AreaChart data={timelineChartData} margin={{ top: 2, right: 4, left: -24, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.18} />
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<ActivityTooltip />} />
-                    <Area dataKey="revenue" name="Revenue" stroke="#6366f1" fill="url(#revGrad)" strokeWidth={2} dot={false} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </>
-            ) : (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
-                <TrendingUp className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" />
-                <p className="text-xs text-gray-400 italic">No revenue timeline data yet</p>
-              </div>
-            )}
           </Card>
         </Fade>
 
@@ -430,7 +393,6 @@ export default function InstructorHome() {
                                   <Star className="w-3 h-3 text-amber-400" />{c.averageRating.toFixed(1)}
                                 </span>
                               )}
-                              <span className="text-emerald-500 font-semibold">${(c.revenue ?? 0).toLocaleString()}</span>
                             </div>
                           </div>
 
@@ -453,16 +415,13 @@ export default function InstructorHome() {
                   })}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-50 dark:border-white/[0.04] grid grid-cols-2 gap-3">
-                  {[
-                    { label: "Total enrolled", value: topCourses.reduce((a, c) => a + (c.enrollmentCount ?? 0), 0).toLocaleString() },
-                    { label: "Total revenue",  value: `$${topCourses.reduce((a, c) => a + (c.revenue ?? 0), 0).toLocaleString()}` },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="bg-gray-50 dark:bg-white/[0.03] rounded-xl px-3 py-2.5 text-center">
-                      <p className="text-sm font-black text-gray-900 dark:text-white">{value}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">{label}</p>
-                    </div>
-                  ))}
+                <div className="mt-4 pt-4 border-t border-gray-50 dark:border-white/[0.04]">
+                  <div className="bg-gray-50 dark:bg-white/[0.03] rounded-xl px-3 py-2.5 text-center">
+                    <p className="text-sm font-black text-gray-900 dark:text-white">
+                      {topCourses.reduce((a, c) => a + (c.enrollmentCount ?? 0), 0).toLocaleString()}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Total enrolled</p>
+                  </div>
                 </div>
               </>
             ) : (

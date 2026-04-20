@@ -47,4 +47,11 @@ export default class StorageService {
     await this.uploadFile(uploadUrl, file);
     return publicUrl;
   }
+
+  /** Upload a file and return the R2 object key (for API submission payloads). */
+  static async uploadGetKey(folder: StorageFolder, file: File): Promise<string> {
+    const { uploadUrl, key } = await this.getPresignedUpload(folder, file);
+    await this.uploadFile(uploadUrl, file);
+    return key;
+  }
 }

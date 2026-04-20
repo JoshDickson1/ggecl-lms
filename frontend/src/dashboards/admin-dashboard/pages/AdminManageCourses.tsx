@@ -6,12 +6,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   Plus, Search, Eye, Edit3, Trash2, BookOpen,
-  Users, Star, DollarSign, Globe, ChevronDown,
+  Users, Star, Globe, ChevronDown,
   Loader2, MoreHorizontal, CheckCircle2, Clock, ArchiveIcon,
   AlertTriangle,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, { CourseStatus } from "@/services/course.service";
+import AdminDashboardService from "@/services/admin-dashboard.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,8 +47,7 @@ const LEVEL_GRADIENTS: Record<string, string> = {
   ADVANCED:     "from-violet-500 to-purple-600",
 };
 
-function fmt(n: number)         { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
-function fmtRevenue(n: number)  { return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n}`; }
+function fmt(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`rounded-[22px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.05)] ${className}`}>{children}</div>;
@@ -272,6 +272,12 @@ export default function AdminManageCourses() {
 
   const courses = data?.items ?? [];
 
+  const { data: courseStats } = useQuery({
+    queryKey: ["admin-course-stats"],
+    queryFn: () => AdminDashboardService.getCourses(),
+    staleTime: 1000 * 60 * 2,
+  });
+
   const { mutate: changeStatus } = useMutation({
     mutationFn: ({ id, status }: { id: string; status: CourseStatus }) => {
       if (status === CourseStatus.PUBLISHED) return CoursesService.publish(id);
@@ -298,8 +304,10 @@ export default function AdminManageCourses() {
   }, [courses, search, statusFilter]);
 
   const stats = {
-    total:     courses.length,
-    published: courses.filter(c => c.status === "PUBLISHED").length,
+    total:     courseStats?.total     ?? courses.length,
+    published: courseStats?.published ?? courses.filter(c => c.status === "PUBLISHED").length,
+    draft:     courseStats?.draft     ?? courses.filter(c => c.status === "DRAFT").length,
+    archived:  courseStats?.archived  ?? courses.filter(c => c.status === "ARCHIVED").length,
     students:  courses.reduce((a, c) => a + (c._count?.enrollments ?? 0), 0),
     revenue:   courses.reduce((a, c) => a + (c.price ?? 0) * (c._count?.enrollments ?? 0), 0),
   };
@@ -347,11 +355,11 @@ export default function AdminManageCourses() {
         <Fade delay={0.06}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { icon: BookOpen,   label: "Total Courses",  value: String(stats.total),         color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-950/40"     },
-              { icon: Globe,      label: "Published",       value: String(stats.published),      color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
-              { icon: Users,      label: "Total Students",  value: fmt(stats.students),          color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40" },
-              { icon: DollarSign, label: "Est. Revenue",    value: fmtRevenue(stats.revenue),    color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"   },
-            ].map(({ icon: Icon, label, value, color, bg }) => (
+              { icon: BookOpen,    label: "Total Courses",  value: String(stats.total),         sub: `${stats.archived} archived`,  color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-950/40"       },
+              { icon: Globe,      label: "Published",       value: String(stats.published),      sub: undefined,                     color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+              { icon: Clock,      label: "Draft",           value: String(stats.draft),          sub: undefined,                     color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"     },
+              { icon: Users,      label: "Total Students",  value: fmt(stats.students),          sub: undefined,                     color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40"   },
+            ].map(({ icon: Icon, label, value, sub, color, bg }) => (
               <Card key={label} className="p-5 flex items-center gap-3">
                 <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", bg)}>
                   <Icon className={cn("w-5 h-5", color)} />
@@ -359,6 +367,7 @@ export default function AdminManageCourses() {
                 <div>
                   <p className={cn("text-2xl font-black", color)}>{value}</p>
                   <p className="text-[10px] text-gray-400">{label}</p>
+                  {sub && <p className="text-[9px] text-gray-400 mt-0.5">{sub}</p>}
                 </div>
               </Card>
             ))}

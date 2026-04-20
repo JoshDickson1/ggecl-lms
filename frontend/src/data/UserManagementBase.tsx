@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import UserService, { UserRole as ApiUserRole } from "@/services/user.service";
+import AdminDashboardService from "@/services/admin-dashboard.service";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type UserRole = "student" | "instructor" | "admin";
@@ -183,6 +184,20 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
   // ── Server state ──
   const queryClient = useQueryClient();
 
+  const { data: studentStats } = useQuery({
+    queryKey: ["admin-student-stats"],
+    queryFn: () => AdminDashboardService.getStudents(),
+    enabled: role === "student",
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: instructorStats } = useQuery({
+    queryKey: ["admin-instructor-stats"],
+    queryFn: () => AdminDashboardService.getInstructors(),
+    enabled: role === "instructor",
+    staleTime: 1000 * 60 * 5,
+  });
+
   const { data: rawUsers = [], isLoading, isError } = useQuery<ManagedUser[]>({
     queryKey: ["admin-users", role],
     queryFn: async () => {
@@ -328,6 +343,33 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
           </div>
         </div>
       </motion.div>
+
+      {/* ── Stats strip ── */}
+      {(role === "student" || role === "instructor") && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
+          className="grid grid-cols-3 gap-3">
+          {role === "student" && [
+            { label: "Total Students",   value: studentStats?.total    ?? rawUsers.length, color: "text-blue-600 dark:text-blue-400"    },
+            { label: "Active",           value: studentStats?.active   ?? "—",             color: "text-emerald-600 dark:text-emerald-400" },
+            { label: "Inactive",         value: studentStats?.inactive ?? "—",             color: "text-gray-500 dark:text-gray-400"    },
+          ].map(s => (
+            <Card key={s.label} className="p-4 text-center">
+              <p className={`text-2xl font-black ${s.color}`}>{typeof s.value === "number" ? s.value.toLocaleString() : s.value}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{s.label}</p>
+            </Card>
+          ))}
+          {role === "instructor" && [
+            { label: "Total Instructors",     value: instructorStats?.total              ?? rawUsers.length, color: "text-violet-600 dark:text-violet-400" },
+            { label: "Active",                value: instructorStats?.active             ?? "—",             color: "text-emerald-600 dark:text-emerald-400" },
+            { label: "With Published Course", value: instructorStats?.withPublishedCourse ?? "—",            color: "text-blue-600 dark:text-blue-400"    },
+          ].map(s => (
+            <Card key={s.label} className="p-4 text-center">
+              <p className={`text-2xl font-black ${s.color}`}>{typeof s.value === "number" ? s.value.toLocaleString() : s.value}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{s.label}</p>
+            </Card>
+          ))}
+        </motion.div>
+      )}
 
       {/* ── Create Form ── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>

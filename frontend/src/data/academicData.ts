@@ -131,8 +131,8 @@ export const FILE_META: Record<FileType, { icon: string; color: string; bg: stri
   other:    { icon: "📎", color: "text-gray-600 dark:text-gray-400",    bg: "bg-gray-50 dark:bg-gray-100/50"   },
 };
 
-export function getFileType(name: string): FileType {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+export function getFileType(name: string | undefined | null): FileType {
+  const ext = (name ?? "").split(".").pop()?.toLowerCase() ?? "";
   if (["jpg","jpeg","png","gif","webp","svg"].includes(ext)) return "image";
   if (["mp3","wav","ogg","aac","flac"].includes(ext)) return "audio";
   if (["mp4","mov","avi","mkv","webm"].includes(ext)) return "video";

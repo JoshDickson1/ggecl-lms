@@ -13,6 +13,7 @@ import ProgressService from "@/services/progress.service";
 import ActivityService from "@/services/activity.service";
 import EnrollmentService from "@/services/enrollment.service";
 import { useAuth } from "@/context/AuthProvider";
+import { ApiErrorPage } from "@/components/ui/ApiError";
 
 // ─── API Response Types ───────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function StudentHome() {
   const { user } = useAuth();
 
-  const { data: dashboard, isLoading: dashLoading } = useQuery<DashboardResponse>({
+  const { data: dashboard, isLoading: dashLoading, isError: dashError, refetch: refetchDash } = useQuery<DashboardResponse>({
     queryKey: ["progress-dashboard"],
     queryFn: () => ProgressService.getDashboard() as Promise<DashboardResponse>,
   });
@@ -249,6 +250,7 @@ export default function StudentHome() {
 
   const isLoading = dashLoading || xpLoading || activityLoading || enrollLoading;
   if (isLoading) return <HomeSkeleton />;
+  if (dashError) return <ApiErrorPage onRetry={refetchDash} message="Failed to load your dashboard." />;
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
@@ -534,7 +536,7 @@ export default function StudentHome() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.16 + i * 0.06 }}
                   >
-                    <Link to={`/student/courses/${enr.course.id}`}>
+                    <Link to={`/student/courses/${enr.course.id}/watch`}>
                       <Card className="p-4 hover:shadow-md transition-shadow group cursor-pointer">
                         <div className={`w-full h-20 rounded-xl bg-gradient-to-br ${gradientFor(i)} flex items-center justify-center mb-3 overflow-hidden`}>
                           {enr.course.img ? (

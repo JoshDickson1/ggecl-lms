@@ -62,7 +62,7 @@ import AdminSearch               from "./dashboards/admin-dashboard/pages/AdminS
 import InstructorHome             from "./dashboards/instructor-dashboard/pages/InstructorHome";
 import InstructorProfile          from "./dashboards/instructor-dashboard/pages/InstructorProfile";
 import InstructorSettings         from "./dashboards/instructor-dashboard/pages/InstructorSettings";
-import { InstructorAllNotifications } from "./dashboards/instructor-dashboard/pages/InstructorAllNotifications";
+import InstructorAllNotifications from "./dashboards/instructor-dashboard/pages/InstructorAllNotifications";
 import InstructorAssignment       from "./dashboards/instructor-dashboard/pages/InstructorAssignment";
 import InstructorGrades           from "./dashboards/instructor-dashboard/pages/InstructorGrades";
 import InstructorChat             from "./dashboards/instructor-dashboard/pages/InstructorChat";

@@ -236,6 +236,13 @@ export default function AdminAnalytics() {
     staleTime: 1000 * 60 * 5,
   });
 
+  // ── Real API: completion rate (dedicated endpoint) ────────────────────────
+  const { data: completionRateData } = useQuery({
+    queryKey: ["admin-completion-rate"],
+    queryFn: () => AdminDashboardService.getCompletionRate(),
+    staleTime: 1000 * 60 * 10,
+  });
+
   // ── Real API: signups for selected range ───────────────────────────────────
   const signDates = useMemo(() => getRangeDates(signupRange), [signupRange]);
   const { data: signupData, isLoading: signLoading } = useQuery({
@@ -256,7 +263,7 @@ export default function AdminAnalytics() {
   const kpiSummary = [
     { label: "Total Revenue",   value: summaryLoading ? "…" : `$${((summary?.revenue?.total ?? 0) / 1000).toFixed(1)}k`,                           sub: "all time",                                icon: DollarSign, color: "from-emerald-500 to-teal-600",  trendUp: true  },
     { label: "New Signups",     value: summaryLoading ? "…" : (summary?.signups?.total ?? 0).toLocaleString(),                                       sub: "all time",                                icon: UserCheck,  color: "from-blue-500 to-blue-600",     trendUp: true  },
-    { label: "Avg Completion",  value: summaryLoading ? "…" : `${Number(summary?.completionRate?.rate ?? 0).toFixed(1)}%`,                           sub: "platform avg",                            icon: Target,     color: "from-violet-500 to-purple-600", trendUp: true  },
+    { label: "Avg Completion",  value: completionRateData ? `${Number(completionRateData.rate).toFixed(1)}%` : summaryLoading ? "…" : `${Number(summary?.completionRate?.rate ?? 0).toFixed(1)}%`, sub: "platform avg", icon: Target, color: "from-violet-500 to-purple-600", trendUp: true },
     { label: "Retention (W4)",  value: "74%",                                                                                                        sub: "mock — backend needed",                   icon: Repeat2,    color: "from-amber-400 to-orange-500",  trendUp: true  },
     { label: "Active Students", value: summaryLoading ? "…" : (summary?.students?.active ?? 0).toLocaleString(),                                     sub: "as of today",                             icon: Activity,   color: "from-cyan-500 to-sky-600",      trendUp: true  },
     { label: "Active Courses",  value: summaryLoading ? "…" : (summary?.courses?.published ?? 0).toString(),                                         sub: `${summary?.courses?.draft ?? 0} in draft`, icon: BookOpen, color: "from-rose-500 to-pink-600",     trendUp: true  },

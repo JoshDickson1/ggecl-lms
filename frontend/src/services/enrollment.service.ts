@@ -99,6 +99,12 @@ export default class EnrollmentService {
    * @param courseId   - Target course ID
    * @param studentIds - Array of student user IDs to enroll
    */
+  // Instructor/Admin: get all enrollments for a specific student across courses
+  static async findByStudent(studentId: string): Promise<unknown> {
+    const response = await APIConfig.fetch(`/enrollments/student/${studentId}`);
+    return response.json();
+  }
+
   static async adminEnroll(courseId: string, studentIds: string[]): Promise<unknown> {
     const response = await APIConfig.fetch("/enrollments/admin", {
       method: "POST",

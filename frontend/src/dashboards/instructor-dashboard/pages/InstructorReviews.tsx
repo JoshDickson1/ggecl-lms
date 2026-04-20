@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import InstructorDashboardService, {
   type RecentReviewItem,
 } from "@/services/instructor-dashboard.service";
+import ReviewService from "@/services/review.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,16 +62,32 @@ function ReplyModal({ review, onClose }: { review: RecentReviewItem; onClose: ()
   const qc = useQueryClient();
   const [text, setText] = useState(review.reply?.comment ?? "");
   const [done, setDone] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const hasReply = !!review.reply;
 
   const { mutate, isPending } = useMutation({
-    mutationFn: () => InstructorDashboardService.postReply(review.id, text.trim()),
+    mutationFn: () =>
+      hasReply
+        ? ReviewService.updateReply(review.reply!.id, { comment: text.trim() })
+        : InstructorDashboardService.postReply(review.id, text.trim()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-reviews"] });
+      qc.invalidateQueries({ queryKey: ["instructor-recent-reviews"] });
+      setServerError(null);
       setDone(true);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      setServerError(msg);
     },
   });
 
-  const hasReply = !!review.reply;
+  const handleSubmit = () => {
+    if (!text.trim() || isPending) return;
+    setServerError(null);
+    mutate();
+  };
 
   return (
     <motion.div
@@ -113,13 +130,20 @@ function ReplyModal({ review, onClose }: { review: RecentReviewItem; onClose: ()
               <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Your reply</p>
               <textarea
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => { setText(e.target.value); setServerError(null); }}
                 placeholder="Thank the student and address any feedback they mentioned…"
                 rows={4}
                 maxLength={600}
                 className="w-full px-4 py-3 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none transition-all"
               />
               <p className="text-right text-xs text-gray-400 mt-1">{text.length}/600</p>
+
+              {serverError && (
+                <div className="mt-3 flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30">
+                  <X className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-600 dark:text-red-400">{serverError}</p>
+                </div>
+              )}
             </div>
 
             <div className="px-6 pb-6 flex gap-3">
@@ -127,7 +151,7 @@ function ReplyModal({ review, onClose }: { review: RecentReviewItem; onClose: ()
                 Cancel
               </button>
               <button
-                onClick={() => text.trim() && mutate()}
+                onClick={handleSubmit}
                 disabled={!text.trim() || isPending}
                 className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
               >

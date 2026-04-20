@@ -249,7 +249,12 @@ export default class InstructorDashboardService {
     const response = await APIConfig.fetch(
       `${this.base}/reviews/recent?limit=${limit}`
     );
-    return response.json();
+    const data = await response.json();
+    if (Array.isArray(data)) return data as RecentReviewItem[];
+    if (Array.isArray((data as any)?.items))   return (data as any).items   as RecentReviewItem[];
+    if (Array.isArray((data as any)?.reviews)) return (data as any).reviews as RecentReviewItem[];
+    if (Array.isArray((data as any)?.data))    return (data as any).data    as RecentReviewItem[];
+    return [];
   }
 
   /**
@@ -298,13 +303,14 @@ export default class InstructorDashboardService {
   }
 
   /**
-   * Post or update a reply to a student review
+   * Post or update a reply to a student review.
+   * Uses the reviews API directly — correct endpoint is /reviews/:id/reply.
    * @param reviewId - The review ID to reply to
    * @param comment  - Reply text
    */
   static async postReply(reviewId: string, comment: string): Promise<unknown> {
     const response = await APIConfig.fetch(
-      `${this.base}/reviews/${reviewId}/reply`,
+      `/reviews/${reviewId}/reply`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

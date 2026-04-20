@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import CoursesService from "@/services/course.service";
+import { ApiErrorPage } from "@/components/ui/ApiError";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -202,7 +203,7 @@ export default function InstructorCourses() {
   const [search, setSearch]           = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["instructor-courses"],
     queryFn: () =>
       CoursesService.findAll() as Promise<{ items: InstructorCourse[]; nextCursor: string | null }>,
@@ -233,6 +234,7 @@ export default function InstructorCourses() {
       </div>
     );
   }
+  if (isError) return <ApiErrorPage onRetry={refetch} message="Failed to load your courses." />;
 
   return (
     <div className="max-w-[1100px] mx-auto px-4 py-8 space-y-6">
