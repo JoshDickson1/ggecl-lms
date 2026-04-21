@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 import {
   Plus, Search, Eye, Edit3, Trash2, BookOpen,
   Users, Star, Globe, ChevronDown,
-  Loader2, MoreHorizontal, CheckCircle2, Clock, ArchiveIcon,
+  Loader2, CheckCircle2, Clock, ArchiveIcon,
   AlertTriangle,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";

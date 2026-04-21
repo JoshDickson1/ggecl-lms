@@ -6,7 +6,6 @@ import {
   Star,
   Globe,
   Mail,
-  MapPin,
   Play,
   X,
   Send,

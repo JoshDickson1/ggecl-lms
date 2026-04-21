@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   Users, BookOpen, Award, Globe, Mail,
-  MapPin, Calendar, Edit3, ExternalLink,
+  Calendar, Edit3, ExternalLink,
   Shield, ShieldCheck, TrendingUp,
   Ticket, DollarSign, CheckCircle2, Clock, Zap,
 } from "lucide-react";

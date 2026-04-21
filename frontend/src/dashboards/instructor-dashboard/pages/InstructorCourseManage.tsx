@@ -10,7 +10,7 @@ import {
   Play, AlertTriangle, Check, Image as ImageIcon,
 } from "lucide-react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import CoursesService, { CourseLevel, CourseStatus, MaterialType } from "@/services/course.service";
+import CoursesService, { CourseLevel, MaterialType } from "@/services/course.service";
 import StorageService from "@/services/storage.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
