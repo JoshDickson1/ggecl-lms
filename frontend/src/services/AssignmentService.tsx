@@ -206,7 +206,7 @@ export default class AssignmentService {
     if (query?.page !== undefined) params.append("page", String(query.page));
     if (query?.limit !== undefined) params.append("limit", String(query.limit));
     const qs = params.toString();
-    const response = await APIConfig.fetch(`/assignments/instructor/list${qs ? `?${qs}` : ""}`);
+    const response = await APIConfig.fetch(`/assignments/${qs ? `?${qs}` : ""}`);
     return response.json();
   }
 

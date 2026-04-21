@@ -972,7 +972,7 @@ export default function InstructorCourseMaterials() {
                     <button onClick={() => setAddingSection(true)}
                       className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:opacity-90 transition-all shadow-md">
                       <Plus className="w-4 h-4" />Add First Section
-                    </button>
+                    </button> 
                   </motion.div>
                 )}
               </div>

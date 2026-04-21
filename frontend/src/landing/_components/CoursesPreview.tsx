@@ -8,11 +8,11 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { type Course } from "@/data/courses";
 import CoursesService from "@/services/course.service";
-import { Code } from "lucide-react"; // fallback icon
+import { Code } from "lucide-react";
 
-// ─── API Types ────────────────────────────────────────────────────────────────
+// ─── API DTOs (mirror backend shape exactly) ──────────────────────────────────
 
-interface PublicCourse {
+interface PublicCourseDto {
   id: string;
   title: string;
   description: string;
@@ -29,12 +29,34 @@ interface PublicCourse {
   totalLectures: number;
 }
 
-interface PublicCoursesResponse {
-  items: PublicCourse[];
-  nextCursor: string | null;
+/**
+ * The backend may return:
+ *   (a) { items: PublicCourseDto[], nextCursor: string | null }
+ *   (b) PublicCourseDto[]   ← plain array (older endpoint shape)
+ *   (c) { data: PublicCourseDto[] } ← some backends wrap in data
+ *
+ * We normalize all of them in the queryFn so the component
+ * only ever sees a clean PublicCourseDto[].
+ */
+type RawApiResponse =
+  | { items: PublicCourseDto[]; nextCursor?: string | null }
+  | { data: PublicCourseDto[] }
+  | PublicCourseDto[];
+
+function extractCourses(raw: RawApiResponse): PublicCourseDto[] {
+  if (Array.isArray(raw)) return raw;
+  if ("items" in raw && Array.isArray(raw.items)) return raw.items;
+  if ("data"  in raw && Array.isArray(raw.data))  return raw.data;
+  // Unexpected shape — fail loudly in dev, gracefully in prod
+  console.error("[CoursesPreview] Unexpected API response shape:", raw);
+  return [];
 }
 
-// ─── Map API → Course shape expected by the existing CourseCard ───────────────
+// ─── Domain model (what the UI consumes) ─────────────────────────────────────
+
+// Re-use the existing Course type from your data layer — no duplication.
+
+// ─── Mapping ──────────────────────────────────────────────────────────────────
 
 const THUMBNAIL_GRADIENTS = [
   "from-blue-500 to-blue-700",
@@ -54,34 +76,34 @@ function fmtDuration(seconds: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function mapToCourse(c: PublicCourse, i: number): Course {
+function mapDtoToCourse(dto: PublicCourseDto, index: number): Course {
   return {
-    id:            c.id,
-    title:         c.title,
-    description:   c.description,
-    thumbnail:     THUMBNAIL_GRADIENTS[i % THUMBNAIL_GRADIENTS.length],
+    id:            dto.id,
+    title:         dto.title,
+    description:   dto.description,
+    thumbnail:     THUMBNAIL_GRADIENTS[index % THUMBNAIL_GRADIENTS.length],
     icon:          Code,
-    price:         c.price,
-    originalPrice: Math.round(c.price * 1.4 * 100) / 100,
-    badge:         (c.badge as Course["badge"]) ?? undefined,
-    level:         (c.level.charAt(0) + c.level.slice(1).toLowerCase()) as Course["level"],
-    rating:        c.averageRating > 0 ? Number(c.averageRating.toFixed(1)) : 0,
-    reviews:       c.reviewCount,
-    students:      c._count.enrollments,
-    duration:      fmtDuration(c.totalDuration),
-    lectures:      c.totalLectures,
+    price:         dto.price,
+    originalPrice: Math.round(dto.price * 1.4 * 100) / 100,
+    badge:         (dto.badge as Course["badge"]) ?? undefined,
+    level:         (dto.level.charAt(0) + dto.level.slice(1).toLowerCase()) as Course["level"],
+    rating:        dto.averageRating > 0 ? Number(dto.averageRating.toFixed(1)) : 0,
+    reviews:       dto.reviewCount,
+    students:      dto._count.enrollments,
+    duration:      fmtDuration(dto.totalDuration),
+    lectures:      dto.totalLectures,
     lastUpdated:   "",
     categoryId:    "",
-    tags:          c.tags,
+    tags:          dto.tags ?? [],
     instructor: {
-      id:        c.instructorId,
-      name:      "Instructor",
-      avatar:    "IN",
-      avatarBg:  "bg-blue-500",
-      title:     "",
-      rating:    0,
-      students:  0,
-      courses:   0,
+      id:       dto.instructorId,
+      name:     "Instructor",
+      avatar:   "IN",
+      avatarBg: "bg-blue-500",
+      title:    "",
+      rating:   0,
+      students: 0,
+      courses:  0,
     },
   };
 }
@@ -95,7 +117,7 @@ function formatReviews(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
 }
 
-// ─── Badge (same as original) ─────────────────────────────────────────────────
+// ─── Badge ────────────────────────────────────────────────────────────────────
 
 function CourseBadge({ badge }: { badge: Course["badge"] }) {
   if (!badge) return null;
@@ -114,7 +136,7 @@ function CourseBadge({ badge }: { badge: Course["badge"] }) {
   );
 }
 
-// ─── Course Card (identical to original) ─────────────────────────────────────
+// ─── Course Card ──────────────────────────────────────────────────────────────
 
 function CourseCard({ course, index }: { course: Course; index: number }) {
   const [hovered, setHovered] = useState(false);
@@ -302,13 +324,17 @@ function CardSkeleton({ index }: { index: number }) {
 const PREVIEW_COUNT = 8;
 
 export default function CoursesPreview() {
-  const { data, isLoading } = useQuery<PublicCoursesResponse>({
+  const { data: courses = [], isLoading } = useQuery<Course[]>({
     queryKey: ["courses-public-preview"],
-    queryFn:  () => CoursesService.findAllPublic() as Promise<PublicCoursesResponse>,
+    queryFn: async (): Promise<Course[]> => {
+      // CoursesService.findAllPublic() may return several different shapes
+      // depending on the backend version. We normalize before returning so
+      // the component always gets a plain Course[].
+      const raw = await CoursesService.findAllPublic() as RawApiResponse;
+      return extractCourses(raw).slice(0, PREVIEW_COUNT).map(mapDtoToCourse);
+    },
     staleTime: 1000 * 60 * 10,
   });
-
-  const preview = (data?.items ?? []).slice(0, PREVIEW_COUNT).map(mapToCourse);
 
   return (
     <section className="py-20 bg-white dark:bg-[#080d18]">
@@ -351,7 +377,7 @@ export default function CoursesPreview() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-6">
           {isLoading
             ? Array.from({ length: PREVIEW_COUNT }).map((_, i) => <CardSkeleton key={i} index={i} />)
-            : preview.map((course, i) => <CourseCard key={course.id} course={course} index={i} />)
+            : courses.map((course, i) => <CourseCard key={course.id} course={course} index={i} />)
           }
         </div>
       </div>
