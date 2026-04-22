@@ -64,12 +64,18 @@ function ConfirmDialog({
           <p className="text-sm text-gray-400 mt-1">{message}</p>
         </div>
         <div className="flex gap-3 pt-2">
-          <button onClick={onCancel} disabled={loading}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-40">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-40"
+          >
             Cancel
           </button>
-          <button onClick={onConfirm} disabled={loading}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+          >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Delete
           </button>
@@ -111,16 +117,13 @@ function AssignmentModal({
     setSaving(true);
     setError(null);
     try {
-      // Upload attachments in two phases per file for smooth progress
       const attachmentKeys: string[] = [];
       const n = attachments.length;
       for (let i = 0; i < n; i++) {
-        const slice    = 85 / n;
-        const base     = Math.round(i * slice);
-        // Phase 1: get presigned URL (~20% of slice)
+        const slice = 85 / n;
+        const base  = Math.round(i * slice);
         setProgress(base + Math.round(slice * 0.2));
         const { uploadUrl, key } = await StorageService.getPresignedUpload("assignments", attachments[i]);
-        // Phase 2: PUT file to R2 (~80% of slice)
         setProgress(base + Math.round(slice * 0.6));
         await StorageService.uploadFile(uploadUrl, attachments[i]);
         attachmentKeys.push(key);
@@ -155,9 +158,11 @@ function AssignmentModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={!saving ? onClose : undefined}
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -174,8 +179,11 @@ function AssignmentModal({
           <h2 className="text-base font-black text-gray-900 dark:text-white">
             {isEdit ? "Edit Assignment" : "Create Assignment"}
           </h2>
-          <button onClick={!saving ? onClose : undefined} disabled={saving}
-            className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center disabled:opacity-40">
+          <button
+            onClick={!saving ? onClose : undefined}
+            disabled={saving}
+            className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center disabled:opacity-40"
+          >
             <X className="w-4 h-4 text-gray-600 dark:text-gray-400" />
           </button>
         </div>
@@ -191,68 +199,97 @@ function AssignmentModal({
           {/* Title */}
           <div>
             <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-1.5 block">Title *</label>
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Assignment title…"
+            <input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Assignment title…"
               className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04]
                 border border-gray-200 dark:border-white/[0.08] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15
-                text-gray-800 dark:text-white outline-none transition-all" />
+                text-gray-800 dark:text-white outline-none transition-all"
+            />
           </div>
 
           {/* Course + Due date */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-1.5 block">Course *</label>
-              <select value={courseId} onChange={e => setCourseId(e.target.value)}
+              <select
+                value={courseId}
+                onChange={e => setCourseId(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04]
                   border border-gray-200 dark:border-white/[0.08] focus:border-blue-400
-                  text-gray-800 dark:text-white outline-none cursor-pointer transition-all">
+                  text-gray-800 dark:text-white outline-none cursor-pointer transition-all"
+              >
                 {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 {courses.length === 0 && <option value="">No courses assigned</option>}
               </select>
             </div>
             <div>
               <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-1.5 block">Due Date *</label>
-              <input type="datetime-local" value={dueDate} onChange={e => setDue(e.target.value)}
+              <input
+                type="datetime-local"
+                value={dueDate}
+                onChange={e => setDue(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04]
                   border border-gray-200 dark:border-white/[0.08] focus:border-blue-400
-                  text-gray-800 dark:text-white outline-none transition-all" />
+                  text-gray-800 dark:text-white outline-none transition-all"
+              />
             </div>
           </div>
 
           {/* Description */}
           <div>
             <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-1.5 block">Description</label>
-            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2}
+            <textarea
+              value={desc}
+              onChange={e => setDesc(e.target.value)}
+              rows={2}
               placeholder="Brief overview of the assignment…"
               className="w-full px-4 py-2.5 rounded-xl text-sm resize-none bg-gray-50 dark:bg-white/[0.04]
                 border border-gray-200 dark:border-white/[0.08] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15
-                text-gray-800 dark:text-white placeholder:text-gray-400 outline-none transition-all" />
+                text-gray-800 dark:text-white placeholder:text-gray-400 outline-none transition-all"
+            />
           </div>
 
           {/* Instructions */}
           <div>
             <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-1.5 block">Instructions</label>
-            <textarea value={instructions} onChange={e => setInst(e.target.value)} rows={5}
+            <textarea
+              value={instructions}
+              onChange={e => setInst(e.target.value)}
+              rows={5}
               placeholder={"1. First step\n2. Second step\n3. Submit via the portal"}
               className="w-full px-4 py-2.5 rounded-xl text-sm resize-none bg-gray-50 dark:bg-white/[0.04]
                 border border-gray-200 dark:border-white/[0.08] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15
-                text-gray-800 dark:text-white placeholder:text-gray-400 outline-none transition-all font-mono" />
+                text-gray-800 dark:text-white placeholder:text-gray-400 outline-none transition-all font-mono"
+            />
           </div>
 
           {/* Max score + Allow late */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-1.5 block">Max Score</label>
-              <input type="number" value={maxScore} onChange={e => setMax(+e.target.value)} min={1} max={500}
+              <input
+                type="number"
+                value={maxScore}
+                onChange={e => setMax(+e.target.value)}
+                min={1}
+                max={500}
                 className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04]
                   border border-gray-200 dark:border-white/[0.08] focus:border-blue-400
-                  text-gray-800 dark:text-white outline-none transition-all" />
+                  text-gray-800 dark:text-white outline-none transition-all"
+              />
             </div>
             <div className="flex items-center gap-3 pt-6">
-              <button onClick={() => setLate(p => !p)}
-                className={cn("relative w-11 h-6 rounded-full transition-all", allowLate ? "bg-blue-600" : "bg-gray-200 dark:bg-white/[0.1]")}>
-                <motion.div animate={{ x: allowLate ? 20 : 2 }}
+              <button
+                onClick={() => setLate(p => !p)}
+                className={cn("relative w-11 h-6 rounded-full transition-all", allowLate ? "bg-blue-600" : "bg-gray-200 dark:bg-white/[0.1]")}
+              >
+                <motion.div
+                  animate={{ x: allowLate ? 20 : 2 }}
                   transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm" />
+                  className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm"
+                />
               </button>
               <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Allow late submissions</span>
             </div>
@@ -263,13 +300,20 @@ function AssignmentModal({
             <label className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2 block">
               Attachments <span className="font-normal text-gray-400">(brief, rubric, starter files…)</span>
             </label>
-            <div onClick={() => fileRef.current?.click()}
+            <div
+              onClick={() => fileRef.current?.click()}
               className="border-2 border-dashed border-gray-200 dark:border-white/[0.08] rounded-2xl p-5
-                text-center cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                text-center cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 transition-all"
+            >
               <Upload className="w-5 h-5 text-gray-400 mx-auto mb-1" />
               <p className="text-xs text-gray-500">Click to browse files</p>
-              <input ref={fileRef} type="file" multiple className="hidden"
-                onChange={e => e.target.files && setAtts(p => [...p, ...Array.from(e.target.files!)])} />
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={e => e.target.files && setAtts(p => [...p, ...Array.from(e.target.files!)])}
+              />
             </div>
             {attachments.length > 0 && (
               <div className="flex flex-col gap-1.5 mt-2">
@@ -294,16 +338,21 @@ function AssignmentModal({
                 <span>{uploadProgress}%</span>
               </div>
               <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                <motion.div animate={{ width: `${uploadProgress}%` }}
-                  className="h-full rounded-full bg-blue-500 transition-all" />
+                <motion.div
+                  animate={{ width: `${uploadProgress}%` }}
+                  className="h-full rounded-full bg-blue-500 transition-all"
+                />
               </div>
             </div>
           )}
 
           {/* Actions */}
           <div className="flex gap-3 pt-2 border-t border-gray-100 dark:border-white/[0.06]">
-            <button onClick={!saving ? onClose : undefined} disabled={saving}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-40">
+            <button
+              onClick={!saving ? onClose : undefined}
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-40"
+            >
               Cancel
             </button>
             <motion.button
@@ -330,7 +379,7 @@ function AssignmentModal({
   );
 }
 
-// ─── Assignment card ──────────────────────────────────────────────────────────
+// ─── Assignment row ───────────────────────────────────────────────────────────
 
 function AssignmentRow({
   assignment,
@@ -341,10 +390,11 @@ function AssignmentRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const daysLeft = Math.ceil((new Date(assignment.dueDate).getTime() - Date.now()) / 86400000);
+  const daysLeft  = Math.ceil((new Date(assignment.dueDate).getTime() - Date.now()) / 86400000);
   const isOverdue = daysLeft < 0;
-  const total   = assignment._count?.submissions ?? assignment.submissionStats?.total ?? 0;
-  const graded  = assignment.submissionStats?.graded ?? 0;
+  // Normalise submission count — handle all possible shapes the API might return
+  const total  = assignment.submissionStats?.total ?? assignment._count?.submissions ?? 0;
+  const graded = assignment.submissionStats?.graded ?? 0;
 
   return (
     <Card className="p-5">
@@ -358,8 +408,10 @@ function AssignmentRow({
             <p className="text-sm font-bold text-gray-900 dark:text-white mb-1">{assignment.title}</p>
             <p className="text-xs text-gray-400 flex items-center gap-3 flex-wrap">
               <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{assignment.courseName}</span>
-              <span className={cn("flex items-center gap-1 font-semibold",
-                isOverdue ? "text-red-500" : daysLeft <= 2 ? "text-amber-500" : "text-gray-400")}>
+              <span className={cn(
+                "flex items-center gap-1 font-semibold",
+                isOverdue ? "text-red-500" : daysLeft <= 2 ? "text-amber-500" : "text-gray-400",
+              )}>
                 <Calendar className="w-3 h-3" />
                 {isOverdue ? `${Math.abs(daysLeft)}d overdue` : `Due in ${daysLeft}d`}
               </span>
@@ -384,12 +436,16 @@ function AssignmentRow({
             >
               <Eye className="w-3.5 h-3.5" /> Submissions
             </Link>
-            <button onClick={onEdit}
-              className="w-8 h-8 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-blue-600 hover:border-blue-300 transition-all">
+            <button
+              onClick={onEdit}
+              className="w-8 h-8 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-blue-600 hover:border-blue-300 transition-all"
+            >
               <Edit3 className="w-3.5 h-3.5" />
             </button>
-            <button onClick={onDelete}
-              className="w-8 h-8 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-300 transition-all">
+            <button
+              onClick={onDelete}
+              className="w-8 h-8 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-300 transition-all"
+            >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -397,19 +453,25 @@ function AssignmentRow({
 
         {/* Mobile actions */}
         <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-white/[0.06] md:hidden">
-          <Link to={`/instructor/assignments/${assignment.id}/submissions`}
+          <Link
+            to={`/instructor/assignments/${assignment.id}/submissions`}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold
               border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400
-              hover:bg-blue-50 transition-all">
+              hover:bg-blue-50 transition-all"
+          >
             <Eye className="w-3.5 h-3.5" /> Submissions
           </Link>
           <div className="flex items-center gap-2">
-            <button onClick={onEdit}
-              className="w-8 h-8 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-blue-600 transition-all">
+            <button
+              onClick={onEdit}
+              className="w-8 h-8 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-blue-600 transition-all"
+            >
               <Edit3 className="w-3.5 h-3.5" />
             </button>
-            <button onClick={onDelete}
-              className="w-8 h-8 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-red-500 transition-all">
+            <button
+              onClick={onDelete}
+              className="w-8 h-8 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-red-500 transition-all"
+            >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -457,13 +519,13 @@ function Skeleton() {
 
 export function InstructorAssignment() {
   const qc = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [modal, setModal]   = useState<{ mode: "create" } | { mode: "edit"; item: InstructorAssignmentItem } | null>(null);
+  const [search, setSearch]             = useState("");
+  const [modal, setModal]               = useState<{ mode: "create" } | { mode: "edit"; item: InstructorAssignmentItem } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstructorAssignmentItem | null>(null);
   const [deleting, setDeleting]         = useState(false);
 
-  // Fetch assignments — gracefully returns empty list on 404 (endpoint may not exist yet)
-  const { data, isLoading, refetch } = useQuery({
+  // isFetching stays true during background refetches; isLoading is only true on first load
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["instructor-assignments"],
     queryFn: async () => {
       try {
@@ -474,12 +536,14 @@ export function InstructorAssignment() {
     },
     retry: false,
     staleTime: 1000 * 60 * 3,
+    // Re-fetch counts automatically when the user switches back to this tab
+    refetchOnWindowFocus: true,
   });
 
   // Fetch instructor's courses for the modal dropdown
   const { data: courseData } = useQuery({
     queryKey: ["instructor-courses"],
-    queryFn:  () => CoursesService.findAll() as Promise<{ items: { id: string; title: string }[] }>,
+    queryFn: () => CoursesService.findAll() as Promise<{ items: { id: string; title: string }[] }>,
     staleTime: 1000 * 60 * 10,
   });
 
@@ -494,7 +558,8 @@ export function InstructorAssignment() {
 
   const stats = {
     total:       assignments.length,
-    submissions: assignments.reduce((s, a) => s + (a._count?.submissions ?? a.submissionStats?.total ?? 0), 0),
+    // Use the same normalised count as AssignmentRow
+    submissions: assignments.reduce((s, a) => s + (a.submissionStats?.total ?? a._count?.submissions ?? 0), 0),
     pending:     assignments.reduce((s, a) => s + (a.submissionStats?.pending ?? 0), 0),
     courses:     new Set(assignments.map(a => a.courseId)).size,
   };
@@ -506,7 +571,9 @@ export function InstructorAssignment() {
       await AssignmentService.deleteAssignment(deleteTarget.id);
       const id = deleteTarget.id;
       qc.setQueryData<InstructorAssignmentListResponse>(["instructor-assignments"], old =>
-        old ? { ...old, data: old.data.filter(a => a.id !== id), meta: { ...old.meta, total: old.meta.total - 1 } } : old,
+        old
+          ? { ...old, data: old.data.filter(a => a.id !== id), meta: { ...old.meta, total: old.meta.total - 1 } }
+          : old,
       );
       setDeleteTarget(null);
     } catch (err) {
@@ -530,7 +597,7 @@ export function InstructorAssignment() {
     return (
       <div className="max-w-[1000px] mx-auto space-y-6 pb-10">
         <div className="h-10 w-64 rounded-xl bg-gray-100 dark:bg-white/[0.05] animate-pulse" />
-        <div className="flex flex-col gap-4">{[1,2,3].map(i => <Skeleton key={i} />)}</div>
+        <div className="flex flex-col gap-4">{[1, 2, 3].map(i => <Skeleton key={i} />)}</div>
         <div className="flex justify-center"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>
       </div>
     );
@@ -549,16 +616,23 @@ export function InstructorAssignment() {
             <p className="text-sm text-gray-400 mt-1">Create, manage and grade student submissions</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => refetch()} disabled={isLoading}
+            {/* Reload — isFetching covers both initial load and background refetches */}
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
                 border border-gray-200 dark:border-white/[0.08] text-gray-500 dark:text-gray-400
-                hover:border-blue-300 hover:text-blue-600 transition-all disabled:opacity-40">
-              <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
+                hover:border-blue-300 hover:text-blue-600 transition-all disabled:opacity-40"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
             </button>
-            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => setModal({ mode: "create" })}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold
-                bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.35)] transition-all">
+                bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.35)] transition-all"
+            >
               <Plus className="w-4 h-4" /> New Assignment
             </motion.button>
           </div>
@@ -569,10 +643,10 @@ export function InstructorAssignment() {
       <Fade delay={0.06}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Assignments",  value: stats.total,       color: "text-blue-600 dark:text-blue-400",    icon: FileText      },
-            { label: "Submissions",  value: stats.submissions,  color: "text-indigo-600 dark:text-indigo-400", icon: Users         },
-            { label: "Pending Mark", value: stats.pending,      color: "text-amber-600 dark:text-amber-400",  icon: Clock         },
-            { label: "Courses",      value: stats.courses,      color: "text-emerald-600 dark:text-emerald-400", icon: BookOpen   },
+            { label: "Assignments",  value: stats.total,       color: "text-blue-600 dark:text-blue-400",       icon: FileText  },
+            { label: "Submissions",  value: stats.submissions,  color: "text-indigo-600 dark:text-indigo-400",   icon: Users     },
+            { label: "Pending Mark", value: stats.pending,      color: "text-amber-600 dark:text-amber-400",     icon: Clock     },
+            { label: "Courses",      value: stats.courses,      color: "text-emerald-600 dark:text-emerald-400", icon: BookOpen  },
           ].map(({ label, value, color, icon: Icon }) => (
             <Card key={label} className="p-5">
               <div className="flex items-center gap-3">
@@ -593,11 +667,15 @@ export function InstructorAssignment() {
       <Fade delay={0.1}>
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search assignments…"
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search assignments…"
             className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm
               bg-white dark:bg-[#0f1623] border border-gray-200 dark:border-white/[0.08]
               text-gray-800 dark:text-white placeholder:text-gray-400
-              focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 outline-none transition-all" />
+              focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 outline-none transition-all"
+          />
         </div>
       </Fade>
 

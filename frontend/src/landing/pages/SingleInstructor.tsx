@@ -420,26 +420,26 @@ export default function SingleInstructor() {
         <div className="flex flex-col gap-5">
 
           {/* Quick stats */}
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
             className="rounded-[22px] p-5 bg-white dark:bg-[#0f1420]
               border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
             <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">At a Glance</p>
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { n: instructorCourses.length.toString(), s: "", l: "Courses"   },
-                { n: specialization,                      s: "", l: "Specialty" },
+              { n: instructorCourses.length.toString(), s: "", l: "Courses"   },
+              { n: specialization,                      s: "", l: "Specialty" },
               ].map(({ n, s, l }) => (
-                <div key={l} className="flex flex-col items-center py-3.5 rounded-2xl
-                  bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100/60 dark:border-blue-900/20
-                  hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
-                  <div className="font-syne text-lg font-extrabold text-gray-900 dark:text-white leading-none text-center px-2 truncate w-full text-center">
-                    {n}<span className="text-blue-500 dark:text-blue-400">{s}</span>
-                  </div>
-                  <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest">{l}</div>
+              <div key={l} className="flex flex-col items-center py-3.5 rounded-2xl
+                bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100/60 dark:border-blue-900/20
+                hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
+                <div className="font-syne text-lg font-extrabold text-gray-900 dark:text-white leading-none text-center px-2 truncate w-full">
+                {n}<span className="text-blue-500 dark:text-blue-400">{s}</span>
                 </div>
+                <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest">{l}</div>
+              </div>
               ))}
             </div>
-          </motion.div>
+            </motion.div>
 
           {/* Categories */}
           {categories.length > 0 && (

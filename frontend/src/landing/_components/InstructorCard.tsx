@@ -29,7 +29,7 @@ export function InstructorCard({
         bg-white/70 dark:bg-[#020618]
         backdrop-blur-xl
         border border-white/80 dark:border-white/[0.08]
-        transition-shadow duration-300"
+        transition-shadow duration-300 w-full mx-auto"
       style={{
         boxShadow: hovered
           ? "0 0 0 1.5px rgba(59,130,246,0.45), 0 12px 40px rgba(59,130,246,0.16)"

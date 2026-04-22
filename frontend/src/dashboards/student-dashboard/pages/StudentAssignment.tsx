@@ -55,7 +55,6 @@ const STATUS_MAP: Record<AssignmentStatus, {
   late:      { label: "Late",      color: "text-orange-700 dark:text-orange-300",  bg: "bg-orange-50 dark:bg-orange-950/30",  border: "border-orange-200 dark:border-orange-800/40",  icon: AlertTriangle },
   graded:    { label: "Graded",    color: "text-emerald-700 dark:text-emerald-300",bg: "bg-emerald-50 dark:bg-emerald-950/30",border: "border-emerald-200 dark:border-emerald-800/40",icon: CheckCircle2 },
   returned:  { label: "Returned",  color: "text-purple-700 dark:text-purple-300",  bg: "bg-purple-50 dark:bg-purple-950/30",  border: "border-purple-200 dark:border-purple-800/40",  icon: FileText     },
-  missing:   { label: "Missing",   color: "text-red-700 dark:text-red-300",        bg: "bg-red-50 dark:bg-red-950/30",        border: "border-red-200 dark:border-red-800/40",        icon: XCircle      },
 };
 
 function StatusBadge({ status }: { status: AssignmentStatus }) {
@@ -508,7 +507,7 @@ function AssignmentCard({ assignment: initial }: { assignment: StudentAssignment
                     </div>
                     <div className="p-4 space-y-3">
                       <div className="flex flex-col gap-2">
-                        {submission.files.map((f, i) => (
+                        {(submission.files ?? []).map((f, i) => (
                           <FileChip key={f.id} file={f}
                             onPreview={() => setPreview({ files: subFiles, index: i })} />
                         ))}
@@ -535,7 +534,7 @@ function AssignmentCard({ assignment: initial }: { assignment: StudentAssignment
                         <div className="pt-2">
                           <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Rubric Breakdown</p>
                           <div className="flex flex-col gap-2">
-                            {submission.rubric.map(r => (
+                            {(submission.rubric ?? []).map(r => (
                               <div key={r.id}>
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-xs text-gray-600 dark:text-gray-400">{r.label}</span>
@@ -641,7 +640,6 @@ const FILTER_OPTIONS: { key: AssignmentStatus | "all"; label: string }[] = [
   { key: "pending",   label: "Pending"   },
   { key: "submitted", label: "Submitted" },
   { key: "graded",    label: "Graded"    },
-  { key: "missing",   label: "Missing"   },
 ];
 
 export default function StudentAssignment() {
@@ -651,6 +649,7 @@ export default function StudentAssignment() {
   const [filter, setFilter]           = useState<AssignmentStatus | "all">("all");
   const [page, setPage]               = useState(1);
   const [totalPages, setTotalPages]   = useState(1);
+  const [sortType, setSortType]       = useState<"soon" | "recent" | "old" | "default">("recent");
 
   const fetchAssignments = useCallback(async (currentFilter: typeof filter, currentPage: number) => {
     setLoading(true);
@@ -695,18 +694,30 @@ export default function StudentAssignment() {
             </h1>
             <p className="text-sm text-gray-400 mt-1">All assignments from your enrolled courses</p>
           </div>
-          <button
-            onClick={() => fetchAssignments(filter, page)}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
-              border border-gray-200 dark:border-white/[0.08]
-              text-gray-500 dark:text-gray-400
-              hover:border-blue-300 hover:text-blue-600 transition-all
-              disabled:opacity-40"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <select
+              value={sortType}
+              onChange={e => setSortType(e.target.value as "soon" | "recent" | "old" | "default")}
+              className="px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-[#0f1623] text-gray-600 dark:text-gray-300"
+            >
+              <option value="soon">Soon-to-be-due</option>
+              <option value="recent">Recent</option>
+              <option value="old">Old</option>
+              <option value="default">Default</option>
+            </select>
+            <button
+              onClick={() => fetchAssignments(filter, page)}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
+                border border-gray-200 dark:border-white/[0.08]
+                text-gray-500 dark:text-gray-400
+                hover:border-blue-300 hover:text-blue-600 transition-all
+                disabled:opacity-40"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+              Refresh
+            </button>
+          </div>
         </div>
       </Fade>
 
@@ -775,11 +786,25 @@ export default function StudentAssignment() {
                 </Card>
               </Fade>
             ) : (
-              assignments.map((a, i) => (
-                <Fade key={a.id} delay={0.1 + i * 0.06}>
-                  <AssignmentCard assignment={a} />
-                </Fade>
-              ))
+              (() => {
+                let sortedAssignments = [...assignments];
+                if (sortType === "soon") {
+                  sortedAssignments = sortedAssignments
+                    .filter(a => new Date(a.dueDate) > new Date())
+                    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+                } else if (sortType === "recent") {
+                  sortedAssignments = sortedAssignments
+                    .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
+                } else if (sortType === "old") {
+                  sortedAssignments = sortedAssignments
+                    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+                }
+                return sortedAssignments.map((a, i) => (
+                  <Fade key={a.id} delay={0.1 + i * 0.06}>
+                    <AssignmentCard assignment={a} />
+                  </Fade>
+                ));
+              })()
             )}
           </div>
 

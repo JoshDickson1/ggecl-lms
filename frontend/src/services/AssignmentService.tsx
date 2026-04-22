@@ -11,7 +11,6 @@ export type AssignmentStatus =
   | "late"
   | "graded"
   | "returned"
-  | "missing";
 
 export type LetterGrade =
   | "A+" | "A" | "A-"

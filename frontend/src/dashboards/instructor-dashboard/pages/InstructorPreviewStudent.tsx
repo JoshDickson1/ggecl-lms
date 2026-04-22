@@ -14,7 +14,7 @@ import InstructorDashboardService from "@/services/instructor-dashboard.service"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface EnrollmentStudent {
-  id: string;
+  id: string; 
   studentId: string;
   enrolledAt: string;
   studentName: string;

@@ -5,7 +5,7 @@ import {
   Users, BookOpen, Star, TrendingUp,
   ChevronRight, Play, ClipboardList,
   MessageSquare, Award, Zap, Loader2,
-  Bell,
+  Bell, Clock,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -13,6 +13,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import UserService from "@/services/user.service";
 import InstructorDashboardService from "@/services/instructor-dashboard.service";
+import { APIConfig } from "@/lib/api.config";
 import { ApiErrorPage } from "@/components/ui/ApiError";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
@@ -27,6 +28,53 @@ interface MeResponse {
   } | null;
 }
 
+/** Shape from GET /api/dashboard/instructor/students/all */
+// interface AllStudentsResponse {
+//   students: StudentDetail[];
+// }
+
+interface StudentDetail {
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  studentAvatar: string | null;
+  enrolledCourses: number;
+  completedCourses: number;
+  totalProgress: number;
+  lastActiveAt: string | null;
+}
+
+// ─── Normalizer ───────────────────────────────────────────────────────────────
+
+function normalizeStudents(raw: unknown): StudentDetail[] {
+  if (!raw) return [];
+
+  let list: unknown[] = [];
+  if (Array.isArray(raw)) {
+    list = raw;
+  } else if (typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    if (Array.isArray(obj.students)) list = obj.students;
+    else if (Array.isArray(obj.data))  list = obj.data;
+    else if (Array.isArray(obj.items)) list = obj.items;
+  }
+
+  return list
+    .filter(Boolean)
+    .map((s: any) => ({
+      // The API may nest the student under different key shapes
+      studentId:       s.studentId    ?? s.id    ?? s.userId    ?? "",
+      studentName:     s.studentName  ?? s.name  ?? s.fullName  ?? "Unknown",
+      studentEmail:    s.studentEmail ?? s.email ?? "",
+      studentAvatar:   s.studentAvatar ?? s.image ?? s.avatar ?? null,
+      enrolledCourses: s.enrolledCourses  ?? s.totalCourses ?? 0,
+      completedCourses:s.completedCourses ?? 0,
+      totalProgress:   s.totalProgress   ?? s.progress ?? 0,
+      lastActiveAt:    s.lastActiveAt    ?? s.lastActive ?? null,
+    }))
+    .filter(s => s.studentId); // drop rows with no ID
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -35,8 +83,9 @@ function fmt(n: number) {
   return String(n);
 }
 
-function initials(name: string) {
-  return name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
+function initials(name: string | null | undefined): string {
+  if (!name) return "?";
+  return name.split(" ").map(p => p[0] ?? "").join("").slice(0, 2).toUpperCase();
 }
 
 function timeAgo(date: Date | string) {
@@ -48,6 +97,17 @@ function timeAgo(date: Date | string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+/** Safe seconds → "Xh Ym" — never produces NaN */
+function fmtSeconds(seconds: number | null | undefined): string {
+  const s = seconds ?? 0;
+  if (!s || isNaN(s)) return "0h";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 const COURSE_GRADIENTS = [
   "from-blue-600 to-indigo-700",
   "from-emerald-500 to-teal-600",
@@ -55,6 +115,23 @@ const COURSE_GRADIENTS = [
   "from-rose-500 to-pink-600",
   "from-amber-500 to-orange-600",
 ];
+
+const AVATAR_COLORS = [
+  "from-blue-500 to-indigo-600",
+  "from-emerald-500 to-teal-600",
+  "from-violet-500 to-purple-600",
+  "from-rose-500 to-pink-600",
+  "from-amber-500 to-orange-500",
+  "from-cyan-500 to-blue-500",
+  "from-pink-500 to-rose-600",
+  "from-teal-500 to-emerald-600",
+];
+
+function avatarGradient(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
 
 // ─── Shared components ────────────────────────────────────────────────────────
 
@@ -102,6 +179,54 @@ function ActivityTooltip({ active, payload, label }: any) {
   );
 }
 
+// ─── Student Avatar Row ───────────────────────────────────────────────────────
+
+function StudentAvatarRow({ student }: { student: StudentDetail }) {
+  return (
+    <Link
+      to={`/instructor/students/${student.studentId}`}
+      state={{ name: student.studentName, email: student.studentEmail, image: student.studentAvatar }}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors group"
+    >
+      {/* Avatar */}
+      <div className={`w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center text-xs font-black text-white bg-gradient-to-br ${avatarGradient(student.studentId)} overflow-hidden`}>
+        {student.studentAvatar
+          ? <img src={student.studentAvatar} alt={student.studentName} className="w-full h-full object-cover object-top" />
+          : initials(student.studentName)
+        }
+      </div>
+
+      {/* Name + meta */}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold text-gray-800 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+          {student.studentName}
+        </p>
+        {student.lastActiveAt && (
+          <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
+            <Clock className="w-2.5 h-2.5" />
+            {timeAgo(student.lastActiveAt)}
+          </p>
+        )}
+      </div>
+
+      {/* Progress pill */}
+      <div className="flex-shrink-0 flex items-center gap-1.5">
+        <div className="w-14 h-1 rounded-full bg-gray-100 dark:bg-white/[0.08] overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500"
+            style={{ width: `${Math.min(student.totalProgress ?? 0, 100)}%` }}
+          />
+        </div>
+        <span className="text-[10px] font-bold text-gray-400 w-6 text-right">
+          {student.totalProgress ?? 0}%
+        </span>
+      </div>
+
+      <ChevronRight className="w-3 h-3 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 flex-shrink-0 transition-colors" />
+    </Link>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function InstructorHome() {
@@ -135,12 +260,24 @@ export default function InstructorHome() {
     staleTime: 1000 * 60 * 2,
   });
 
+  /** All unique students — used for the student list in the Activity card */
+  const { data: allStudentsRaw, isLoading: studentsLoading } = useQuery({
+    queryKey: ["instructor-all-students"],
+    queryFn:  async () => {
+      const res = await APIConfig.fetch("/dashboard/instructor/students/all");
+      if (!res.ok) throw new Error("Failed to fetch students");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+  const allStudents = normalizeStudents(allStudentsRaw);
+
   const loading = meLoading || summaryLoading;
 
-  // Derived values
+  // ── Derived values ──────────────────────────────────────────────────────────
   const name           = me?.name ?? "Instructor";
   const image          = me?.image ?? null;
-  const totalStudents  = summary?.totalStudents?.totalUniqueStudents ?? 0;
+  const totalStudents  = summary?.totalStudents?.totalUniqueStudents ?? allStudents.length ?? 0;
   const totalCourses   = summary?.studentsPerCourse?.length ?? 0;
   const avgRating      = summary?.avgReviews?.overallAverage ?? 0;
   const totalReviews   = summary?.avgReviews?.totalReviews ?? 0;
@@ -219,10 +356,10 @@ export default function InstructorHome() {
           {/* KPI strip */}
           <div className="relative mt-5 pt-5 border-t border-gray-100 dark:border-white/[0.06] grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { icon: Users,      label: "Total Students",  value: fmt(totalStudents),                    accent: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-100 dark:bg-blue-900/30"    },
-              { icon: BookOpen,   label: "Active Courses",  value: String(totalCourses),                  accent: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-100 dark:bg-indigo-900/30" },
-              { icon: TrendingUp, label: "Completion Rate", value: completionRate > 0 ? `${completionRate.toFixed(0)}%` : "—", accent: "text-violet-600 dark:text-violet-400", bg: "bg-violet-100 dark:bg-violet-900/30" },
-              { icon: Award,      label: "Avg Rating",      value: avgRating > 0 ? avgRating.toFixed(1) : "—", accent: "text-amber-600 dark:text-amber-400", bg: "bg-amber-100 dark:bg-amber-900/30" },
+              { icon: Users,      label: "Total Students",  value: fmt(totalStudents),                                                            accent: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-100 dark:bg-blue-900/30"    },
+              { icon: BookOpen,   label: "Active Courses",  value: String(totalCourses),                                                          accent: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-100 dark:bg-indigo-900/30" },
+              { icon: TrendingUp, label: "Completion Rate", value: completionRate > 0 ? `${completionRate.toFixed(0)}%` : "—",                    accent: "text-violet-600 dark:text-violet-400", bg: "bg-violet-100 dark:bg-violet-900/30" },
+              { icon: Award,      label: "Avg Rating",      value: avgRating > 0 ? avgRating.toFixed(1) : "—",                                   accent: "text-amber-600 dark:text-amber-400",  bg: "bg-amber-100 dark:bg-amber-900/30"  },
             ].map(({ icon: Ic, label, value, accent, bg }) => (
               <div key={label} className="flex items-center gap-3">
                 <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-shrink-0`}>
@@ -241,28 +378,29 @@ export default function InstructorHome() {
       {/* ── Charts row ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {/* Student Activity + Revenue Timeline */}
+        {/* Student Activity — now includes real student list */}
         <Fade delay={0.06}>
-          <Card className="p-6">
-            <div className="flex items-start justify-between mb-4">
+          <Card className="p-6 flex flex-col gap-4">
+            <div className="flex items-start justify-between">
               <div>
                 <h2 className="font-black text-base text-gray-900 dark:text-white">Student Activity</h2>
                 <p className="text-xs text-gray-400 mt-0.5">Active students this period</p>
               </div>
               {activity && (
                 <div className="text-right">
-                  <p className="text-lg font-black text-gray-900 dark:text-white">{fmt(activity.activeStudentsInPeriod)}</p>
+                  <p className="text-lg font-black text-gray-900 dark:text-white">{fmt(activity.activeStudentsInPeriod ?? 0)}</p>
                   <p className="text-[10px] text-gray-400">active this period</p>
                 </div>
               )}
             </div>
 
+            {/* Metrics strip */}
             {activity && (
-              <div className="grid grid-cols-3 gap-3 mb-5">
+              <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: "Active Students", value: fmt(activity.activeStudentsInPeriod) },
-                  { label: "Lessons Completed", value: fmt(activity.lessonsCompleted) },
-                  { label: "Time Spent", value: `${Math.round(activity.totalTimeSpentSeconds / 3600)}h` },
+                  { label: "Active Students",   value: fmt(activity.activeStudentsInPeriod ?? 0) },
+                  { label: "Lessons Completed", value: fmt(activity.lessonsCompleted ?? 0)       },
+                  { label: "Time Spent",        value: fmtSeconds(activity.totalTimeSpentSeconds) },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-gray-50 dark:bg-white/[0.03] rounded-xl px-3 py-2.5 text-center">
                     <p className="text-sm font-black text-gray-900 dark:text-white">{value}</p>
@@ -272,10 +410,45 @@ export default function InstructorHome() {
               </div>
             )}
 
+            {/* ── Student list ── */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+                Students ({totalStudents})
+              </p>
+              <Link to="/instructor/students"
+                className="text-xs font-semibold text-blue-500 hover:underline flex items-center gap-1">
+                See all <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            <div className="h-[125px] overflow-y-scroll -mx-2 px-2">
+              {studentsLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+              </div>
+            ) : allStudents.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <Users className="w-8 h-8 text-gray-300 dark:text-gray-600" />
+                <p className="text-xs text-gray-400">No students enrolled yet</p>
+              </div>
+            ) : (
+              <div className="space-y-0.5 -mx-1">
+                {allStudents.slice(0, 6).map(student => (
+                  <StudentAvatarRow key={student.studentId} student={student} />
+                ))}
+                {allStudents.length > 6 && (
+                  <Link to="/instructor/students"
+                    className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 rounded-xl transition-colors">
+                    +{allStudents.length - 6} more students <ChevronRight className="w-3 h-3" />
+                  </Link>
+                )}
+              </div>
+            )}
+            </div>
           </Card>
         </Fade>
 
-        {/* Enrollment Trend — real data from studentsPerCourse */}
+        {/* Enrollment Trend */}
         <Fade delay={0.08}>
           <Card className="p-6">
             <div className="flex items-start justify-between mb-1">
@@ -440,7 +613,7 @@ export default function InstructorHome() {
         {/* Right column */}
         <div className="space-y-4">
 
-          {/* Needs Attention — real notifications */}
+          {/* Needs Attention */}
           <Fade delay={0.12}>
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-4">
@@ -488,7 +661,7 @@ export default function InstructorHome() {
             </Card>
           </Fade>
 
-          {/* Recent Reviews — real data */}
+          {/* Recent Reviews */}
           <Fade delay={0.14}>
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-4">
@@ -509,7 +682,7 @@ export default function InstructorHome() {
                   <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
                 </div>
               ) : recentReviews.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-3 h-50 overflow-scroll">
                   {recentReviews.map((r, i) => (
                     <motion.div key={r.id}
                       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}

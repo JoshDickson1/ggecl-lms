@@ -345,7 +345,7 @@ export default function InstructorStudentSingle() {
       </div>
     );
   }
-
+ 
   return (
     <>
       <AnimatePresence>{showMessage && <MessageModal student={student} onClose={() => setShowMessage(false)} />}</AnimatePresence>
