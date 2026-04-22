@@ -284,9 +284,6 @@ export default function InstructorHome() {
   const completionRate = summary?.completionRate?.overallRate ?? 0;
   const topCourses     = summary?.topCourses ?? [];
   const perCourse      = summary?.studentsPerCourse ?? [];
-  const completionMap  = Object.fromEntries(
-    (summary?.completionRate?.perCourse ?? []).map(c => [c.courseId, c.completionRate])
-  );
 
   const pendingItems = activitiesData?.activities ?? [];
 
@@ -537,7 +534,6 @@ export default function InstructorHome() {
               <>
                 <div className="space-y-2">
                   {topCourses.map((c, i) => {
-                    const completion = completionMap[c.courseId] ?? 0;
                     return (
                       <motion.div key={c.courseId}
                         initial={{ opacity: 0, x: -8 }}
@@ -570,17 +566,9 @@ export default function InstructorHome() {
                           </div>
 
                           <div className="flex-shrink-0 text-right">
-                            {completion > 0 ? (
-                              <>
-                                <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">{completion.toFixed(0)}%</p>
-                                <p className="text-[10px] text-gray-400 mt-0.5">completion</p>
-                                <div className="w-16 h-1 rounded-full bg-gray-100 dark:bg-white/[0.08] mt-1.5 overflow-hidden">
-                                  <div className="h-full rounded-full bg-emerald-500" style={{ width: `${completion}%` }} />
-                                </div>
-                              </>
-                            ) : (
-                              <span className="text-[10px] text-gray-400 italic">no data</span>
-                            )}
+                            <Link to={`/instructor/courses/${c.courseId}`}>
+                               <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 transition-colors" />
+                            </Link>
                           </div>
                         </Link>
                       </motion.div>

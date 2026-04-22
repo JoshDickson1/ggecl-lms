@@ -1,11 +1,12 @@
 // src/pages/instructor/InstructorProfile.tsx
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Star, Users, BookOpen, Award, Globe, Mail,
   Calendar, TrendingUp, CheckCircle2,
   Edit3, BarChart3, ExternalLink, Loader2,
+  ArrowRight,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import UserService from "@/services/user.service";
@@ -19,6 +20,7 @@ interface MeResponse {
   email: string;
   image: string | null;
   createdAt: string;
+  location: string | null;
   instructorProfile: {
     bio: string | null;
     description: string | null;
@@ -27,8 +29,30 @@ interface MeResponse {
     teachingCategories: string[];
     specialization: string | null;
     website: string | null;
+    github: string | null;
+    twitter: string | null;
+    linkedin: string | null;
+    youtube: string | null;
+    recognitions: string[] | null;
   } | null;
 }
+
+interface Achievement {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  targetRole: string;
+  count: number;
+  awardedAt: string;
+}
+
+interface UserAchievementsResponse {
+  achievements: Achievement[];
+  total: number;
+}
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +153,7 @@ function SectionHead({ icon: Icon, title }: { icon: React.ElementType; title: st
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function InstructorProfile() {
+  const navigate = useNavigate(); 
   const [activeTab, setActiveTab] = useState<"about" | "courses" | "reviews">("about");
 
   const { data: me, isLoading: meLoading } = useQuery<MeResponse>({
@@ -146,6 +171,12 @@ export default function InstructorProfile() {
     queryKey: ["instructor-recent-reviews"],
     queryFn:  () => InstructorDashboardService.getRecentReviews(10),
     staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: achievements } = useQuery<UserAchievementsResponse>({
+    queryKey: ["user-achievements", me?.id],
+    queryFn: () => fetch(`/api/achievements/user/${me?.id}`).then(res => res.json()),
+    enabled: !!me?.id,
   });
 
   const TABS = [
@@ -169,11 +200,21 @@ export default function InstructorProfile() {
   const categories = profile?.teachingCategories ?? [];
   const website  = profile?.website;
   const title    = profile?.specialization ?? categories[0] ?? "Instructor";
+  const location = me?.location;
+  const recognitions = achievements?.achievements ?? [];
+  const github   = profile?.github;
+  const twitter  = profile?.twitter;
+  const linkedin = profile?.linkedin;
+  const youtube  = profile?.youtube;
 
   const totalStudents = summary?.totalStudents?.totalUniqueStudents ?? 0;
   const avgRating     = summary?.avgReviews?.overallAverage ?? 0;
   const totalReviews  = summary?.avgReviews?.totalReviews ?? 0;
   const totalCourses  = summary?.studentsPerCourse?.length ?? 0;
+
+  const ratingBreakdown = (
+    summary?.avgReviews as { ratingBreakdown?: Record<string, number> } | undefined
+  )?.ratingBreakdown;
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
@@ -248,25 +289,36 @@ export default function InstructorProfile() {
                   {website.replace(/^https?:\/\//, "")}
                 </a>
               )}
-              <span className="flex items-center gap-1.5 text-amber-500 dark:text-amber-400 italic text-[11px]">
-                Location — Backend should provide data for this
-              </span>
+              {location && (
+                <span className="flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-blue-500" />
+                  {location}
+                </span>
+              )}
             </div>
 
             {/* Socials */}
-            {website && (
+            {(website || github || twitter || linkedin || youtube) && (
               <div className="flex flex-wrap gap-2">
-                <a href={website} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
-                    border border-gray-200 dark:border-white/[0.08]
-                    text-gray-600 dark:text-gray-400
-                    hover:border-blue-300 dark:hover:border-blue-700
-                    hover:text-blue-600 dark:hover:text-blue-400
-                    transition-all group">
-                  <Globe className="w-3.5 h-3.5" />
-                  Website
-                  <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </a>
+                {[
+                  { url: website,  label: "Website"  },
+                  { url: github,   label: "GitHub"   },
+                  { url: twitter,  label: "Twitter"  },
+                  { url: linkedin, label: "LinkedIn" },
+                  { url: youtube,  label: "YouTube"  },
+                ].filter(s => s.url).map(s => (
+                  <Link key={s.label} to={s.url ?? ''} target="_blank" rel="noopener noreferrer"
+  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
+    border border-gray-200 dark:border-white/[0.08]
+    text-gray-600 dark:text-gray-400
+    hover:border-blue-300 dark:hover:border-blue-700
+    hover:text-blue-600 dark:hover:text-blue-400
+    transition-all group">
+                    <Globe className="w-3.5 h-3.5" />
+                    {s.label}
+                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </Link>
+                ))}
               </div>
             )}
           </div>
@@ -357,31 +409,51 @@ export default function InstructorProfile() {
           {/* Right sidebar */}
           <div className="flex flex-col gap-5">
 
-            {/* Rating breakdown */}
+                        {/* Rating breakdown */}
             <Fade delay={0.14}>
               <Card className="p-5">
                 <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">
                   Rating Breakdown
                 </p>
+
                 {statsLoading ? (
-                  <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 text-blue-400 animate-spin" /></div>
-                ) : avgRating > 0 ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+                  </div>
+                ) : avgRating > 0 && totalReviews > 0 ? (
                   <>
-                    <div className="flex items-center gap-4 mb-5">
-                      <span className="text-5xl font-black text-gray-900 dark:text-white leading-none">
+                    <div className="text-center mb-5">
+                      <p className="text-6xl font-black text-gray-900 dark:text-white">
                         {avgRating.toFixed(1)}
-                      </span>
-                      <div>
-                        <Stars rating={avgRating} />
-                        <p className="text-[11px] text-gray-400 mt-1">{totalReviews.toLocaleString()} reviews</p>
-                      </div>
+                      </p>
+                      <Stars rating={avgRating} />
+                      <p className="text-xs text-gray-400 mt-2">
+                        {totalReviews.toLocaleString()} reviews
+                      </p>
                     </div>
-                    <p className="text-xs text-amber-500 dark:text-amber-400 italic">
-                      Backend should provide star breakdown percentages
-                    </p>
+
+                    {ratingBreakdown && (
+                        <div className="space-y-3">
+                          {([5, 4, 3, 2, 1] as const).map((star) => {
+                            const count = ratingBreakdown[String(star)] ?? 0;
+                            const pct = totalReviews ? Math.round((count / totalReviews) * 100) : 0;
+                            return (
+                              <div key={star} className="flex flex-col justify-center items-center gap-3 text-xs text-gray-500">
+                                <span className="w-6">{star}★</span>
+                                <div className="h-2 flex-1 rounded-full bg-slate-100 dark:bg-white/[0.08] overflow-hidden">
+                                  <div className="h-full rounded-full bg-amber-400" style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className="w-8 text-right">{count}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                    )}
                   </>
                 ) : (
-                  <p className="text-xs text-gray-400 italic">No ratings yet</p>
+                  <p className="text-sm text-gray-400 italic text-center py-4">
+                    No reviews yet
+                  </p>
                 )}
               </Card>
             </Fade>
@@ -392,9 +464,27 @@ export default function InstructorProfile() {
                 <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-3">
                   Recognition
                 </p>
-                <BackendPlaceholder label="Backend should provide badges/recognition data" />
+                {recognitions.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {recognitions.map((recognition, i) => (
+                      <motion.div key={recognition.id}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.2 + i * 0.05 }}
+                        className="px-3 py-1.5 rounded-xl text-xs font-semibold
+                          border border-gray-200 dark:border-white/[0.08]
+                          text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-white/[0.03]">
+                        {recognition.icon} {recognition.name}
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <BackendPlaceholder label="No achievements earned yet." />
+                )}
               </Card>
             </Fade>
+
+            {/* Socials */}
 
             {/* Teaching Categories */}
             {categories.length > 0 && (
@@ -460,54 +550,51 @@ export default function InstructorProfile() {
         </Fade>
       )}
 
-      {/* REVIEWS */}
+            {/* REVIEWS */}
       {activeTab === "reviews" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] space-y-6 gap-6">
           {/* Summary */}
           <Fade delay={0.06}>
             <Card className="p-5 h-fit">
               <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">
                 Overall Rating
               </p>
-              {avgRating > 0 ? (
                 <div className="text-center mb-5">
                   <p className="text-6xl font-black text-gray-900 dark:text-white">{avgRating.toFixed(1)}</p>
-                  <Stars rating={avgRating} />
-                  <p className="text-xs text-gray-400 mt-2">{totalReviews.toLocaleString()} reviews</p>
+                  <div className="flex-row w-full mx-auto mt-2 flex justify-center">
+                    <Stars rating={avgRating} />
+                  </div>
                 </div>
-              ) : (
-                <p className="text-sm text-gray-400 italic text-center py-4">No ratings yet</p>
-              )}
-              <p className="text-[11px] text-amber-500 dark:text-amber-400 italic text-center">
-                Backend should provide star breakdown percentages
-              </p>
             </Card>
+            <div className="flex mt-6 w-full mx-auto">
+              <button
+          onClick={() => navigate("/instructor/reviews")}
+          className="flex-row justify-center items-center w-full gap-1.5 py-4 flex px-4 rounded-xl text-xs font-bold border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all">
+            <span>See all reviews</span> <ArrowRight className="w-4 h-4" />
+          </button>
+            </div>
           </Fade>
 
           {/* Real reviews */}
-          <div className="flex flex-col gap-4">
+          <div className="flex max-h-80 overflow-y-scroll flex-col gap-4">
             {recentReviews.length > 0 ? (
               recentReviews.map((r, i) => (
                 <Fade key={r.id} delay={i * 0.07}>
-                  <Card className="p-5">
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-black text-white flex-shrink-0 bg-blue-500">
-                        {r.student.name[0]}
+                  <Card className="p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0 bg-gradient-to-br from-blue-500 to-indigo-600">
+                        {r.student?.name ? r.student.name[0].toUpperCase() : "?"}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-gray-900 dark:text-white">{r.student.name}</span>
-                            <Stars rating={r.rating} />
-                          </div>
-                          <span className="text-xs text-gray-400">
-                            {new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                          </span>
-                        </div>
-                        <p className="text-xs text-blue-500 dark:text-blue-400 mb-1">{r.course.title}</p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{r.comment}</p>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">{r.student?.name ?? "Anonymous"}</p>
+                        <p className="text-xs text-gray-400">{r.course?.title ?? "Course"}</p>
                       </div>
+                      <Stars rating={r.rating} />
                     </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{r.comment}</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </p>
                   </Card>
                 </Fade>
               ))
@@ -518,6 +605,7 @@ export default function InstructorProfile() {
               </Card>
             )}
           </div>
+          
         </div>
       )}
     </div>

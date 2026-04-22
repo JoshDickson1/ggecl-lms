@@ -19,25 +19,29 @@ export interface CreateUserPayload {
   image?: string;
 }
 
-export interface InstructorProfilePayload {
+interface InstructorProfilePayload {
   bio?: string;
   description?: string;
   specialization?: string;
   website?: string;
+  github?: string;
+  twitter?: string;
+  linkedin?: string;
+  youtube?: string;
   areasOfExpertise?: string[];
   teachingCategories?: string[];
   tags?: string[];
 }
 
-export interface UpdateUserPayload {
+interface UpdateUserPayload {
   name?: string;
   email?: string;
   password?: string;
   image?: string;
-  /** Only ADMIN can change a user's role */
   role?: UserRole;
   bio?: string;
   phone?: string;
+  location?: string;
   instructorProfile?: InstructorProfilePayload;
 }
 

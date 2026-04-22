@@ -21,6 +21,7 @@ interface MeResponse {
   email: string;
   image: string | null;
   phone?: string | null;
+  location: string | null;
   createdAt: string;
   instructorProfile: {
     bio: string | null;
@@ -30,6 +31,11 @@ interface MeResponse {
     teachingCategories: string[];
     specialization: string | null;
     website: string | null;
+    github: string | null;
+    twitter: string | null;
+    linkedin: string | null;
+    youtube: string | null;
+    recognitions: string[] | null;
   } | null;
 }
 
@@ -41,15 +47,15 @@ function cn(...classes: (string | false | undefined)[]) {
 
 // ─── Backend unavailable note ─────────────────────────────────────────────────
 
-function BackendNote() {
-  return (
-    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full
-      bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40
-      text-amber-600 dark:text-amber-400">
-      Backend should provide data for this
-    </span>
-  );
-}
+// function BackendNote() {
+//   return (
+//     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full
+//       bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40
+//       text-amber-600 dark:text-amber-400">
+//       Backend should provide data for this
+//     </span>
+//   );
+// }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -337,6 +343,7 @@ export default function InstructorSettings() {
     lastName:  "",
     email:     "",
     phone:     "",
+    location:  "",
     bio:       "",
   });
 
@@ -345,6 +352,10 @@ export default function InstructorSettings() {
     title:      "",
     experience: "",
     website:    "",
+    github:     "",
+    twitter:    "",
+    linkedin:   "",
+    youtube:    "",
   });
   const [expertise, setExpertise] = useState<string[]>([]);
 
@@ -367,12 +378,17 @@ export default function InstructorSettings() {
       lastName:  parts.slice(1).join(" "),
       email:     me.email,
       phone:     me.phone ?? "",
+      location:  me.location ?? "",
       bio:       me.instructorProfile?.bio ?? me.instructorProfile?.description ?? "",
     });
     setInstDetails({
       title:      me.instructorProfile?.specialization ?? "",
       experience: me.instructorProfile?.description ?? "",
       website:    me.instructorProfile?.website ?? "",
+      github:     me.instructorProfile?.github ?? "",
+      twitter:    me.instructorProfile?.twitter ?? "",
+      linkedin:   me.instructorProfile?.linkedin ?? "",
+      youtube:    me.instructorProfile?.youtube ?? "",
     });
     setExpertise(me.instructorProfile?.areasOfExpertise ?? []);
   }, [me]);
@@ -386,6 +402,7 @@ export default function InstructorSettings() {
     setPersonal(p => ({ ...p, [k]: v }));
   const setI = (k: keyof typeof instDetails) => (v: string) =>
     setInstDetails(p => ({ ...p, [k]: v }));
+
 
   // ── Avatar handlers
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -426,6 +443,7 @@ export default function InstructorSettings() {
         name,
         bio:   personal.bio,
         phone: personal.phone || undefined,
+        location: personal.location || undefined,
       });
       queryClient.invalidateQueries({ queryKey: ["user-mine"] });
       showToast("Personal info updated!");
@@ -438,25 +456,31 @@ export default function InstructorSettings() {
 
   // ── Instructor details save
   const saveInstructor = async () => {
-    if (!authUser) return;
-    setSaving(p => ({ ...p, instructor: true }));
-    try {
-      await UserService.update(authUser.id, {
-        instructorProfile: {
-          specialization:   instDetails.title   || undefined,
-          description:      instDetails.experience || undefined,
-          website:          instDetails.website  || undefined,
-          areasOfExpertise: expertise,
-        },
-      });
-      queryClient.invalidateQueries({ queryKey: ["user-mine"] });
-      showToast("Instructor details updated!");
-    } catch {
-      showToast("Failed to save changes", "error");
-    } finally {
-      setSaving(p => ({ ...p, instructor: false }));
-    }
-  };
+  if (!authUser) return;
+  setSaving(p => ({ ...p, instructor: true }));
+  try {
+    console.log("instDetails:", instDetails);
+    await UserService.update(authUser.id, {
+      instructorProfile: {
+        specialization: instDetails.title || undefined,
+        description: instDetails.experience || undefined,
+        website: instDetails.website || undefined,
+        github: instDetails.github || undefined,
+        twitter: instDetails.twitter || undefined,
+        linkedin: instDetails.linkedin || undefined,
+        youtube: instDetails.youtube || undefined,
+        areasOfExpertise: expertise,
+      },
+    });
+    queryClient.invalidateQueries({ queryKey: ["user-mine"] });
+    showToast("Instructor details updated!");
+  } catch (error) {
+    console.error("Error updating instructor details:", error);
+    showToast("Failed to save changes", "error");
+  } finally {
+    setSaving(p => ({ ...p, instructor: false }));
+  }
+};
 
   // ── Password save
   const handlePasswordSave = async () => {
@@ -607,11 +631,8 @@ export default function InstructorSettings() {
                   hint="Email changes require backend support" />
                 <Field label="Phone Number" placeholder="+1 555 000 0000" icon={Phone} type="tel"
                   value={personal.phone} onChange={setP("phone")} />
-                <div className="sm:col-span-2">
-                  <Field label="Location" placeholder="City, Country" icon={Globe}
-                    value="" disabled
-                    note={<BackendNote />} />
-                </div>
+                <Field label="Location" placeholder="City, Country" icon={Globe}
+                  value={personal.location} onChange={setP("location")} />
                 <div className="sm:col-span-2">
                   <Textarea label="Short Bio" placeholder="Tell students about yourself…"
                     value={personal.bio} onChange={setP("bio")}
@@ -649,16 +670,16 @@ export default function InstructorSettings() {
           <div id="section-socials">
             <Section title="Social Links" description="Connect your professional profiles" icon={Globe} delay={0.2}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-                {(["GitHub", "Twitter", "LinkedIn", "YouTube"] as const).map(platform => (
-                  <Field key={platform}
-                    label={platform} placeholder={`https://${platform.toLowerCase()}.com/…`}
-                    icon={Globe} value="" disabled
-                    note={<BackendNote />} />
-                ))}
+                <Field label="GitHub" placeholder="https://github.com/username" icon={Globe}
+                  value={instDetails.github} onChange={setI("github")} />
+                <Field label="Twitter" placeholder="https://twitter.com/username" icon={Globe}
+                  value={instDetails.twitter} onChange={setI("twitter")} />
+                <Field label="LinkedIn" placeholder="https://linkedin.com/in/username" icon={Globe}
+                  value={instDetails.linkedin} onChange={setI("linkedin")} />
+                <Field label="YouTube" placeholder="https://youtube.com/@username" icon={Globe}
+                  value={instDetails.youtube} onChange={setI("youtube")} />
               </div>
-              <p className="text-xs text-gray-400 mt-2">
-                Social platform links are not yet supported by the backend API.
-              </p>
+              <SaveBtn loading={!!saving.instructor} onClick={saveInstructor} />
             </Section>
           </div>
 

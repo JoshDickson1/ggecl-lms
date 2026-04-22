@@ -9,15 +9,105 @@ import {
   ChevronDown, Loader2, CheckCircle2, Globe, DollarSign,
   Film, FileText, Paperclip, X, Save, Tag, Layers,
   Play, AlertTriangle, Check, Image as ImageIcon,
-  Users, Star, TrendingUp, Video, ListChecks, HelpCircle,
-  Eye, EyeOff, Circle, Package,
+  Users, Star, TrendingUp, Video, ListChecks, HelpCircle, Package, BarChart3,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, { CourseLevel, MaterialType } from "@/services/course.service";
 import StorageService from "@/services/storage.service";
 import { APIConfig } from "@/lib/api.config";
 
-// ─── API DTOs ─────────────────────────────────────────────────────────────────
+// ─── Quiz API types (match backend exactly) ───────────────────────────────────
+
+/** Option shape for CREATE — backend requires isCorrect on every option */
+interface CreateQuizOptionPayload {
+  text: string;
+  isCorrect: boolean;
+}
+
+interface CreateQuizQuestionPayload {
+  text: string;
+  options: CreateQuizOptionPayload[];  // exactly 4, exactly 1 isCorrect=true
+}
+
+interface CreateQuizPayload {
+  title: string;
+  sectionId: string;
+  passMark: number;
+  questions: CreateQuizQuestionPayload[];
+}
+
+/** API response option (no isCorrect — backend strips it from response) */
+interface ApiQuizOption {
+  id: string;
+  text: string;
+  position: number;
+}
+
+interface ApiQuizQuestion {
+  id: string;
+  text: string;
+  position: number;
+  options: ApiQuizOption[];
+}
+
+interface ApiQuiz {
+  id: string;
+  sectionId: string;
+  title: string;
+  passMark: number;
+  createdAt: string;
+  questions: ApiQuizQuestion[];
+}
+
+interface ApiQuizStats {
+  totalAttempts: number;
+  totalPassed: number;
+  passRate: number;
+  averageScore: number;
+}
+
+// ─── Local editor types (richer than API, tracks correctOptionId in UI) ────────
+
+interface EditorOption {
+  text: string;
+  isCorrect: boolean;
+}
+
+interface EditorQuestion {
+  /** Temp client-side ID for React keys, not sent to API */
+  _clientId: string;
+  text: string;
+  options: EditorOption[];  // always 4
+}
+
+function blankQuestion(index: number): EditorQuestion {
+  return {
+    _clientId: `q-${Date.now()}-${index}`,
+    text: "",
+    options: [
+      { text: "", isCorrect: true  },
+      { text: "", isCorrect: false },
+      { text: "", isCorrect: false },
+      { text: "", isCorrect: false },
+    ],
+  };
+}
+
+function apiQuizToEditorQuestions(questions: ApiQuizQuestion[]): EditorQuestion[] {
+  // The API response does NOT include isCorrect (it's stripped).
+  // We default the first option to correct so the editor opens in a valid state.
+  // Instructor can change the correct answer before re-saving.
+  return questions.map(q => ({
+    _clientId: q.id,
+    text: q.text,
+    options: q.options.map((o, i) => ({
+      text: o.text,
+      isCorrect: i === 0, // default — instructor corrects if needed
+    })),
+  }));
+}
+
+// ─── Enrollment / domain types ────────────────────────────────────────────────
 
 interface StudentDto {
   id: string;
@@ -32,8 +122,6 @@ interface EnrollmentResponseDto {
   enrolledAt: string;
   student: StudentDto;
 }
-
-// ─── Domain Models ────────────────────────────────────────────────────────────
 
 interface EnrolledStudent {
   id: string;
@@ -50,55 +138,6 @@ interface EnrollmentsResponse {
   data: EnrolledStudent[];
   meta: { total: number; page: number; limit: number; totalPages: number };
 }
-
-// ─── Quiz types (local-state only until backend endpoint is added) ─────────────
-
-interface QuizOption {
-  id: string;
-  text: string;
-}
-
-interface QuizQuestion {
-  id: string;
-  question: string;
-  options: QuizOption[];
-  correctOptionId: string;
-}
-
-interface InlineQuiz {
-  id: string;
-  title: string;
-  passMark: number;
-  isPublished: boolean;
-  questions: QuizQuestion[];
-}
-
-// ─── Material domain types ────────────────────────────────────────────────────
-
-type MaterialFileType = "video" | "audio" | "image" | "doc" | "apk" | "other";
-
-interface SectionMaterial {
-  /** Composite key so React keys are unique across lessons */
-  id: string;
-  lessonId: string;
-  materialId: string;
-  type: string;
-  title: string;
-  url: string;
-  fileName: string | null;
-  size: number | null;
-  fileType: MaterialFileType;
-}
-
-interface MaterialSection {
-  sectionId: string;
-  sectionTitle: string;
-  position: number;
-  materials: SectionMaterial[];
-  quizzes: InlineQuiz[];
-}
-
-// ─── Mapping ──────────────────────────────────────────────────────────────────
 
 function mapEnrollmentDtoToModel(dto: EnrollmentResponseDto): EnrolledStudent {
   return {
@@ -118,17 +157,31 @@ function mapEnrollmentsResponse(raw: EnrollmentResponseDto[]): EnrollmentsRespon
   return { data, meta: { total: data.length, page: 1, limit: data.length, totalPages: 1 } };
 }
 
-function resolveFileType(apiType: string, fileName: string | null): MaterialFileType {
-  if (apiType === "VIDEO") return "video";
-  if (apiType === "AUDIO") return "audio";
-  const ext = (fileName ?? "").split(".").pop()?.toLowerCase() ?? "";
-  if (["jpg","jpeg","png","gif","webp","svg"].includes(ext)) return "image";
-  if (["apk","aab"].includes(ext)) return "apk";
-  if (["pdf","doc","docx","ppt","pptx","xls","xlsx","txt","md"].includes(ext)) return "doc";
-  return "other";
+// ─── Material domain types ────────────────────────────────────────────────────
+
+type MaterialFileType = "video" | "audio" | "image" | "doc" | "apk" | "other";
+
+interface SectionMaterial {
+  id: string;
+  lessonId: string;
+  materialId: string;
+  type: string;
+  title: string;
+  url: string;
+  fileName: string | null;
+  size: number | null;
+  fileType: MaterialFileType;
 }
 
-// ─── Course types (unchanged from backend shape) ──────────────────────────────
+interface MaterialSection {
+  sectionId: string;
+  sectionTitle: string;
+  position: number;
+  materials: SectionMaterial[];
+  quizzes: ApiQuiz[];
+}
+
+// ─── Course types ─────────────────────────────────────────────────────────────
 
 interface CourseMaterial {
   id: string;
@@ -191,6 +244,16 @@ function storageFolderFromFile(file: File): "course-videos" | "lesson-materials"
   return file.type.startsWith("video/") ? "course-videos" : "lesson-materials";
 }
 
+function resolveFileType(apiType: string, fileName: string | null): MaterialFileType {
+  if (apiType === "VIDEO") return "video";
+  if (apiType === "AUDIO") return "audio";
+  const ext = (fileName ?? "").split(".").pop()?.toLowerCase() ?? "";
+  if (["jpg","jpeg","png","gif","webp","svg"].includes(ext)) return "image";
+  if (["apk","aab"].includes(ext)) return "apk";
+  if (["pdf","doc","docx","ppt","pptx","xls","xlsx","txt","md"].includes(ext)) return "doc";
+  return "other";
+}
+
 // ─── Static lookup tables ─────────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -235,6 +298,389 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+// ─── Quiz Stats Modal ─────────────────────────────────────────────────────────
+
+function QuizStatsModal({ quizId, quizTitle, onClose }: {
+  quizId: string; quizTitle: string; onClose: () => void;
+}) {
+  const { data: stats, isLoading } = useQuery<ApiQuizStats>({
+    queryKey: ["quiz-stats", quizId],
+    queryFn: async () => {
+      const res = await APIConfig.fetch(`/quizzes/${quizId}/stats`);
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 2,
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/30 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97 }}
+        transition={{ duration: 0.2 }}
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-sm bg-white dark:bg-[#0f1623] border border-gray-200 dark:border-white/[0.08] rounded-3xl shadow-2xl overflow-hidden"
+      >
+        <div className="px-6 py-5 border-b border-gray-100 dark:border-white/[0.07] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h2 className="font-black text-gray-900 dark:text-white text-sm">Quiz Stats</h2>
+              <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[180px]">{quizTitle}</p>
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+            </div>
+          ) : stats ? (
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Total Attempts",  val: stats.totalAttempts,              color: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-50 dark:bg-blue-900/20" },
+                { label: "Passed",          val: stats.totalPassed,                color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+                { label: "Pass Rate",       val: `${stats.passRate.toFixed(0)}%`,  color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-900/20" },
+                { label: "Avg Score",       val: `${stats.averageScore.toFixed(0)}%`, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
+              ].map(s => (
+                <div key={s.label} className={`${s.bg} rounded-2xl p-4`}>
+                  <p className={`text-2xl font-black ${s.color}`}>{s.val}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-4">No stats available.</p>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Quiz Editor Modal — wired to real API ─────────────────────────────────────
+
+function QuizEditorModal({
+  existingQuiz,
+  sectionId,
+  onSaved,
+  onClose,
+}: {
+  existingQuiz: ApiQuiz | null;   // null = create, non-null = edit (delete + recreate)
+  sectionId: string;
+  onSaved: (quiz: ApiQuiz) => void;
+  onClose: () => void;
+}) {
+  const isEdit = existingQuiz !== null;
+
+  const [title, setTitle]       = useState(existingQuiz?.title ?? "");
+  const [passMark, setPassMark] = useState(existingQuiz?.passMark ?? 70);
+  const [questions, setQuestions] = useState<EditorQuestion[]>(
+    existingQuiz ? apiQuizToEditorQuestions(existingQuiz.questions) : [blankQuestion(0)]
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+
+  const addQuestion = () => {
+    setQuestions(p => [...p, blankQuestion(p.length)]);
+  };
+
+  const removeQuestion = (idx: number) => {
+    setQuestions(p => p.filter((_, i) => i !== idx));
+  };
+
+  const updateQuestionText = (idx: number, text: string) => {
+    setQuestions(p => p.map((q, i) => i === idx ? { ...q, text } : q));
+  };
+
+  const updateOptionText = (qIdx: number, oIdx: number, text: string) => {
+    setQuestions(p => p.map((q, i) =>
+      i !== qIdx ? q : {
+        ...q,
+        options: q.options.map((o, oi) => oi === oIdx ? { ...o, text } : o),
+      }
+    ));
+  };
+
+  const setCorrectOption = (qIdx: number, oIdx: number) => {
+    setQuestions(p => p.map((q, i) =>
+      i !== qIdx ? q : {
+        ...q,
+        options: q.options.map((o, oi) => ({ ...o, isCorrect: oi === oIdx })),
+      }
+    ));
+  };
+
+  const validate = (): string | null => {
+    if (!title.trim()) return "Quiz title is required.";
+    if (questions.length === 0) return "Add at least one question.";
+    for (let qi = 0; qi < questions.length; qi++) {
+      const q = questions[qi];
+      if (!q.text.trim()) return `Question ${qi + 1} text is empty.`;
+      if (q.options.length !== 4) return `Question ${qi + 1} must have exactly 4 options.`;
+      for (let oi = 0; oi < q.options.length; oi++) {
+        if (!q.options[oi].text.trim()) return `Question ${qi + 1}, Option ${oi + 1} is empty.`;
+      }
+      const correctCount = q.options.filter(o => o.isCorrect).length;
+      if (correctCount !== 1) return `Question ${qi + 1} must have exactly one correct answer.`;
+    }
+    return null;
+  };
+
+  const handleSave = async () => {
+    const validationError = validate();
+    if (validationError) { setError(validationError); return; }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      // If editing, delete the old quiz first (API only supports title/passMark PATCH,
+      // questions can't be changed — must delete+recreate per API design)
+      if (isEdit && existingQuiz) {
+        await APIConfig.fetch(`/quizzes/${existingQuiz.id}`, { method: "DELETE" });
+      }
+
+      // Build the payload — every option must have isCorrect: true or false
+      const payload: CreateQuizPayload = {
+        title:     title.trim(),
+        sectionId,
+        passMark,
+        questions: questions.map(q => ({
+          text:    q.text.trim(),
+          options: q.options.map(o => ({
+            text:      o.text.trim(),
+            isCorrect: o.isCorrect,   // always pass this — backend requires it
+          })),
+        })),
+      };
+
+      const res = await APIConfig.fetch("/quizzes", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { message?: string }).message ?? `Failed: ${res.status}`);
+      }
+
+      const created: ApiQuiz = await res.json();
+      onSaved(created);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save quiz.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const canSave = !saving && title.trim().length > 0 && questions.length > 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/30 dark:bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97 }}
+        transition={{ duration: 0.2 }}
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-2xl my-8 bg-white dark:bg-[#0f1623] border border-gray-200 dark:border-white/[0.08] rounded-3xl shadow-2xl overflow-hidden"
+      >
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-gray-100 dark:border-white/[0.07] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <ListChecks className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <h2 className="font-black text-gray-900 dark:text-white text-sm">
+                {isEdit ? "Edit Quiz" : "Create Quiz"}
+              </h2>
+              {isEdit && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                  Editing deletes the old quiz and recreates it
+                </p>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5 max-h-[72vh] overflow-y-auto">
+          {/* Error banner */}
+          {error && (
+            <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/[0.07] border border-red-200 dark:border-red-500/20">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          )}
+
+          {/* Title + Pass Mark */}
+          <div className="grid grid-cols-[1fr_130px] gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Quiz Title *</label>
+              <input
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="e.g. Module 1 Knowledge Check"
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Pass Mark (%)</label>
+              <input
+                type="number" min={0} max={100} value={passMark}
+                onChange={e => setPassMark(Math.min(100, Math.max(0, Number(e.target.value))))}
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Questions */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-gray-700 dark:text-white/70">
+                Questions ({questions.length})
+              </p>
+              <button
+                onClick={addQuestion}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Question
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {questions.length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-8 text-gray-300 dark:text-white/20">
+                  <HelpCircle className="w-8 h-8 opacity-30" />
+                  <p className="text-sm">No questions yet.</p>
+                </div>
+              )}
+
+              {questions.map((q, qi) => (
+                <motion.div
+                  key={q._clientId}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="border border-gray-200 dark:border-white/[0.07] rounded-2xl overflow-hidden"
+                >
+                  {/* Question header */}
+                  <div className="px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-200 dark:border-white/[0.06] flex items-center gap-2">
+                    <span className="text-xs font-bold text-gray-400 dark:text-white/30 flex-shrink-0">
+                      Q{qi + 1}
+                    </span>
+                    <input
+                      value={q.text}
+                      onChange={e => updateQuestionText(qi, e.target.value)}
+                      placeholder="Enter question text…"
+                      className="flex-1 text-sm font-semibold bg-transparent text-gray-800 dark:text-white placeholder:text-gray-300 dark:placeholder:text-white/20 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => removeQuestion(qi)}
+                      className="p-1 text-gray-300 dark:text-white/20 hover:text-red-500 transition-colors flex-shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Options — all 4 always shown, radio selects correct */}
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {q.options.map((opt, oi) => (
+                      <div key={oi} className="flex items-center gap-2">
+                        {/* Radio button — sets isCorrect=true for this option, false for others */}
+                        <button
+                          onClick={() => setCorrectOption(qi, oi)}
+                          className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
+                            opt.isCorrect
+                              ? "border-emerald-500 bg-emerald-500"
+                              : "border-gray-300 dark:border-white/20 hover:border-emerald-400"
+                          }`}
+                          title="Mark as correct answer"
+                        >
+                          {opt.isCorrect && <Check className="w-3 h-3 text-white" />}
+                        </button>
+                        <input
+                          value={opt.text}
+                          onChange={e => updateOptionText(qi, oi, e.target.value)}
+                          placeholder={`Option ${oi + 1}${oi === 0 ? " (correct by default)" : ""}`}
+                          className={`flex-1 text-sm px-3 py-2 rounded-xl border transition-all focus:outline-none focus:ring-2 ${
+                            opt.isCorrect
+                              ? "border-emerald-300 dark:border-emerald-700/50 bg-emerald-50 dark:bg-emerald-900/10 focus:ring-emerald-500/20"
+                              : "border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] focus:ring-blue-500/20"
+                          } text-gray-700 dark:text-white placeholder:text-gray-300 dark:placeholder:text-white/20`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Correct answer indicator */}
+                  <div className="px-4 pb-3">
+                    <p className="text-[10px] text-gray-400">
+                      ✓ Correct: <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                        {q.options.find(o => o.isCorrect)?.text?.trim() || "Option 1 (set text above)"}
+                      </span>
+                      <span className="ml-2 text-gray-300">· click a radio to change</span>
+                    </p>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-white/[0.07] flex items-center justify-between gap-3 bg-gray-50/50 dark:bg-white/[0.02]">
+          <p className="text-[10px] text-gray-400">
+            {questions.length} question{questions.length !== 1 ? "s" : ""} · {passMark}% pass mark
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl text-sm font-bold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!canSave}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 transition-all"
+            >
+              {saving
+                ? <><Loader2 className="w-4 h-4 animate-spin" />{isEdit ? "Updating…" : "Creating…"}</>
+                : <><Save className="w-4 h-4" />{isEdit ? "Update Quiz" : "Create Quiz"}</>
+              }
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── Lesson Row ───────────────────────────────────────────────────────────────
 
 function LessonRow({ lesson, courseId, sectionId }: {
@@ -269,17 +715,12 @@ function LessonRow({ lesson, courseId, sectionId }: {
       for (const file of Array.from(files)) {
         const url = await StorageService.upload(storageFolderFromFile(file), file);
         await CoursesService.addMaterial(courseId, sectionId, lesson.id, {
-          type:     materialTypeFromFile(file),
-          title:    file.name.replace(/\.[^/.]+$/, ""),
-          url,
-          fileName: file.name,
-          size:     file.size,
+          type: materialTypeFromFile(file), title: file.name.replace(/\.[^/.]+$/, ""),
+          url, fileName: file.name, size: file.size,
         });
       }
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   };
 
   return (
@@ -290,9 +731,7 @@ function LessonRow({ lesson, courseId, sectionId }: {
             <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
           </motion.div>
           {editTitle ? (
-            <input
-              autoFocus value={titleDraft}
-              onChange={e => setTitleDraft(e.target.value)}
+            <input autoFocus value={titleDraft} onChange={e => setTitleDraft(e.target.value)}
               onBlur={() => titleDraft.trim() && updateTitle(titleDraft.trim())}
               onKeyDown={e => {
                 if (e.key === "Enter") titleDraft.trim() && updateTitle(titleDraft.trim());
@@ -321,20 +760,16 @@ function LessonRow({ lesson, courseId, sectionId }: {
           </button>
         </div>
       </div>
-
       <AnimatePresence initial={false}>
         {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
             <div className="px-4 pb-4 pt-3 space-y-2">
               {lesson.materials.length > 0 ? lesson.materials.map(mat => {
                 const meta = MATERIAL_ICONS[mat.type] ?? MATERIAL_ICONS.OTHER;
                 return (
                   <div key={mat.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 dark:border-white/[0.05] group">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.bg} ${meta.color}`}>
-                      {meta.icon}
-                    </div>
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.bg} ${meta.color}`}>{meta.icon}</div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{mat.title}</p>
                       {mat.size && <p className="text-[10px] text-gray-400">{formatSize(mat.size)}</p>}
@@ -346,9 +781,7 @@ function LessonRow({ lesson, courseId, sectionId }: {
                     </button>
                   </div>
                 );
-              }) : (
-                <p className="text-xs text-gray-400 italic py-1">No materials yet.</p>
-              )}
+              }) : <p className="text-xs text-gray-400 italic py-1">No materials yet.</p>}
               <input ref={fileRef} type="file" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
               <button onClick={() => fileRef.current?.click()} disabled={uploading}
                 className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-gray-500 text-xs font-bold hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400 disabled:opacity-50 transition-all">
@@ -362,15 +795,15 @@ function LessonRow({ lesson, courseId, sectionId }: {
   );
 }
 
-// ─── Section Block (Curriculum) ───────────────────────────────────────────────
+// ─── Section Block (Curriculum tab) ──────────────────────────────────────────
 
 function SectionBlock({ section, courseId, index }: {
   section: CourseSection; courseId: string; index: number;
 }) {
   const qc = useQueryClient();
-  const [expanded, setExpanded]     = useState(true);
-  const [editTitle, setEditTitle]   = useState(false);
-  const [titleDraft, setTitleDraft] = useState(section.title);
+  const [expanded, setExpanded]         = useState(true);
+  const [editTitle, setEditTitle]       = useState(false);
+  const [titleDraft, setTitleDraft]     = useState(section.title);
   const [addingLesson, setAddingLesson] = useState(false);
   const [lessonTitle, setLessonTitle]   = useState("");
 
@@ -386,8 +819,7 @@ function SectionBlock({ section, courseId, index }: {
 
   const { mutate: addLesson, isPending: addingLessonPending } = useMutation({
     mutationFn: () => CoursesService.createLesson(courseId, section.id, {
-      title:    lessonTitle.trim(),
-      position: section.lessons.length + 1,
+      title: lessonTitle.trim(), position: section.lessons.length + 1,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
@@ -404,8 +836,7 @@ function SectionBlock({ section, courseId, index }: {
         </div>
         <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()}>
           {editTitle ? (
-            <input autoFocus value={titleDraft}
-              onChange={e => setTitleDraft(e.target.value)}
+            <input autoFocus value={titleDraft} onChange={e => setTitleDraft(e.target.value)}
               onBlur={() => titleDraft.trim() && updateTitle(titleDraft.trim())}
               onKeyDown={e => {
                 if (e.key === "Enter") titleDraft.trim() && updateTitle(titleDraft.trim());
@@ -434,7 +865,6 @@ function SectionBlock({ section, courseId, index }: {
           <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
         </motion.div>
       </div>
-
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
@@ -448,8 +878,7 @@ function SectionBlock({ section, courseId, index }: {
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
                     <div className="flex items-center gap-2 mt-2">
-                      <input autoFocus value={lessonTitle}
-                        onChange={e => setLessonTitle(e.target.value)}
+                      <input autoFocus value={lessonTitle} onChange={e => setLessonTitle(e.target.value)}
                         onKeyDown={e => {
                           if (e.key === "Enter" && lessonTitle.trim()) addLesson();
                           if (e.key === "Escape") { setAddingLesson(false); setLessonTitle(""); }
@@ -494,8 +923,7 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
 
   const { mutate: createSection, isPending: creatingSec } = useMutation({
     mutationFn: () => CoursesService.createSection(courseId, {
-      title:    sectionTitle.trim(),
-      position: (course.sections?.length ?? 0) + 1,
+      title: sectionTitle.trim(), position: (course.sections?.length ?? 0) + 1,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
@@ -526,7 +954,6 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
           )}
         </div>
       </div>
-
       <AnimatePresence>
         {addingSection && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
@@ -535,8 +962,7 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
               <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
                 <Layers className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               </div>
-              <input autoFocus value={sectionTitle}
-                onChange={e => setSectionTitle(e.target.value)}
+              <input autoFocus value={sectionTitle} onChange={e => setSectionTitle(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === "Enter" && sectionTitle.trim()) createSection();
                   if (e.key === "Escape") { setAddingSection(false); setSectionTitle(""); }
@@ -560,7 +986,6 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
           </motion.div>
         )}
       </AnimatePresence>
-
       {(course.sections ?? []).length > 0 ? (
         <div className="space-y-3">
           {course.sections.map((section, i) => (
@@ -605,11 +1030,8 @@ function OverviewTab({ course, courseId }: { course: CourseDetail; courseId: str
 
   const { mutate: save, isPending: saving } = useMutation({
     mutationFn: () => CoursesService.update(courseId, {
-      title:       title.trim(),
-      description: desc.trim(),
-      price:       parseFloat(price) || 0,
-      level:       level as any,
-      tags,
+      title: title.trim(), description: desc.trim(),
+      price: parseFloat(price) || 0, level: level as any, tags,
     }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }),
   });
@@ -621,9 +1043,7 @@ function OverviewTab({ course, courseId }: { course: CourseDetail; courseId: str
       const url = await StorageService.upload("course-images", file);
       await CoursesService.update(courseId, { img: url });
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
-    } finally {
-      setImgUploading(false);
-    }
+    } finally { setImgUploading(false); }
   };
 
   const addTag = () => {
@@ -659,7 +1079,6 @@ function OverviewTab({ course, courseId }: { course: CourseDetail; courseId: str
           </div>
         </div>
       </Card>
-
       <Card className="overflow-hidden">
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
           <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
@@ -754,9 +1173,7 @@ function StudentsTab({ course }: { course: CourseDetail }) {
       </div>
       <div className="p-6">
         {enrollmentsLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-          </div>
+          <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>
         ) : isError ? (
           <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-red-50 dark:bg-red-500/[0.07] border border-red-200 dark:border-red-500/20">
             <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
@@ -775,8 +1192,7 @@ function StudentsTab({ course }: { course: CourseDetail }) {
         ) : (
           <div className="flex flex-col gap-2">
             {students.map(student => (
-              <div key={student.id}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-100 dark:border-white/[0.06] hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors">
+              <div key={student.id} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-100 dark:border-white/[0.06] hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors">
                 <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
                   {student.studentAvatar
                     ? <img src={student.studentAvatar} alt={student.studentName} className="w-full h-full object-cover" />
@@ -785,9 +1201,7 @@ function StudentsTab({ course }: { course: CourseDetail }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{student.studentName}</p>
-                  {student.studentEmail && (
-                    <p className="text-xs text-gray-400 truncate">{student.studentEmail}</p>
-                  )}
+                  {student.studentEmail && <p className="text-xs text-gray-400 truncate">{student.studentEmail}</p>}
                 </div>
                 {student.progress != null && (
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -812,160 +1226,6 @@ function StudentsTab({ course }: { course: CourseDetail }) {
   );
 }
 
-// ─── Quiz Editor Modal ────────────────────────────────────────────────────────
-
-function QuizEditorModal({
-  quiz, onSave, onClose,
-}: { quiz: InlineQuiz | null; onClose: () => void; onSave: (q: InlineQuiz) => void }) {
-  const [title, setTitle]         = useState(quiz?.title ?? "");
-  const [passMark, setPassMark]   = useState(quiz?.passMark ?? 70);
-  const [questions, setQuestions] = useState<QuizQuestion[]>(quiz?.questions ?? []);
-  const [isPublished, setIsPublished] = useState(quiz?.isPublished ?? false);
-
-  const addQuestion = () => setQuestions(p => [...p, {
-    id: `qq-${Date.now()}`, question: "",
-    options: [{ id: "o-1", text: "" },{ id: "o-2", text: "" },{ id: "o-3", text: "" },{ id: "o-4", text: "" }],
-    correctOptionId: "o-1",
-  }]);
-
-  const updateQuestion = (id: string, upd: Partial<QuizQuestion>) =>
-    setQuestions(p => p.map(q => q.id === id ? { ...q, ...upd } : q));
-
-  const updateOption = (qId: string, oId: string, text: string) =>
-    setQuestions(p => p.map(q =>
-      q.id !== qId ? q : { ...q, options: q.options.map(o => o.id === oId ? { ...o, text } : o) }
-    ));
-
-  const handleSave = () => {
-    if (!title.trim() || questions.length === 0) return;
-    onSave({ id: quiz?.id ?? `q-${Date.now()}`, title, passMark, questions, isPublished });
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/30 dark:bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97 }}
-        transition={{ duration: 0.2 }}
-        onClick={e => e.stopPropagation()}
-        className="w-full max-w-2xl my-8 bg-white dark:bg-[#0f1623] border border-gray-200 dark:border-white/[0.08] rounded-3xl shadow-2xl overflow-hidden"
-      >
-        <div className="px-6 py-5 border-b border-gray-100 dark:border-white/[0.07] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <ListChecks className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <h2 className="font-black text-gray-900 dark:text-white text-sm">{quiz ? "Edit Quiz" : "New Inline Quiz"}</h2>
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Saved locally · backend endpoint coming soon</p>
-            </div>
-          </div>
-          <button onClick={onClose}
-            className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-5">
-          <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-500/20">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-700 dark:text-amber-200/60">
-              Quiz data is saved in browser state only. Add the backend endpoint{" "}
-              <code className="font-mono">POST /courses/:id/sections/:sectionId/quizzes</code>{" "}
-              to persist them.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-[1fr_120px] gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Quiz Title</label>
-              <input value={title} onChange={e => setTitle(e.target.value)}
-                placeholder="e.g. Module 1 Knowledge Check"
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Pass Mark (%)</label>
-              <input type="number" min={0} max={100} value={passMark}
-                onChange={e => setPassMark(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-gray-700 dark:text-white/70">Questions ({questions.length})</p>
-              <button onClick={addQuestion}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all">
-                <Plus className="w-3.5 h-3.5" /> Add Question
-              </button>
-            </div>
-            <AnimatePresence>
-              {questions.map((q, qi) => (
-                <motion.div key={q.id}
-                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}
-                  className="border border-gray-200 dark:border-white/[0.07] rounded-2xl overflow-hidden">
-                  <div className="px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-200 dark:border-white/[0.06] flex items-center gap-2">
-                    <span className="text-xs font-bold text-gray-400 dark:text-white/30">Q{qi + 1}</span>
-                    <input value={q.question} onChange={e => updateQuestion(q.id, { question: e.target.value })}
-                      placeholder="Enter question text…"
-                      className="flex-1 text-sm font-semibold bg-transparent text-gray-800 dark:text-white placeholder:text-gray-300 focus:outline-none" />
-                    <button onClick={() => setQuestions(p => p.filter(x => x.id !== q.id))}
-                      className="p-1 text-gray-300 dark:text-white/20 hover:text-red-500 transition-colors">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="p-4 grid grid-cols-2 gap-2">
-                    {q.options.map(opt => (
-                      <div key={opt.id} className="flex items-center gap-2">
-                        <button onClick={() => updateQuestion(q.id, { correctOptionId: opt.id })}
-                          className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
-                            q.correctOptionId === opt.id ? "border-emerald-500 bg-emerald-500" : "border-gray-300 dark:border-white/20"
-                          }`}>
-                          {q.correctOptionId === opt.id && <Check className="w-3 h-3 text-white" />}
-                        </button>
-                        <input value={opt.text} onChange={e => updateOption(q.id, opt.id, e.target.value)}
-                          placeholder={`Option ${opt.id.replace("o-", "")}`}
-                          className="flex-1 text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-700 dark:text-white placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            {questions.length === 0 && (
-              <div className="flex flex-col items-center gap-2 py-8 text-gray-300 dark:text-white/20">
-                <HelpCircle className="w-8 h-8 opacity-30" />
-                <p className="text-sm">No questions yet.</p>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-white/[0.07]">
-            <button onClick={() => setIsPublished(p => !p)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
-                isPublished
-                  ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700"
-                  : "border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-white/30"
-              }`}>
-              {isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              {isPublished ? "Published" : "Draft"}
-            </button>
-            <button onClick={handleSave} disabled={!title.trim() || questions.length === 0}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 transition-all">
-              <Save className="w-4 h-4" /> Save Quiz
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
 // ─── Upload Drop Zone ─────────────────────────────────────────────────────────
 
 function UploadDropZone({ label, accept, onFiles, uploading }: {
@@ -973,7 +1233,6 @@ function UploadDropZone({ label, accept, onFiles, uploading }: {
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-
   return (
     <div
       onDragOver={e => { e.preventDefault(); setDragging(true); }}
@@ -981,20 +1240,15 @@ function UploadDropZone({ label, accept, onFiles, uploading }: {
       onDrop={e => { e.preventDefault(); setDragging(false); if (!uploading) onFiles(Array.from(e.dataTransfer.files)); }}
       onClick={() => !uploading && ref.current?.click()}
       className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
-        uploading
-          ? "opacity-60 cursor-not-allowed border-gray-200 dark:border-white/[0.07]"
-          : dragging
-            ? "border-blue-400 bg-blue-50 dark:bg-blue-900/20"
-            : "border-gray-200 dark:border-white/[0.07] hover:border-blue-400 dark:hover:border-blue-500/40 hover:bg-blue-50 dark:hover:bg-blue-900/10"
+        uploading ? "opacity-60 cursor-not-allowed border-gray-200 dark:border-white/[0.07]"
+          : dragging ? "border-blue-400 bg-blue-50 dark:bg-blue-900/20"
+          : "border-gray-200 dark:border-white/[0.07] hover:border-blue-400 dark:hover:border-blue-500/40 hover:bg-blue-50 dark:hover:bg-blue-900/10"
       }`}
     >
       <input ref={ref} type="file" accept={accept} multiple className="hidden"
         onChange={e => { if (e.target.files) onFiles(Array.from(e.target.files)); }} />
       <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-        {uploading
-          ? <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-          : <Upload className="w-4 h-4 text-blue-500 dark:text-blue-400" />
-        }
+        {uploading ? <Loader2 className="w-4 h-4 text-blue-500 animate-spin" /> : <Upload className="w-4 h-4 text-blue-500 dark:text-blue-400" />}
       </div>
       <div>
         <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">{uploading ? "Uploading…" : label}</p>
@@ -1006,19 +1260,30 @@ function UploadDropZone({ label, accept, onFiles, uploading }: {
 
 // ─── Materials Section Block ──────────────────────────────────────────────────
 
-function MaterialsSectionBlock({
-  sec, courseId, onQuizzesChange,
-}: {
-  sec: MaterialSection;
-  courseId: string;
-  onQuizzesChange: (sectionId: string, quizzes: InlineQuiz[]) => void;
+function MaterialsSectionBlock({ sec, courseId }: {
+  sec: MaterialSection; courseId: string;
 }) {
   const qc = useQueryClient();
-  const [expanded, setExpanded] = useState(true);
-  const [subTab, setSubTab]     = useState<"all" | "video" | "audio" | "image" | "doc" | "quizzes">("all");
-  const [editingQuiz, setEditingQuiz]       = useState<InlineQuiz | null | "new">(null);
+
+  const [expanded, setExpanded]   = useState(true);
+  const [subTab, setSubTab]       = useState<"all"|"video"|"audio"|"image"|"doc"|"quizzes">("all");
+  const [editingQuiz, setEditingQuiz] = useState<ApiQuiz | null | "new">(null);
+  const [statsQuiz, setStatsQuiz]     = useState<ApiQuiz | null>(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingFile, setUploadingFile]   = useState(false);
+
+  // ── Fetch quizzes for this section from the real API ──
+  const { data: quizzesData, refetch: refetchQuizzes } = useQuery<{ data: ApiQuiz[] }>({
+    queryKey: ["section-quizzes", sec.sectionId],
+    queryFn: async () => {
+      const res = await APIConfig.fetch(`/quizzes?sectionId=${sec.sectionId}&limit=100`);
+      if (!res.ok) throw new Error("Failed to fetch quizzes");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const quizzes: ApiQuiz[] = quizzesData?.data ?? [];
 
   const videos = sec.materials.filter(m => m.fileType === "video");
   const audios = sec.materials.filter(m => m.fileType === "audio");
@@ -1026,88 +1291,65 @@ function MaterialsSectionBlock({
   const docs   = sec.materials.filter(m => ["doc","apk","other"].includes(m.fileType));
 
   const visibleMaterials =
-    subTab === "video" ? videos :
-    subTab === "audio" ? audios :
-    subTab === "image" ? images :
-    subTab === "doc"   ? docs   :
-    sec.materials;
+    subTab === "video" ? videos : subTab === "audio" ? audios :
+    subTab === "image" ? images : subTab === "doc"   ? docs   : sec.materials;
 
-  // Only show non-empty sub-tabs (except "all" and "quizzes" are always shown)
   const SUB_TABS = [
     { id: "all"     as const, label: "All",     count: sec.materials.length },
     { id: "video"   as const, label: "Videos",  count: videos.length },
     { id: "audio"   as const, label: "Audio",   count: audios.length },
     { id: "image"   as const, label: "Images",  count: images.length },
     { id: "doc"     as const, label: "Docs",    count: docs.length },
-    { id: "quizzes" as const, label: "Quizzes", count: sec.quizzes.length },
+    { id: "quizzes" as const, label: "Quizzes", count: quizzes.length },
   ].filter(t => t.id === "all" || t.id === "quizzes" || t.count > 0);
 
   const handleUpload = async (files: File[], isVideo: boolean) => {
     if (isVideo) setUploadingVideo(true); else setUploadingFile(true);
     try {
       for (const file of files) {
-        // Step 1 — upload binary to storage
-        const url = await StorageService.upload(storageFolderFromFile(file), file);
-        // Step 2 — create a lesson as the container (API requires lesson → material)
+        const url    = await StorageService.upload(storageFolderFromFile(file), file);
         const lesson = await CoursesService.createLesson(courseId, sec.sectionId, {
-          title:    file.name.replace(/\.[^/.]+$/, ""),
-          position: sec.materials.length + 1,
+          title: file.name.replace(/\.[^/.]+$/, ""), position: sec.materials.length + 1,
         }) as { id: string };
-        // Step 3 — attach material to the lesson
         await CoursesService.addMaterial(courseId, sec.sectionId, lesson.id, {
-          type:     materialTypeFromFile(file),
-          title:    file.name,
-          url,
-          fileName: file.name,
-          size:     file.size,
+          type: materialTypeFromFile(file), title: file.name, url, fileName: file.name, size: file.size,
         });
       }
-      // Refetch to show the new material in both Curriculum and Materials tabs
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
-    } catch (err) {
-      console.error("Upload failed:", err);
-    } finally {
-      if (isVideo) setUploadingVideo(false); else setUploadingFile(false);
-    }
+    } catch (err) { console.error("Upload failed:", err); }
+    finally { if (isVideo) setUploadingVideo(false); else setUploadingFile(false); }
   };
 
   const handleDeleteMaterial = async (mat: SectionMaterial) => {
     try {
       await CoursesService.removeMaterial(courseId, sec.sectionId, mat.lessonId, mat.materialId);
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
-    } catch (err) {
-      console.error("Delete failed:", err);
-    }
+    } catch (err) { console.error("Delete failed:", err); }
   };
 
-  const saveQuiz = (quiz: InlineQuiz) => {
-    const exists  = sec.quizzes.some(q => q.id === quiz.id);
-    const updated = exists
-      ? sec.quizzes.map(q => q.id === quiz.id ? quiz : q)
-      : [...sec.quizzes, quiz];
-    onQuizzesChange(sec.sectionId, updated);
-    setEditingQuiz(null);
+  const handleDeleteQuiz = async (quizId: string) => {
+    try {
+      await APIConfig.fetch(`/quizzes/${quizId}`, { method: "DELETE" });
+      refetchQuizzes();
+    } catch (err) { console.error("Delete quiz failed:", err); }
   };
 
   return (
     <>
       <div className="rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0f1623]">
-        {/* Header */}
-        <div
-          className="flex items-center gap-3 px-5 py-4 cursor-pointer select-none hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors"
-          onClick={() => setExpanded(p => !p)}
-        >
+        {/* Section header */}
+        <div className="flex items-center gap-3 px-5 py-4 cursor-pointer select-none hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors"
+          onClick={() => setExpanded(p => !p)}>
           <div className="w-7 h-7 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
             <span className="text-xs font-black text-blue-600 dark:text-blue-400">{sec.position}</span>
           </div>
           <h3 className="flex-1 text-sm font-black text-gray-900 dark:text-white truncate">{sec.sectionTitle}</h3>
-          {/* Quick-count badges */}
           <div className="flex items-center gap-1.5 flex-shrink-0 text-[10px] font-bold" onClick={e => e.stopPropagation()}>
             {videos.length > 0 && <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">{videos.length}v</span>}
             {audios.length > 0 && <span className="px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400">{audios.length}a</span>}
             {images.length > 0 && <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400">{images.length}i</span>}
             {docs.length   > 0 && <span className="px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-400">{docs.length}d</span>}
-            {sec.quizzes.length > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">{sec.quizzes.length}q</span>}
+            {quizzes.length > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">{quizzes.length}q</span>}
           </div>
           <motion.div animate={{ rotate: expanded ? 0 : -90 }} transition={{ duration: 0.2 }}>
             <ChevronDown className="w-4 h-4 text-gray-400" />
@@ -1131,8 +1373,7 @@ function MaterialsSectionBlock({
                       {t.label}
                       {t.count > 0 && (
                         <span className={`px-1.5 rounded-full text-[10px] font-black ${
-                          subTab === t.id
-                            ? "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300"
+                          subTab === t.id ? "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300"
                             : "bg-gray-100 dark:bg-white/[0.07] text-gray-500 dark:text-white/30"
                         }`}>{t.count}</span>
                       )}
@@ -1144,7 +1385,6 @@ function MaterialsSectionBlock({
                   <AnimatePresence mode="wait">
                     {subTab !== "quizzes" ? (
                       <motion.div key={subTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-2">
-                        {/* Material rows */}
                         {visibleMaterials.length === 0 && (
                           <div className="flex flex-col items-center gap-2 py-6 text-gray-300 dark:text-white/20 text-center">
                             <Paperclip className="w-6 h-6 opacity-40" />
@@ -1158,18 +1398,14 @@ function MaterialsSectionBlock({
                               <motion.div key={mat.id}
                                 initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -8 }}
                                 className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-100 dark:border-white/[0.05] hover:bg-gray-50 dark:hover:bg-white/[0.02] group transition-colors">
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.bg} ${meta.color}`}>
-                                  {meta.icon}
-                                </div>
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.bg} ${meta.color}`}>{meta.icon}</div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{mat.title}</p>
                                   <p className="text-[10px] text-gray-400">{meta.label}{mat.size ? ` · ${formatSize(mat.size)}` : ""}</p>
                                 </div>
                                 <a href={mat.url} target="_blank" rel="noreferrer"
                                   className="text-[10px] text-blue-500 hover:underline flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={e => e.stopPropagation()}>
-                                  Open
-                                </a>
+                                  onClick={e => e.stopPropagation()}>Open</a>
                                 <button onClick={() => handleDeleteMaterial(mat)}
                                   className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-all">
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -1178,34 +1414,25 @@ function MaterialsSectionBlock({
                             );
                           })}
                         </AnimatePresence>
-
-                        {/* Upload zones — always at bottom */}
                         <div className="pt-1 space-y-2">
-                          <UploadDropZone
-                            label="Upload Video"
-                            accept="video/*"
-                            onFiles={f => handleUpload(f, true)}
-                            uploading={uploadingVideo}
-                          />
-                          <UploadDropZone
-                            label="Upload Audio, Image, PDF, Slides, APK or any file"
+                          <UploadDropZone label="Upload Video" accept="video/*"
+                            onFiles={f => handleUpload(f, true)} uploading={uploadingVideo} />
+                          <UploadDropZone label="Upload Audio, Image, PDF, Slides, APK or any file"
                             accept="audio/*,image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.apk,*/*"
-                            onFiles={f => handleUpload(f, false)}
-                            uploading={uploadingFile}
-                          />
+                            onFiles={f => handleUpload(f, false)} uploading={uploadingFile} />
                         </div>
                       </motion.div>
                     ) : (
-                      /* Quiz sub-tab */
+                      /* ── Quizzes sub-tab ── */
                       <motion.div key="quizzes" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                        {sec.quizzes.length === 0 && (
+                        {quizzes.length === 0 && (
                           <div className="flex flex-col items-center gap-2 py-6 text-gray-300 dark:text-white/20">
                             <HelpCircle className="w-6 h-6 opacity-40" />
-                            <p className="text-sm">No quizzes in this section.</p>
+                            <p className="text-sm">No quizzes in this section yet.</p>
                           </div>
                         )}
                         <AnimatePresence>
-                          {sec.quizzes.map(quiz => (
+                          {quizzes.map(quiz => (
                             <motion.div key={quiz.id}
                               initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -8 }}
                               className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-100 dark:border-white/[0.06] hover:bg-gray-50 dark:hover:bg-white/[0.02] group transition-colors">
@@ -1216,17 +1443,24 @@ function MaterialsSectionBlock({
                                 <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{quiz.title}</p>
                                 <p className="text-xs text-gray-400">{quiz.questions.length} questions · {quiz.passMark}% pass</p>
                               </div>
-                              {quiz.isPublished
-                                ? <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Live</span>
-                                : <span className="text-xs font-bold text-gray-400 flex items-center gap-1"><Circle className="w-3 h-3" />Draft</span>
-                              }
+                              {/* Always "live" since the API persists them */}
+                              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 flex-shrink-0">
+                                <CheckCircle2 className="w-3 h-3" />Live
+                              </span>
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => setStatsQuiz(quiz)}
+                                  className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/20 transition-all"
+                                  title="View stats">
+                                  <BarChart3 className="w-3.5 h-3.5" />
+                                </button>
                                 <button onClick={() => setEditingQuiz(quiz)}
-                                  className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/20 transition-all">
+                                  className="p-1.5 rounded-lg text-gray-300 hover:text-amber-500 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-all"
+                                  title="Edit quiz">
                                   <Edit3 className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={() => onQuizzesChange(sec.sectionId, sec.quizzes.filter(q => q.id !== quiz.id))}
-                                  className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-all">
+                                <button onClick={() => handleDeleteQuiz(quiz.id)}
+                                  className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-all"
+                                  title="Delete quiz">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
@@ -1236,7 +1470,7 @@ function MaterialsSectionBlock({
 
                         <button onClick={() => setEditingQuiz("new")}
                           className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-amber-200 dark:border-amber-900/50 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all w-full text-sm font-bold">
-                          <Plus className="w-4 h-4" /> Add Inline Quiz
+                          <Plus className="w-4 h-4" /> Create Quiz
                         </button>
                       </motion.div>
                     )}
@@ -1248,12 +1482,27 @@ function MaterialsSectionBlock({
         </AnimatePresence>
       </div>
 
+      {/* Quiz Editor Modal */}
       <AnimatePresence>
         {editingQuiz !== null && (
           <QuizEditorModal
-            quiz={editingQuiz === "new" ? null : editingQuiz}
+            key="quiz-editor"
+            existingQuiz={editingQuiz === "new" ? null : editingQuiz}
+            sectionId={sec.sectionId}
+            onSaved={() => { refetchQuizzes(); setEditingQuiz(null); }}
             onClose={() => setEditingQuiz(null)}
-            onSave={saveQuiz}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Quiz Stats Modal */}
+      <AnimatePresence>
+        {statsQuiz && (
+          <QuizStatsModal
+            key="quiz-stats"
+            quizId={statsQuiz.id}
+            quizTitle={statsQuiz.title}
+            onClose={() => setStatsQuiz(null)}
           />
         )}
       </AnimatePresence>
@@ -1264,20 +1513,14 @@ function MaterialsSectionBlock({
 // ─── Materials Tab ────────────────────────────────────────────────────────────
 
 function MaterialsTab({ course, courseId }: { course: CourseDetail; courseId: string }) {
-  // Quiz state is keyed by sectionId. Replace setState with a mutation
-  // once POST /courses/:id/sections/:sectionId/quizzes is available.
-  const [quizzesBySectionId, setQuizzesBySectionId] = useState<Record<string, InlineQuiz[]>>({});
-
-  // Derive MaterialSection[] directly from the already-fetched CourseDetail.
-  // Zero extra API calls — both tabs share the same query cache entry.
   const materialSections: MaterialSection[] = (course.sections ?? []).map(section => ({
     sectionId:    section.id,
     sectionTitle: section.title,
     position:     section.position,
-    quizzes:      quizzesBySectionId[section.id] ?? [],
+    quizzes:      [],   // quizzes are fetched per-section inside MaterialsSectionBlock
     materials:    section.lessons.flatMap(lesson =>
       lesson.materials.map(mat => ({
-        id:         `${lesson.id}::${mat.id}`,  // composite — unique across sections
+        id:         `${lesson.id}::${mat.id}`,
         lessonId:   lesson.id,
         materialId: mat.id,
         type:       mat.type,
@@ -1290,19 +1533,17 @@ function MaterialsTab({ course, courseId }: { course: CourseDetail; courseId: st
     ),
   }));
 
-  const totalVideos  = materialSections.reduce((a, s) => a + s.materials.filter(m => m.fileType === "video").length, 0);
-  const totalFiles   = materialSections.reduce((a, s) => a + s.materials.filter(m => m.fileType !== "video").length, 0);
-  const totalQuizzes = materialSections.reduce((a, s) => a + s.quizzes.length, 0);
+  const totalVideos = materialSections.reduce((a, s) => a + s.materials.filter(m => m.fileType === "video").length, 0);
+  const totalFiles  = materialSections.reduce((a, s) => a + s.materials.filter(m => m.fileType !== "video").length, 0);
 
   return (
     <div className="space-y-4">
       {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[
-          { label: "Sections", val: materialSections.length, color: "text-blue-600 dark:text-blue-400",      bg: "bg-blue-50 dark:bg-blue-900/20",      icon: <Layers className="w-4 h-4" /> },
-          { label: "Videos",   val: totalVideos,             color: "text-violet-600 dark:text-violet-400",  bg: "bg-violet-50 dark:bg-violet-900/20",  icon: <Film className="w-4 h-4" /> },
-          { label: "Files",    val: totalFiles,              color: "text-sky-600 dark:text-sky-400",        bg: "bg-sky-50 dark:bg-sky-900/20",        icon: <Paperclip className="w-4 h-4" /> },
-          { label: "Quizzes",  val: totalQuizzes,            color: "text-amber-600 dark:text-amber-400",    bg: "bg-amber-50 dark:bg-amber-900/20",    icon: <ListChecks className="w-4 h-4" /> },
+          { label: "Sections", val: materialSections.length, color: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-50 dark:bg-blue-900/20",    icon: <Layers className="w-4 h-4" /> },
+          { label: "Videos",   val: totalVideos,             color: "text-violet-600 dark:text-violet-400",bg: "bg-violet-50 dark:bg-violet-900/20",icon: <Film className="w-4 h-4" /> },
+          { label: "Files",    val: totalFiles,              color: "text-sky-600 dark:text-sky-400",      bg: "bg-sky-50 dark:bg-sky-900/20",      icon: <Paperclip className="w-4 h-4" /> },
         ].map(s => (
           <div key={s.label} className={`${s.bg} border border-gray-100 dark:border-white/[0.06] rounded-2xl p-4 flex items-center gap-3`}>
             <div className={`w-9 h-9 rounded-xl bg-white dark:bg-white/[0.05] flex items-center justify-center flex-shrink-0 ${s.color}`}>
@@ -1316,16 +1557,6 @@ function MaterialsTab({ course, courseId }: { course: CourseDetail; courseId: st
         ))}
       </div>
 
-      {/* Quiz persistence notice */}
-      <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-500/20">
-        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-amber-700 dark:text-amber-200/60">
-          <strong>Quizzes</strong> are saved in browser state only — wire up{" "}
-          <code className="font-mono text-[11px]">POST /courses/:id/sections/:sectionId/quizzes</code>{" "}
-          to persist them. Videos & all other files upload to the real API instantly.
-        </p>
-      </div>
-
       {materialSections.length === 0 ? (
         <div className="flex flex-col items-center gap-4 py-16 text-center">
           <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center">
@@ -1333,20 +1564,13 @@ function MaterialsTab({ course, courseId }: { course: CourseDetail; courseId: st
           </div>
           <div>
             <p className="font-bold text-gray-500 dark:text-gray-400">No sections yet</p>
-            <p className="text-sm text-gray-400 mt-1">Create sections in the Curriculum tab first, then upload materials here.</p>
+            <p className="text-sm text-gray-400 mt-1">Create sections in the Curriculum tab first.</p>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
           {materialSections.map(sec => (
-            <MaterialsSectionBlock
-              key={sec.sectionId}
-              sec={sec}
-              courseId={courseId}
-              onQuizzesChange={(sectionId, quizzes) =>
-                setQuizzesBySectionId(p => ({ ...p, [sectionId]: quizzes }))
-              }
-            />
+            <MaterialsSectionBlock key={sec.sectionId} sec={sec} courseId={courseId} />
           ))}
         </div>
       )}
@@ -1359,7 +1583,7 @@ function MaterialsTab({ course, courseId }: { course: CourseDetail; courseId: st
 export function InstructorSingleCourse() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"curriculum" | "overview" | "students" | "materials">("curriculum");
+  const [tab, setTab] = useState<"curriculum"|"overview"|"students"|"materials">("curriculum");
 
   const { data: course, isLoading } = useQuery<CourseDetail>({
     queryKey: ["instructor-course", id],
@@ -1379,11 +1603,7 @@ export function InstructorSingleCourse() {
   });
 
   if (isLoading || !course) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
-      </div>
-    );
+    return <div className="flex items-center justify-center h-64"><Loader2 className="w-7 h-7 text-blue-500 animate-spin" /></div>;
   }
 
   const statusCfg    = STATUS_STYLE[course.status] ?? STATUS_STYLE.DRAFT;
@@ -1403,7 +1623,6 @@ export function InstructorSingleCourse() {
 
   return (
     <div className="max-w-[900px] mx-auto px-4 py-8 space-y-6 pb-16">
-
       <Link to="/instructor/courses"
         className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
         <ArrowLeft className="w-4 h-4" /> Back to My Courses
@@ -1412,22 +1631,15 @@ export function InstructorSingleCourse() {
       {/* Hero */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
         className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] overflow-hidden">
-
         <div className="h-20 bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 relative overflow-visible">
-          {course.img && (
-            <img src={course.img} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />
-          )}
+          {course.img && <img src={course.img} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />}
           <div className="absolute inset-0 opacity-10"
             style={{ backgroundImage: "radial-gradient(circle,white 1px,transparent 1px)", backgroundSize: "18px 18px" }} />
         </div>
-
         <div className="px-6 pb-6">
           <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-8 mb-5">
-            {/* z-10 lifts the avatar above the banner */}
             <div className="relative z-10 w-16 h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0 ring-4 ring-white dark:ring-[#0f1623] shadow-lg">
-              {course.img
-                ? <img src={course.img} alt="" className="w-full h-full object-cover" />
-                : <BookOpen className="w-7 h-7 text-white/60" />}
+              {course.img ? <img src={course.img} alt="" className="w-full h-full object-cover" /> : <BookOpen className="w-7 h-7 text-white/60" />}
             </div>
             <div className="flex-1 sm:pb-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -1446,12 +1658,9 @@ export function InstructorSingleCourse() {
               <h1 className="text-xl font-black text-gray-900 dark:text-white truncate">{course.title}</h1>
               <p className="text-xs text-gray-400 mt-0.5">${(course.price ?? 0).toFixed(2)} · {enrollments} enrolled</p>
             </div>
-
             <div className="flex items-center gap-2 flex-shrink-0">
               {!isArchived && (
-                <button
-                  onClick={() => isPublished ? archive() : publish()}
-                  disabled={publishing || archiving}
+                <button onClick={() => isPublished ? archive() : publish()} disabled={publishing || archiving}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
                     isPublished
                       ? "border border-gray-200 dark:border-white/[0.08] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04]"
@@ -1470,13 +1679,12 @@ export function InstructorSingleCourse() {
               )}
             </div>
           </div>
-
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-gray-100 dark:border-white/[0.06]">
             {[
-              { icon: Users,      val: String(enrollments),                  sub: "Students"  },
-              { icon: Layers,     val: String(course.sections?.length ?? 0), sub: "Sections"  },
-              { icon: Star,       val: String(totalLessons),                 sub: "Lessons"   },
-              { icon: TrendingUp, val: `$${(course.price ?? 0).toFixed(0)}`,sub: "Price"     },
+              { icon: Users,      val: String(enrollments),                  sub: "Students" },
+              { icon: Layers,     val: String(course.sections?.length ?? 0), sub: "Sections" },
+              { icon: Star,       val: String(totalLessons),                 sub: "Lessons"  },
+              { icon: TrendingUp, val: `$${(course.price ?? 0).toFixed(0)}`,sub: "Price"    },
             ].map(({ icon: Icon, val, sub }) => (
               <div key={sub} className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center flex-shrink-0">
