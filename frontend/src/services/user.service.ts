@@ -19,18 +19,19 @@ export interface CreateUserPayload {
   image?: string;
 }
 
-interface InstructorProfilePayload {
+export interface InstructorProfilePayload {
   bio?: string;
   description?: string;
-  specialization?: string;
-  website?: string;
-  github?: string;
-  twitter?: string;
-  linkedin?: string;
-  youtube?: string;
+  tags?: string[];
   areasOfExpertise?: string[];
   teachingCategories?: string[];
-  tags?: string[];
+  specialization?: string | null;
+  website?: string | null;
+  github?: string | null;
+  twitter?: string | null;
+  linkedin?: string | null;
+  youtube?: string | null;
+  recognitions?: string[] | null;
 }
 
 interface UpdateUserPayload {
@@ -40,8 +41,22 @@ interface UpdateUserPayload {
   image?: string;
   role?: UserRole;
   bio?: string;
-  phone?: string;
+  phoneNumber?: string;
   location?: string;
+  // Instructor fields at top level as per API spec
+  instructorPhoneNumber?: string;
+  professionalTitle?: string;
+  professionalExperience?: string;
+  specialization?: string;
+  description?: string;
+  tags?: string[];
+  website?: string;
+  github?: string;
+  twitter?: string;
+  linkedin?: string;
+  youtube?: string;
+  areasOfExpertise?: string[];
+  teachingCategories?: string[];
   instructorProfile?: InstructorProfilePayload;
 }
 
@@ -93,14 +108,33 @@ export default class UserService {
   }
 
   /**
-   * Get all users with full detail.
-   * ADMIN only.
+   * List users with full detail (ADMIN only).
+   * ADMIN can fetch any user. Non-admins can only fetch their own.
+   * NOTE: This endpoint excludes ADMIN accounts from results.
    * @param query - Optional filters and pagination
    */
   static async findAll(query?: UserQuery): Promise<unknown> {
     const response = await APIConfig.fetch(
       `/users${this.toQueryString(query)}`
     );
+    return response.json();
+  }
+
+  /**
+   * List admin users specifically (ADMIN only).
+   * Use this endpoint to get admin accounts since /users excludes them.
+   * @param query - Optional filters and pagination
+   */
+  static async findAdmins(query?: UserQuery): Promise<unknown> {
+    // Build search query specifically for admin role
+    const params = new URLSearchParams();
+    params.append("role", "ADMIN");
+    
+    if (query?.limit) params.append("limit", String(query.limit));
+    if (query?.sortOrder) params.append("order", query.sortOrder);
+    
+    const queryString = params.toString();
+    const response = await APIConfig.fetch(`/users/search?${queryString}`);
     return response.json();
   }
 

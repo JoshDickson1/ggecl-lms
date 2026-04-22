@@ -107,6 +107,22 @@ function apiQuizToEditorQuestions(questions: ApiQuizQuestion[]): EditorQuestion[
   }));
 }
 
+// ==================== HELPERS ====================
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInMs = now.getTime() - date.getTime();
+  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+  
+  if (diffInDays === 0) return "Today";
+  if (diffInDays === 1) return "Yesterday";
+  if (diffInDays < 7) return `${diffInDays} days ago`;
+  if (diffInDays < 30) return `${Math.floor(diffInDays / 7)} weeks ago`;
+  if (diffInDays < 365) return `${Math.floor(diffInDays / 30)} months ago`;
+  return `${Math.floor(diffInDays / 365)} years ago`;
+}
+
 // ─── Enrollment / domain types ────────────────────────────────────────────────
 
 interface StudentDto {
@@ -121,6 +137,10 @@ interface EnrollmentResponseDto {
   courseId: string;
   enrolledAt: string;
   student: StudentDto;
+  // Student progress data from backend
+  lessonsCompleted?: number;
+  progressPercentage?: number;
+  lastActiveAt?: string;
 }
 
 interface EnrolledStudent {
@@ -132,6 +152,10 @@ interface EnrolledStudent {
   enrolledAt: string;
   progress: number | null;
   status: string | null;
+  // Additional progress data
+  lessonsCompleted?: number;
+  progressPercentage?: number;
+  lastActiveAt?: string;
 }
 
 interface EnrollmentsResponse {
@@ -147,8 +171,12 @@ function mapEnrollmentDtoToModel(dto: EnrollmentResponseDto): EnrolledStudent {
     studentEmail:  null,
     studentAvatar: dto.student.image ?? null,
     enrolledAt:    dto.enrolledAt,
-    progress:      null,
+    progress:      dto.progressPercentage ?? null,
     status:        null,
+    // Map progress data from backend
+    lessonsCompleted: dto.lessonsCompleted,
+    progressPercentage: dto.progressPercentage,
+    lastActiveAt: dto.lastActiveAt,
   };
 }
 
@@ -1202,20 +1230,34 @@ function StudentsTab({ course }: { course: CourseDetail }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{student.studentName}</p>
                   {student.studentEmail && <p className="text-xs text-gray-400 truncate">{student.studentEmail}</p>}
+                  <div className="flex items-center gap-3 mt-1">
+                    {student.lessonsCompleted != null && (
+                      <p className="text-xs text-gray-400">
+                        <span className="font-medium">{student.lessonsCompleted}</span> lessons completed
+                      </p>
+                    )}
+                    {student.lastActiveAt && (
+                      <p className="text-xs text-gray-400">
+                        Last active: {formatRelativeTime(student.lastActiveAt)}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 {student.progress != null && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <div className="w-20 h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                      <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all"
-                        style={{ width: `${Math.min(student.progress, 100)}%` }} />
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all"
+                          style={{ width: `${Math.min(student.progress, 100)}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-400 w-8 text-right">{student.progress}%</span>
                     </div>
-                    <span className="text-[10px] font-bold text-gray-400 w-8 text-right">{student.progress}%</span>
+                    {student.enrolledAt && (
+                      <span className="text-[10px] text-gray-400">
+                        Enrolled: {new Date(student.enrolledAt).toLocaleDateString()}
+                      </span>
+                    )}
                   </div>
-                )}
-                {student.enrolledAt && (
-                  <span className="text-[10px] text-gray-400 flex-shrink-0 hidden sm:block">
-                    {new Date(student.enrolledAt).toLocaleDateString()}
-                  </span>
                 )}
               </div>
             ))}

@@ -60,8 +60,9 @@ function getNavItems(_isSuperAdmin: boolean): NavItemDef[] {
     children: [
       { to: "/admin/students", label: "Student Management" },
       { to: "/admin/instructors", label: "Instructor Management" },
-      { to: "/admin/admins", label: "Admin Management" },
-    ],
+      // Hide Admin Management for current superadmin user
+      ...(!_isSuperAdmin ? [{ to: "/admin/admins", label: "Admin Management" }] : []),
+    ].filter(Boolean),
   },
 
   // ── Communication / engagement
@@ -257,7 +258,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="relative border-t border-gray-100 dark:border-white/[0.06]">
         <div className="px-3 pt-3 pb-2">
           <Link to="/admin/profile" onClick={onNavigate}
-            className="flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all group">
+            className="flex items-center gap-2.5 p-2.5 rounded-2xl hover:bg-pink-50 dark:hover:bg-pink-950/20 transition-all group">
             <div className="relative flex-shrink-0">
               <div className={`w-9 h-9 rounded-full overflow-hidden ring-2 ${accent.ring}`}>
                 {user?.avatarUrl

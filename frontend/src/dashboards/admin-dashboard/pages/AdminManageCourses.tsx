@@ -28,7 +28,12 @@ interface AdminCourse {
   tags: string[];
   createdAt: string;
   instructor?: { id: string; name: string; image: string | null };
-  _count?: { sections?: number; enrollments?: number };
+  _count?: { 
+    sections?: number; 
+    enrollments?: number; // Total enrollments
+    // Note: Backend may provide role-specific counts, but for now use total enrollments
+    // and filter client-side if needed
+  };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -303,14 +308,15 @@ export default function AdminManageCourses() {
     });
   }, [courses, search, statusFilter]);
 
-  const stats = {
-    total:     courseStats?.total     ?? courses.length,
+  const stats = useMemo(() => ({
+    total:      courseStats?.total ?? courses.length,
     published: courseStats?.published ?? courses.filter(c => c.status === "PUBLISHED").length,
     draft:     courseStats?.draft     ?? courses.filter(c => c.status === "DRAFT").length,
     archived:  courseStats?.archived  ?? courses.filter(c => c.status === "ARCHIVED").length,
+    // Use total enrollments for now - backend may need to provide role-specific counts
     students:  courses.reduce((a, c) => a + (c._count?.enrollments ?? 0), 0),
     revenue:   courses.reduce((a, c) => a + (c.price ?? 0) * (c._count?.enrollments ?? 0), 0),
-  };
+  }), [courses, courseStats]);
 
   if (isLoading) {
     return (

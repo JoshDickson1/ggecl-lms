@@ -145,12 +145,36 @@ export default class CoursesService {
    * ADMIN must supply instructorId. INSTRUCTOR has it derived from their session.
    */
   static async create(payload: CreateCoursePayload): Promise<unknown> {
-    const response = await APIConfig.fetch("/courses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    return response.json();
+    console.log('Creating course with payload:', payload);
+    console.log('Instructor ID in payload:', payload.instructorId);
+    
+    try {
+      const response = await APIConfig.fetch("/courses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      
+      const result = await response.json();
+      console.log('Course creation successful:', result);
+      return result;
+    } catch (error) {
+      console.error('Course creation failed:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error('Course creation endpoint not found. Please check if the API is correctly configured.');
+        } else if (error.message.includes('403')) {
+          throw new Error('You do not have permission to create courses. Admin access required.');
+        } else if (error.message.includes('401')) {
+          throw new Error('Please log in to create courses.');
+        } else if (error.message.includes('Instructor profile not found')) {
+          throw new Error('The selected instructor does not have a complete profile. Please ask them to complete their instructor profile first.');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   /**

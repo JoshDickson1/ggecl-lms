@@ -20,7 +20,7 @@ interface MeResponse {
   name: string;
   email: string;
   image: string | null;
-  phone?: string | null;
+  phoneNumber?: string | null;
   location: string | null;
   createdAt: string;
   instructorProfile: {
@@ -30,6 +30,8 @@ interface MeResponse {
     areasOfExpertise: string[];
     teachingCategories: string[];
     specialization: string | null;
+    professionalTitle: string | null;
+    professionalExperience: string | null;
     website: string | null;
     github: string | null;
     twitter: string | null;
@@ -377,13 +379,13 @@ export default function InstructorSettings() {
       firstName: parts[0] ?? "",
       lastName:  parts.slice(1).join(" "),
       email:     me.email,
-      phone:     me.phone ?? "",
+      phone:     me.phoneNumber ?? "",
       location:  me.location ?? "",
-      bio:       me.instructorProfile?.bio ?? me.instructorProfile?.description ?? "",
+      bio:       me.instructorProfile?.bio ?? "",
     });
     setInstDetails({
-      title:      me.instructorProfile?.specialization ?? "",
-      experience: me.instructorProfile?.description ?? "",
+      title:      me.instructorProfile?.professionalTitle ?? "",
+      experience: me.instructorProfile?.professionalExperience ?? "",
       website:    me.instructorProfile?.website ?? "",
       github:     me.instructorProfile?.github ?? "",
       twitter:    me.instructorProfile?.twitter ?? "",
@@ -439,12 +441,15 @@ export default function InstructorSettings() {
     setSaving(p => ({ ...p, personal: true }));
     try {
       const name = `${personal.firstName} ${personal.lastName}`.trim();
-      await UserService.update(authUser.id, {
+      const payload = {
         name,
         bio:   personal.bio,
-        phone: personal.phone || undefined,
+        instructorPhoneNumber: personal.phone || undefined,
         location: personal.location || undefined,
-      });
+      };
+      console.log("Sending personal payload:", payload);
+      console.log("Phone from form:", personal.phone);
+      await UserService.update(authUser.id, payload);
       queryClient.invalidateQueries({ queryKey: ["user-mine"] });
       showToast("Personal info updated!");
     } catch {
@@ -459,19 +464,22 @@ export default function InstructorSettings() {
   if (!authUser) return;
   setSaving(p => ({ ...p, instructor: true }));
   try {
-    console.log("instDetails:", instDetails);
-    await UserService.update(authUser.id, {
-      instructorProfile: {
-        specialization: instDetails.title || undefined,
-        description: instDetails.experience || undefined,
-        website: instDetails.website || undefined,
-        github: instDetails.github || undefined,
-        twitter: instDetails.twitter || undefined,
-        linkedin: instDetails.linkedin || undefined,
-        youtube: instDetails.youtube || undefined,
-        areasOfExpertise: expertise,
-      },
-    });
+    const payload = {
+      professionalTitle: instDetails.title || undefined,
+      professionalExperience: instDetails.experience || undefined,
+      specialization: instDetails.title || undefined,
+      description: instDetails.experience || undefined,
+      website: instDetails.website || undefined,
+      github: instDetails.github || undefined,
+      twitter: instDetails.twitter || undefined,
+      linkedin: instDetails.linkedin || undefined,
+      youtube: instDetails.youtube || undefined,
+      areasOfExpertise: expertise,
+      tags: expertise,
+    };
+    console.log("Sending instructor payload:", payload);
+    console.log("Current expertise array:", expertise);
+    await UserService.update(authUser.id, payload);
     queryClient.invalidateQueries({ queryKey: ["user-mine"] });
     showToast("Instructor details updated!");
   } catch (error) {

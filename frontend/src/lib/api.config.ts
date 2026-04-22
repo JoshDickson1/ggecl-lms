@@ -26,6 +26,7 @@ export class APIError extends Error {
       options: RequestInit = {}
     ): Promise<Response> {
       const url = `${this.baseURL}/api${endpoint}`;
+      console.log('API Request:', { method: options.method || 'GET', url, endpoint });
   
       const response = await fetch(url, {
         ...options,

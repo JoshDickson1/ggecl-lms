@@ -70,9 +70,27 @@ interface Enrollment {
   studentId: string;
   enrolledAt: string;
   student?: { id: string; name: string; image: string | null; email: string };
+  // Student progress data from backend
+  lessonsCompleted?: number;
+  progressPercentage?: number;
+  lastActiveAt?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInMs = now.getTime() - date.getTime();
+  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+  
+  if (diffInDays === 0) return "Today";
+  if (diffInDays === 1) return "Yesterday";
+  if (diffInDays < 7) return `${diffInDays} days ago`;
+  if (diffInDays < 30) return `${Math.floor(diffInDays / 7)} weeks ago`;
+  if (diffInDays < 365) return `${Math.floor(diffInDays / 30)} months ago`;
+  return `${Math.floor(diffInDays / 365)} years ago`;
+}
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(" "); }
 
@@ -262,14 +280,6 @@ function StudentsTab({ courseId }: { courseId: string }) {
 
   return (
     <div className="p-6 space-y-4">
-      {/* Backend note */}
-      <div className="flex gap-2 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
-        <Info className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-amber-700 dark:text-amber-400">
-          Backend should include student progress (lessons completed, % progress, last active) in <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /enrollments/course/:id</code> response.
-        </p>
-      </div>
-
       <div className="relative">
         <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search enrolled students…"
@@ -300,10 +310,33 @@ function StudentsTab({ courseId }: { courseId: string }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900 dark:text-white">{name}</p>
                   {email && <p className="text-[10px] text-gray-400">{email}</p>}
+                  <div className="flex items-center gap-3 mt-1">
+                    {e.lessonsCompleted != null && (
+                      <p className="text-xs text-gray-400">
+                        <span className="font-medium">{e.lessonsCompleted}</span> lessons completed
+                      </p>
+                    )}
+                    {e.lastActiveAt && (
+                      <p className="text-xs text-gray-400">
+                        Last active: {formatRelativeTime(e.lastActiveAt)}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-shrink-0">
-                  <Clock className="w-3.5 h-3.5" />
-                  {new Date(e.enrolledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  {e.progressPercentage != null && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all"
+                          style={{ width: `${Math.min(e.progressPercentage, 100)}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-400 w-8 text-right">{e.progressPercentage}%</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <Clock className="w-3.5 h-3.5" />
+                    {new Date(e.enrolledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  </div>
                 </div>
               </motion.div>
             );

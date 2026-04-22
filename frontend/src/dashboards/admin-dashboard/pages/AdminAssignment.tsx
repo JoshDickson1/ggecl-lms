@@ -3,14 +3,12 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
-  Plus, Search, Eye, FileText, Edit3, Trash2,
-  BookOpen, Shield, Users, CheckCircle2,
-  Clock,
+  Plus, Search, FileText, Edit3, Trash2,
+  BookOpen, Users, CheckCircle2,
+  Clock, Loader2, AlertTriangle,
 } from "lucide-react";
-import {
-  MOCK_ASSIGNMENTS, MOCK_SUBMISSIONS,
-//   type AssignmentStatus,
-} from "@/data/academicData";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import AssignmentService from "@/services/assignment.service";
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(" "); }
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -18,25 +16,80 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 }
 function Fade({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   return <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.36, delay, ease: "easeOut" }}>{children}</motion.div>;
-}
+} 
 
 export default function AdminAssignment() {
   const [search, setSearch]     = useState("");
   const [creatorFilter, setCF]  = useState<"all" | "instructor" | "admin">("all");
   const [courseFilter, setCoF]  = useState("all");
+  const qc = useQueryClient();
 
-  const allCourses = Array.from(new Set(MOCK_ASSIGNMENTS.map(a => a.courseName)));
-
-  const filtered = MOCK_ASSIGNMENTS.filter(a => {
-    const ms = !search.trim() || a.title.toLowerCase().includes(search.toLowerCase()) || a.courseName.toLowerCase().includes(search.toLowerCase());
-    const mc = creatorFilter === "all" || a.createdBy === creatorFilter;
-    const mk = courseFilter === "all" || a.courseName === courseFilter;
-    return ms && mc && mk;
+  // Fetch assignments
+  const { data: assignmentsData, isLoading, error } = useQuery({
+    queryKey: ["assignments"],
+    queryFn: async () => {
+      const res = await AssignmentService.list();
+      return res.data || [];
+    },
   });
 
-  const totalSubs    = MOCK_SUBMISSIONS.length;
-  const gradedSubs   = MOCK_SUBMISSIONS.filter(s => s.status === "graded").length;
-  const pendingSubs  = MOCK_SUBMISSIONS.filter(s => s.status === "submitted").length;
+  // Fetch admin overview stats
+  const { data: adminStats } = useQuery({
+    queryKey: ["admin-assignment-stats"],
+    queryFn: async () => {
+      return AssignmentService.getAdminOverview();
+    },
+  });
+
+  const { mutate: deleteAssignment } = useMutation({
+    mutationFn: (id: string) => AssignmentService.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assignments"] });
+      qc.invalidateQueries({ queryKey: ["admin-assignment-stats"] });
+    },
+  });
+
+  const assignments = assignmentsData || [];
+  const stats = adminStats;
+
+  // Get unique courses from assignments
+  const allCourses = Array.from(new Set(assignments.map((a: any) => a.courseId || 'unknown')));
+
+  // Filter assignments based on search and filters
+  const filtered = assignments.filter((a: any) => {
+    const ms = !search.trim() || 
+      a.title.toLowerCase().includes(search.toLowerCase()) || 
+      (a.courseId && a.courseId.toLowerCase().includes(search.toLowerCase()));
+    const mk = courseFilter === "all" || a.courseId === courseFilter;
+    return ms && mk;
+  });
+
+  // Calculate stats from real data
+  const totalAssignments = stats?.totalAssignments || assignments.length;
+  const totalSubmissions = stats?.totalSubmissions || 0;
+  const totalGraded = stats?.totalGraded || 0;
+  const pendingSubs = totalSubmissions - totalGraded;
+
+  if (error) {
+    return (
+      <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-950/40 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <p className="text-red-400 mb-4">Failed to load assignments</p>
+            <button 
+              onClick={() => qc.invalidateQueries({ queryKey: ["assignments"] })}
+              className="px-4 py-2 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
@@ -61,10 +114,10 @@ export default function AdminAssignment() {
       <Fade delay={0.06}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { icon: FileText,     label: "Total",         value: MOCK_ASSIGNMENTS.length, color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-950/40"     },
-            { icon: Users,        label: "Submissions",   value: totalSubs,              color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40" },
-            { icon: Clock,        label: "Needs Grading", value: pendingSubs,            color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"   },
-            { icon: CheckCircle2, label: "Graded",        value: gradedSubs,             color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40"},
+            { icon: FileText,     label: "Total",         value: totalAssignments, color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-950/40"     },
+            { icon: Users,        label: "Submissions",   value: totalSubmissions,  color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40" },
+            { icon: Clock,        label: "Needs Grading", value: pendingSubs,       color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"   },
+            { icon: CheckCircle2, label: "Graded",        value: totalGraded,        color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40"},
           ].map(({ icon: Icon, label, value, color, bg }) => (
             <Card key={label} className="p-5 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
@@ -114,19 +167,32 @@ export default function AdminAssignment() {
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-white/[0.06]">
-                  {["Title","Course","Created By","Due","Submissions","Status",""].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-[10px] font-bold tracking-widest text-gray-400 uppercase whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((a, i) => {
-                  const subs = MOCK_SUBMISSIONS.filter(s => s.assignmentId === a.id);
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                  <span className="text-sm text-gray-400">Loading assignments...</span>
+                </div>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-white/[0.06]">
+                    {["Title","Course","Created By","Due","Submissions","Status",""].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-bold tracking-widest text-gray-400 uppercase whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                {filtered.map((a: any, i) => {
                   const daysLeft = Math.ceil((new Date(a.dueDate).getTime() - Date.now()) / 86400000);
                   const isPast = daysLeft < 0;
+
+                  const handleDelete = () => {
+                    if (window.confirm("Are you sure you want to delete this assignment? This action cannot be undone.")) {
+                      deleteAssignment(a.id);
+                    }
+                  };
 
                   return (
                     <motion.tr key={a.id}
@@ -136,15 +202,12 @@ export default function AdminAssignment() {
                         <p className="text-sm font-bold text-gray-900 dark:text-white max-w-[200px] truncate">{a.title}</p>
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">{a.courseName}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">{a.courseId || 'Unknown'}</span>
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1.5">
-                          {a.createdBy === "admin"
-                            ? <Shield className="w-3 h-3 text-blue-500" />
-                            : <BookOpen className="w-3 h-3 text-emerald-500" />
-                          }
-                          <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">{a.creatorName}</span>
+                          <BookOpen className="w-3 h-3 text-emerald-500" />
+                          <span className="text-xs text-gray-500 dark:text-gray-400">Instructor</span>
                         </div>
                       </td>
                       <td className="px-4 py-3.5">
@@ -153,13 +216,7 @@ export default function AdminAssignment() {
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-gray-800 dark:text-white">{subs.length}</span>
-                          <div className="w-12 h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                            <div style={{ width: `${subs.length ? (subs.filter(s=>s.status==="graded").length/subs.length)*100 : 0}%` }}
-                              className="h-full rounded-full bg-emerald-500" />
-                          </div>
-                        </div>
+                        <span className="text-sm font-bold text-gray-800 dark:text-white">-</span>
                       </td>
                       <td className="px-4 py-3.5">
                         <span className={cn("text-[10px] font-bold px-2 py-1 rounded-full border capitalize",
@@ -172,13 +229,16 @@ export default function AdminAssignment() {
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1.5">
                           <Link to={`/admin/assignments/${a.id}/submissions`}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all">
-                            <Eye className="w-3 h-3" /> View
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border border-indigo-200 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all">
+                            <Users className="w-3 h-3" /> Submissions
                           </Link>
-                          <button className="w-7 h-7 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-blue-600 hover:border-blue-300 transition-all">
+                          <Link to={`/admin/assignments/${a.id}/edit`}
+                            className="w-7 h-7 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-blue-600 hover:border-blue-300 transition-all">
                             <Edit3 className="w-3 h-3" />
-                          </button>
-                          <button className="w-7 h-7 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-300 transition-all">
+                          </Link>
+                          <button 
+                            onClick={handleDelete}
+                            className="w-7 h-7 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-300 transition-all">
                             <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
@@ -186,8 +246,9 @@ export default function AdminAssignment() {
                     </motion.tr>
                   );
                 })}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            )}
           </div>
         </Card>
       </Fade>

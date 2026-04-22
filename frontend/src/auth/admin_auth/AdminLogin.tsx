@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, Lock, Mail, Shield } from "lucide-react";
 import PageNotifier from "../PageNotifier";
 
@@ -164,6 +164,10 @@ const CSS = `
   @media (max-width:1280px) { .al-right { padding: 150px 48px 60px; } }
   @media (max-width:1023px) { .al-right { padding: 180px 24px 48px; } }
   @media (max-width:480px)  { .al-right { padding: 160px 20px 40px; } }
+  @media (max-width:480px) and (orientation: landscape) { 
+    .al-right { padding: 120px 20px 30px; }
+    .al-form-inner { max-width: 320px; }
+  }
   .dark .al-right { background: #080d1a; }
 
   .al-form-inner { width: 100%; max-width: 400px; margin: 0 auto; }
@@ -180,9 +184,16 @@ const CSS = `
     border-radius: 12px; border: 1.5px solid rgba(0,0,0,0.10);
     background: rgba(0,0,0,0.025);
     font-family: 'DM Sans', system-ui, sans-serif;
-    font-size: 14px; color: #0f172a; outline: none;
+    font-size: 16px; color: #0f172a; outline: none;
     transition: border-color .2s, background .2s, box-shadow .2s;
     -webkit-appearance: none;
+    /* Mobile zoom fix */
+  }
+  @media (max-width: 480px) {
+    .al-input {
+      font-size: 16px; /* Prevents zoom on iOS */
+      padding: 14px 14px 14px 44px; /* Larger touch target */
+    }
   }
   .al-input::placeholder { color: #94a3b8; font-weight: 300; }
   .al-input:focus {
@@ -200,8 +211,17 @@ const CSS = `
 
   .al-eye {
     position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
-    background: none; border: none; cursor: pointer; padding: 2px;
+    background: none; border: none; cursor: pointer; padding: 8px;
     color: #94a3b8; transition: color .18s; display: flex; align-items: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (max-width: 480px) {
+    .al-eye {
+      padding: 12px; /* Larger touch target */
+      min-width: 44px; /* iOS accessibility */
+      min-height: 44px;
+    }
   }
   .al-eye:hover { color: #475569; }
   .dark .al-eye { color: #475569; }
@@ -221,6 +241,15 @@ const CSS = `
     color: #fff;
     box-shadow: 0 4px 20px rgba(220,38,38,0.38);
     transition: transform .2s cubic-bezier(0.34,1.56,0.64,1), box-shadow .2s ease;
+    /* Mobile touch improvements */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (max-width: 480px) {
+    .al-submit {
+      padding: 16px 24px; /* Larger touch target */
+      min-height: 48px; /* iOS accessibility */
+    }
   }
   .al-submit:hover:not(:disabled) {
     transform: translateY(-2px);
@@ -424,6 +453,29 @@ const AdminLogin = () => {
   const [authErr, setAuthErr] = useState("");
   const navigate = useNavigate();
 
+  // Mobile-specific improvements
+  useEffect(() => {
+    // Add mobile-specific classes to body for better mobile handling
+    if (window.innerWidth <= 768) {
+      document.body.classList.add('mobile-device');
+    }
+    
+    const handleResize = () => {
+      if (window.innerWidth <= 768) {
+        document.body.classList.add('mobile-device');
+      } else {
+        document.body.classList.remove('mobile-device');
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      document.body.classList.remove('mobile-device');
+    };
+  }, []);
+
   const validate = () => {
       let valid = true;
       if (!email) { setEmailErr("Email is required"); valid = false; }
@@ -498,54 +550,56 @@ const AdminLogin = () => {
                       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
                           {/* Email */}
-                          <div className="lg-2">
-                              <label className="lg-label">Email address</label>
-                              <div className="lg-input-wrap">
-                                  <Mail className="lg-input-icon" size={15} />
+                          <div className="al-2">
+                              <label className="al-label">Email address</label>
+                              <div className="al-input-wrap">
+                                  <Mail className="al-input-icon" size={15} />
                                   <input
                                       placeholder="you@example.com"
-                                      className="lg-input"
+                                      className="al-input"
                                       type="email"
                                       value={email}
                                       onChange={e => { setEmail(e.target.value); setEmailErr(""); }}
+                                      autoComplete="email"
                                   />
                               </div>
                               {emailErr && (
-                                  <p style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{emailErr}</p>
+                                  <p className="al-err">{emailErr}</p>
                               )}
                           </div>
 
                           {/* Password */}
-                          <div className="lg-3">
+                          <div className="al-3">
                               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
-                                  <label className="lg-label">Password</label>
+                                  <label className="al-label">Password</label>
                                   <Link
                                       to="/forgotten-password"
-                                      style={{ fontSize: 12, color: "red", fontWeight: 500, textDecoration: "none" }}
+                                      style={{ fontSize: 12, color: "#dc2626", fontWeight: 500, textDecoration: "none" }}
                                   >
                                       Forgot password?
                                   </Link>
                               </div>
-                              <div className="lg-input-wrap">
-                                  <Lock className="lg-input-icon" size={15} />
+                              <div className="al-input-wrap">
+                                  <Lock className="al-input-icon" size={15} />
                                   <input
                                       type={showPassword ? "text" : "password"}
                                       placeholder="••••••••"
-                                      className="lg-input"
-                                      style={{ paddingRight: 44 }}
+                                      className="al-input"
                                       value={password}
                                       onChange={e => { setPassword(e.target.value); setPasswordErr(""); }}
+                                      autoComplete="current-password"
                                   />
                                   <button
                                       type="button"
-                                      className="lg-eye"
+                                      className="al-eye"
                                       onClick={() => setShowPassword(p => !p)}
+                                      aria-label={showPassword ? "Hide password" : "Show password"}
                                   >
                                       {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                                   </button>
                               </div>
                               {passwordErr && (
-                                  <p style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{passwordErr}</p>
+                                  <p className="al-err">{passwordErr}</p>
                               )}
                           </div>
 

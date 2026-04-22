@@ -25,7 +25,19 @@ interface InstructorUser {
   name: string;
   image: string | null;
   email: string;
-  instructorProfile?: { specialization?: string };
+  instructorProfile?: { 
+    bio?: string;
+    description?: string;
+    tags?: string[];
+    areasOfExpertise?: string[];
+    teachingCategories?: string[];
+    specialization?: string | null;
+    website?: string | null;
+    github?: string | null;
+    twitter?: string | null;
+    linkedin?: string | null;
+    youtube?: string | null;
+  };
 }
 
 interface StudentUser {
@@ -197,15 +209,22 @@ function StudentPicker({ selected, onChange }: {
   const { data: results = [], isFetching } = useQuery<StudentUser[]>({
     queryKey: ["students-search", debouncedSearch],
     queryFn: async () => {
-      const res = await UserService.findAll({
-        role: UserRole.STUDENT,
-        search: debouncedSearch,
-        limit: 20,
-      }) as { data?: StudentUser[] } | StudentUser[];
-      return Array.isArray(res) ? res : ((res as { data?: StudentUser[] }).data ?? []);
+      try {
+        const res = await UserService.findAll({
+          role: UserRole.STUDENT,
+          search: debouncedSearch,
+          limit: 20,
+        }) as { data?: StudentUser[] } | StudentUser[];
+        const students = Array.isArray(res) ? res : ((res as { data?: StudentUser[] }).data ?? []);
+        return students;
+      } catch (err) {
+        console.error('Error searching students:', err);
+        return [];
+      }
     },
     enabled: debouncedSearch.length >= 2,
     staleTime: 1000 * 30,
+    retry: 1,
   });
 
   const toggle = (student: StudentUser) => {
@@ -370,35 +389,95 @@ export default function AdminCreateCourse() {
   const [success,           setSuccess]           = useState(false);
   const [enrolledCount,     setEnrolledCount]     = useState(0);
 
-  const { data: instructors = [] } = useQuery<InstructorUser[]>({
+  const { data: instructors = [], isLoading: instructorsLoading } = useQuery<InstructorUser[]>({
     queryKey: ["instructors-list"],
     queryFn: async () => {
-      const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 }) as { data?: InstructorUser[] } | InstructorUser[];
-      return Array.isArray(res) ? res : ((res as { data?: InstructorUser[] }).data ?? []);
+      try {
+        const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 }) as { data?: InstructorUser[] } | InstructorUser[];
+        const instructorList = Array.isArray(res) ? res : ((res as { data?: InstructorUser[] }).data ?? []);
+        return instructorList;
+      } catch (err) {
+        console.error('Error loading instructors:', err);
+        return [];
+      }
     },
     staleTime: 1000 * 60 * 10,
+    retry: 2,
   });
 
   const { mutate: saveCreate, isPending } = useMutation({
     mutationFn: (payload: CreateCoursePayload) => CoursesService.create(payload),
     onSuccess: async (data: unknown) => {
       qc.invalidateQueries({ queryKey: ["admin-courses"] });
+      qc.invalidateQueries({ queryKey: ["courses"] });
 
-      // Attempt bulk enrollment if students were selected
+      // Fetch the actual total enrollment count for the course
       const courseId = (data as { id?: string })?.id;
-      if (courseId && selectedStudents.length > 0) {
+      console.log('Course created with ID:', courseId);
+      
+      if (courseId && courseId.trim()) {
         try {
-          await EnrollmentService.adminEnroll(courseId, selectedStudents.map(s => s.id));
-          setEnrolledCount(selectedStudents.length);
-        } catch {
-          // Enrollment failed silently — course still created
-          setEnrolledCount(0);
+          if (selectedStudents.length > 0) {
+            console.log(`Attempting to enroll ${selectedStudents.length} students in course ${courseId}`);
+            await EnrollmentService.adminEnroll(courseId, selectedStudents.map(s => s.id));
+            console.log(`Successfully enrolled ${selectedStudents.length} students`);
+          }
+          
+          // Fetch the actual total enrollment count for the course
+          try {
+            const enrollments = await EnrollmentService.findByCourse(courseId);
+            const totalEnrolled = Array.isArray(enrollments) ? enrollments.length : 0;
+            setEnrolledCount(totalEnrolled);
+            console.log(`Total students enrolled in course ${courseId}: ${totalEnrolled}`);
+          } catch (fetchErr) {
+            console.error('Failed to fetch enrollment count:', fetchErr);
+            // Fallback to selected students count if fetch fails
+            setEnrolledCount(selectedStudents.length);
+          }
+        } catch (enrollErr) {
+          console.error('Enrollment failed:', enrollErr);
+          
+          // Show enrollment error but don't fail course creation
+          const errorMessage = enrollErr instanceof Error ? enrollErr.message : 'Enrollment failed';
+          setErrors(p => ({ 
+            ...p, 
+            enrollment: `Course created successfully, but enrollment failed: ${errorMessage}` 
+          }));
+          
+          // Try to get existing enrollments even if new enrollment failed
+          try {
+            const enrollments = await EnrollmentService.findByCourse(courseId);
+            const totalEnrolled = Array.isArray(enrollments) ? enrollments.length : 0;
+            setEnrolledCount(totalEnrolled);
+          } catch (fetchErr) {
+            setEnrolledCount(0);
+          }
         }
+      } else {
+        console.error('Invalid course ID received:', courseId);
+        setErrors(p => ({ 
+          ...p, 
+          submit: 'Course created but received invalid ID. Please check the course list.' 
+        }));
       }
       setSuccess(true);
     },
     onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : "Failed to create course. Please try again.";
+      console.error('Course creation failed:', err);
+      let message = "Failed to create course. Please try again.";
+      
+      if (err instanceof Error) {
+        if (err.message.includes('400')) {
+          message = "Invalid course data. Please check all required fields.";
+        } else if (err.message.includes('403')) {
+          message = "You don't have permission to create courses.";
+        } else if (err.message.includes('401')) {
+          message = "Please log in to create courses.";
+        } else {
+          message = err.message;
+        }
+      }
+      
       setErrors(p => ({ ...p, submit: message }));
     },
   });
@@ -414,12 +493,45 @@ export default function AdminCreateCourse() {
     if (!instructorId)                          e.instructor  = "Please assign an instructor";
     if (!description.trim())                    e.description = "Short description is required";
     if (!price || isNaN(+price) || +price < 0)  e.price       = "Valid price is required";
+    if (instructors.length === 0)               e.instructor  = "No instructors available. Please contact support.";
+    
+    // Debug instructor selection
+    console.log('Instructor ID:', instructorId);
+    console.log('Available instructors:', instructors.map(i => ({ id: i.id, name: i.name, hasProfile: !!i.instructorProfile })));
+    
+    // Check if selected instructor has a profile
+    const selectedInstructor = instructors.find(i => i.id === instructorId);
+    console.log('Selected instructor:', selectedInstructor);
+    
+    // Check if selected instructor exists - let backend validate profile
+    if (instructorId && selectedInstructor) {
+      const profile = selectedInstructor.instructorProfile;
+      console.log('Instructor profile data:', profile);
+      
+      // Basic check - if instructor exists, let backend validate profile completeness
+      // Backend will return proper error if profile is incomplete
+      if (!profile) {
+        console.log('Instructor has no profile record');
+        e.instructor = "Selected instructor does not have a profile. Please ask them to complete their instructor profile first.";
+      }
+    }
+    
+    // Validate video URL if provided
+    if (videoUrl.trim()) {
+      try {
+        new URL(videoUrl.trim());
+      } catch {
+        e.videoUrl = "Please enter a valid URL for the intro video (e.g., https://example.com/video.mp4)";
+      }
+    }
+    
     setErrors(e);
     return !Object.keys(e).length;
   };
 
   const handleCreate = () => {
     if (!validate()) return;
+    
     const payload: CreateCoursePayload = {
       title:         title.trim(),
       description:   description.trim(),
@@ -431,10 +543,20 @@ export default function AdminCreateCourse() {
       tags:     tags.filter(Boolean),
       syllabus: syllabus.filter(Boolean),
       includes: includes.filter(Boolean),
-      ...(videoUrl.trim() && { videoUrl: videoUrl.trim() }),
+      // Only include videoUrl if it's a valid URL
+      ...(videoUrl.trim() && (() => {
+        try {
+          new URL(videoUrl.trim());
+          return { videoUrl: videoUrl.trim() };
+        } catch {
+          return {};
+        }
+      })()),
       ...(img              && { img }),
       ...(badge            && { badge }),
     };
+    
+    console.log('Creating course with payload:', payload);
     saveCreate(payload);
   };
 
@@ -471,16 +593,40 @@ export default function AdminCreateCourse() {
         <SectionCard icon={GraduationCap} title="Assign Instructor" description="Who will teach this course?" delay={0.05}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Instructor" required error={errors.instructor}>
-              <select value={instructorId} onChange={e => setInstructorId(e.target.value)}
-                className={cn("w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border text-gray-800 dark:text-white outline-none cursor-pointer",
-                  errors.instructor ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]")}>
-                <option value="">Select instructor…</option>
-                {instructors.map(i => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}{i.instructorProfile?.specialization ? ` — ${i.instructorProfile.specialization}` : ""}
-                  </option>
-                ))}
-              </select>
+              {instructorsLoading ? (
+                <div className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-400 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading instructors...
+                </div>
+              ) : instructors.length === 0 ? (
+                <div className="w-full px-4 py-2.5 rounded-xl text-sm bg-red-50/80 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400">
+                  No instructors available. Please contact support.
+                </div>
+              ) : (
+                <select value={instructorId} onChange={e => setInstructorId(e.target.value)}
+                  className={cn("w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border text-gray-800 dark:text-white outline-none cursor-pointer",
+                    errors.instructor ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]")}>
+                  <option value="">Select instructor...</option>
+                  {instructors.map(i => {
+                    const hasCompleteProfile = i.instructorProfile && (
+                      i.instructorProfile.bio || 
+                      i.instructorProfile.description || 
+                      i.instructorProfile.specialization ||
+                      (i.instructorProfile.tags && i.instructorProfile.tags.length > 0) ||
+                      (i.instructorProfile.areasOfExpertise && i.instructorProfile.areasOfExpertise.length > 0)
+                    );
+                    
+                    return (
+                      <option key={i.id} value={i.id}>
+                        {i.name} - {hasCompleteProfile ? 
+                          `${i.instructorProfile?.specialization || 'Instructor'} (Ready)` : 
+                          'Incomplete Profile (Cannot create courses)'
+                        }
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
             </Field>
 
             {selectedInstructor && (
@@ -582,11 +728,20 @@ export default function AdminCreateCourse() {
               <Label>Intro / Preview Video URL</Label>
               <div className="relative">
                 <Video className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="https://…"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all" />
+                <input 
+                  value={videoUrl} 
+                  onChange={e => setVideoUrl(e.target.value)} 
+                  placeholder="https://example.com/video.mp4"
+                  className={cn("w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border text-gray-800 dark:text-white placeholder:text-gray-400 outline-none transition-all",
+                    errors.videoUrl ? "border-red-300 dark:border-red-700 focus:border-red-400 focus:ring-2 focus:ring-red-500/15" : "border-gray-200 dark:border-white/[0.08] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15"
+                  )} 
+                />
               </div>
+              {errors.videoUrl && (
+                <p className="text-xs text-red-500 mt-1">{errors.videoUrl}</p>
+              )}
               <p className="text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
-                <Info className="w-3 h-3" /> Short teaser shown on the course landing page.
+                <Info className="w-3 h-3" /> Short teaser shown on the course landing page. Leave empty if none.
               </p>
             </div>
           </div>
@@ -673,6 +828,15 @@ export default function AdminCreateCourse() {
                     <span className="w-1 h-1 rounded-full bg-red-400" />{e}
                   </p>
                 ))}
+              </div>
+            )}
+
+            {errors.enrollment && (
+              <div className="mb-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30">
+                <p className="text-xs font-bold text-amber-600 mb-1.5 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5" /> Enrollment Notice:
+                </p>
+                <p className="text-xs text-amber-500">{errors.enrollment}</p>
               </div>
             )}
 

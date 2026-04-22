@@ -99,18 +99,43 @@ export default class EnrollmentService {
    * @param courseId   - Target course ID
    * @param studentIds - Array of student user IDs to enroll
    */
+  static async adminEnroll(courseId: string, studentIds: string[]): Promise<unknown> {
+    console.log('Admin enrollment request:', { courseId, studentIds });
+    
+    if (!courseId || !studentIds.length) {
+      throw new Error('Course ID and student IDs are required for admin enrollment');
+    }
+
+    try {
+      const response = await APIConfig.fetch("/enrollments/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseId, studentIds }),
+      });
+      
+      const result = await response.json();
+      console.log('Admin enrollment successful:', result);
+      return result;
+    } catch (error) {
+      console.error('Admin enrollment failed:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('403')) {
+          throw new Error('You do not have permission to enroll students. Admin access required.');
+        } else if (error.message.includes('404')) {
+          throw new Error('Enrollment endpoint not found. Please contact support.');
+        } else if (error.message.includes('400')) {
+          throw new Error('Invalid enrollment data. Please check course ID and student IDs.');
+        }
+      }
+      
+      throw error;
+    }
+  }
+
   // Instructor/Admin: get all enrollments for a specific student across courses
   static async findByStudent(studentId: string): Promise<unknown> {
     const response = await APIConfig.fetch(`/enrollments/student/${studentId}`);
-    return response.json();
-  }
-
-  static async adminEnroll(courseId: string, studentIds: string[]): Promise<unknown> {
-    const response = await APIConfig.fetch("/enrollments/admin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseId, studentIds }),
-    });
     return response.json();
   }
 }

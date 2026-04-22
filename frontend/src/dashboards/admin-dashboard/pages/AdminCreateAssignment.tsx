@@ -11,8 +11,10 @@ import {
   Plus, Trash2, Info, Shield, AlertTriangle,
   Clock, Users, Star,
 } from "lucide-react";
-import { courses }      from "@/data/courses";
-import { instructors }  from "@/data/Instructors";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import AssignmentService, { type CreateAssignmentDto } from "@/services/assignment.service";
+import CoursesService from "@/services/course.service";
+import UserService, { UserRole } from "@/services/user.service";
 import { FILE_META, getFileType } from "@/data/academicData";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -248,15 +250,31 @@ function CourseInstructorSelector({
   onInstructorChange: (id: string) => void;
   errors: { course?: string; instructor?: string };
 }) {
-  const selectedCourse = courses.find(c => c.id === selectedCourseId);
-  const selectedInstructor = instructors.find(i => i.id === selectedInstructorId);
+  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+    queryKey: ["courses-list"],
+    queryFn: async () => {
+      const res = await CoursesService.findAll();
+      return res.items || [];
+    },
+  });
+
+  const { data: instructors = [], isLoading: instructorsLoading } = useQuery({
+    queryKey: ["instructors-list"],
+    queryFn: async () => {
+      const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 });
+      return Array.isArray(res) ? res : (res as any).data || [];
+    },
+  });
+
+  const selectedCourse = courses.find((c: any) => c.id === selectedCourseId);
+  const selectedInstructor = instructors.find((i: any) => i.id === selectedInstructorId);
 
   // When course is selected, auto-fill instructor if not already set
   const handleCourseChange = (id: string) => {
     onCourseChange(id);
-    const course = courses.find(c => c.id === id);
+    const course = courses.find((c: any) => c.id === id);
     if (course && !selectedInstructorId) {
-      onInstructorChange(course.instructor.id);
+      onInstructorChange(course.instructorId || "");
     }
   };
 
@@ -277,7 +295,7 @@ function CourseInstructorSelector({
                 text-gray-800 dark:text-white outline-none cursor-pointer"
             >
               <option value="">Select a course…</option>
-              {courses.map(c => (
+              {courses.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.title}</option>
               ))}
             </select>
@@ -294,27 +312,18 @@ function CourseInstructorSelector({
               transition={{ duration: 0.22 }}
               className="mt-3 overflow-hidden"
             >
-              <div className={`flex items-center gap-3 p-3 rounded-2xl
-                bg-gradient-to-r ${selectedCourse.thumbnail} bg-opacity-10`}
-                style={{ background: "var(--preview-bg)" }}>
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${selectedCourse.thumbnail}
-                  flex items-center justify-center flex-shrink-0`}>
-                  <selectedCourse.icon className="w-5 h-5 text-white" />
+              <div className="flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06]">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0">
+                  <BookOpen className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
-                    {selectedCourse.title}
+                    {(selectedCourse as any).title}
                   </p>
-                  <p className="text-[10px] text-gray-400 flex items-center gap-2 mt-0.5">
-                    <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" />{fmt(selectedCourse.students)} students</span>
-                    <span className="flex items-center gap-1"><Star className="w-2.5 h-2.5 text-amber-400" />{selectedCourse.rating}</span>
-                    <span className="capitalize">{selectedCourse.level}</span>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Course ID: {(selectedCourse as any).id}
                   </p>
                 </div>
-                <span className="text-[10px] font-bold px-2 py-1 rounded-lg
-                  bg-white/60 dark:bg-white/[0.08] text-gray-600 dark:text-gray-300 flex-shrink-0">
-                  {selectedCourse.lectures} lectures
-                </span>
               </div>
             </motion.div>
           )}
@@ -337,8 +346,8 @@ function CourseInstructorSelector({
                 text-gray-800 dark:text-white outline-none cursor-pointer"
             >
               <option value="">Select an instructor…</option>
-              {instructors.map(i => (
-                <option key={i.id} value={i.id}>{i.name} — {i.title.split("·")[0].trim()}</option>
+              {instructors.map((i: any) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
               ))}
             </select>
           </div>
@@ -354,22 +363,13 @@ function CourseInstructorSelector({
               transition={{ duration: 0.22 }}
               className="mt-3 overflow-hidden"
             >
-              <div className="flex items-center gap-3 p-3 rounded-2xl
-                bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06]">
-                <div className={`w-10 h-10 rounded-xl text-sm font-black text-white
-                  flex items-center justify-center flex-shrink-0 ${selectedInstructor.avatarBg}`}>
-                  {selectedInstructor.avatar}
+              <div className="flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06]">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center flex-shrink-0">
+                  <GraduationCap className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-gray-900 dark:text-white">{selectedInstructor.name}</p>
-                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{selectedInstructor.title}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-xs font-black text-gray-900 dark:text-white flex items-center gap-1">
-                    <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                    {selectedInstructor.rating}
-                  </p>
-                  <p className="text-[10px] text-gray-400">{selectedInstructor.courses} courses</p>
+                  <p className="text-xs font-bold text-gray-900 dark:text-white">{(selectedInstructor as any).name}</p>
+                  <p className="text-[10px] text-gray-400 truncate mt-0.5">Instructor</p>
                 </div>
               </div>
             </motion.div>
@@ -532,6 +532,49 @@ const DEFAULT_RUBRIC: RubricRow[] = [
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminCreateAssignment() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+    queryKey: ["courses-list"],
+    queryFn: async () => {
+      const res = await CoursesService.findAll();
+      return res.items || [];
+    },
+  });
+
+  const { data: instructors = [], isLoading: instructorsLoading } = useQuery({
+    queryKey: ["instructors-list"],
+    queryFn: async () => {
+      const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 });
+      return Array.isArray(res) ? res : (res as any).data || [];
+    },
+  });
+
+  const { mutate: createAssignment, isPending: saving } = useMutation({
+    mutationFn: (payload: CreateAssignmentDto) => AssignmentService.create(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assignments"] });
+      setSuccess(true);
+    },
+    onError: (err: unknown) => {
+      console.error('Assignment creation failed:', err);
+      let message = "Failed to create assignment. Please try again.";
+      
+      if (err instanceof Error) {
+        if (err.message.includes('400')) {
+          message = "Invalid assignment data. Please check all required fields.";
+        } else if (err.message.includes('403')) {
+          message = "You don't have permission to create assignments.";
+        } else if (err.message.includes('401')) {
+          message = "Please log in to create assignments.";
+        } else {
+          message = err.message;
+        }
+      }
+      
+      setErrors(p => ({ ...p, submit: message }));
+    },
+  });
 
   const [form, setForm] = useState<FormState>({
     title:            "",
@@ -550,7 +593,6 @@ export default function AdminCreateAssignment() {
   });
 
   const [errors, setErrors]   = useState<FormErrors>({});
-  const [saving, setSaving]   = useState(false);
   const [success, setSuccess] = useState(false);
 
   const set = <K extends keyof FormState>(key: K) => (value: FormState[K]) => {
@@ -577,16 +619,24 @@ export default function AdminCreateAssignment() {
       document.querySelector("[data-error]")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      setSuccess(true);
-    }, 1800);
+
+    const payload: CreateAssignmentDto = {
+      title: form.title.trim(),
+      courseId: form.courseId,
+      description: form.description.trim(),
+      instructions: form.instructions.trim(),
+      maxScore: form.maxScore,
+      dueDate: new Date(`${form.dueDate}T${form.dueTime}:00`).toISOString(),
+      allowLate: form.allowLate,
+      attachments: [], // TODO: Upload attachments and get URLs
+    };
+
+    createAssignment(payload);
   };
 
   const rubricTotal = form.rubric.reduce((s, r) => s + r.maxScore, 0);
-  const selectedCourse = courses.find(c => c.id === form.courseId);
-  const selectedInstructor = instructors.find(i => i.id === form.instructorId);
+  const selectedCourse = courses.find((c: any) => c.id === form.courseId);
+  const selectedInstructor = instructors.find((i: any) => i.id === form.instructorId);
 
   return (
     <>
@@ -851,13 +901,13 @@ export default function AdminCreateAssignment() {
               {[
                 {
                   label: "Course",
-                  value: selectedCourse?.title.split(":")[0] ?? "—",
-                  sub: selectedCourse ? `${fmt(selectedCourse.students)} students` : null,
+                  value: (selectedCourse as any)?.title ?? "–",
+                  sub: "Selected course",
                 },
                 {
-                  label: "Instructor",
-                  value: selectedInstructor?.name.split(" ")[0] ?? "—",
-                  sub: selectedInstructor?.title.split("·")[0].trim() ?? null,
+                  label: "Instructor", 
+                  value: (selectedInstructor as any)?.name ?? "–",
+                  sub: "Assigned instructor",
                 },
                 {
                   label: "Max Score",
