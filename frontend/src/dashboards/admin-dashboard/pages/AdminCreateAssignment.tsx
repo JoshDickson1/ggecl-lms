@@ -9,7 +9,8 @@ import {
   ArrowLeft, BookOpen, GraduationCap, Calendar,
   FileText, Upload, X, Loader2, CheckCircle2,
   Plus, Trash2, Info, Shield, AlertTriangle,
-  Clock, Users, Star,
+  Clock,
+  Star,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AssignmentService, { type CreateAssignmentDto } from "@/services/assignment.service";
@@ -19,10 +20,6 @@ import { FILE_META, getFileType } from "@/data/academicData";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(" "); }
-
-function fmt(n: number) {
-  return n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
-}
 
 // ─── Shared UI atoms ──────────────────────────────────────────────────────────
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
@@ -250,7 +247,7 @@ function CourseInstructorSelector({
   onInstructorChange: (id: string) => void;
   errors: { course?: string; instructor?: string };
 }) {
-  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+  const { data: courses = [] } = useQuery({
     queryKey: ["courses-list"],
     queryFn: async () => {
       const res = await CoursesService.findAll();
@@ -258,7 +255,7 @@ function CourseInstructorSelector({
     },
   });
 
-  const { data: instructors = [], isLoading: instructorsLoading } = useQuery({
+  const { data: instructors = [] } = useQuery({
     queryKey: ["instructors-list"],
     queryFn: async () => {
       const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 });
@@ -272,9 +269,9 @@ function CourseInstructorSelector({
   // When course is selected, auto-fill instructor if not already set
   const handleCourseChange = (id: string) => {
     onCourseChange(id);
-    const course = courses.find((c: any) => c.id === id);
+    const course = courses.find((c: any) => c.id === id) as any;
     if (course && !selectedInstructorId) {
-      onInstructorChange(course.instructorId || "");
+      onInstructorChange((course.instructorId as string) || "");
     }
   };
 
@@ -304,8 +301,9 @@ function CourseInstructorSelector({
 
         {/* Course preview card */}
         <AnimatePresence>
-          {selectedCourse && (
+          {selectedCourse ? (
             <motion.div
+              key="course-preview"
               initial={{ opacity: 0, y: -8, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -8, height: 0 }}
@@ -326,7 +324,7 @@ function CourseInstructorSelector({
                 </div>
               </div>
             </motion.div>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
 
@@ -355,8 +353,9 @@ function CourseInstructorSelector({
 
         {/* Instructor preview card */}
         <AnimatePresence>
-          {selectedInstructor && (
+          {selectedInstructor ? (
             <motion.div
+              key="instructor-preview"
               initial={{ opacity: 0, y: -8, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -8, height: 0 }}
@@ -373,7 +372,7 @@ function CourseInstructorSelector({
                 </div>
               </div>
             </motion.div>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
     </div>
@@ -534,7 +533,7 @@ export default function AdminCreateAssignment() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+  const { data: courses = [], isLoading: _coursesLoading } = useQuery({
     queryKey: ["courses-list"],
     queryFn: async () => {
       const res = await CoursesService.findAll();
@@ -542,7 +541,7 @@ export default function AdminCreateAssignment() {
     },
   });
 
-  const { data: instructors = [], isLoading: instructorsLoading } = useQuery({
+  const { data: instructors = [], isLoading: _instructorsLoading } = useQuery({
     queryKey: ["instructors-list"],
     queryFn: async () => {
       const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 });

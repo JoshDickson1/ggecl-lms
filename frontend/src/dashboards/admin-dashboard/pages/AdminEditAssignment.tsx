@@ -6,13 +6,12 @@ import {
   ArrowLeft, BookOpen, GraduationCap, Calendar,
   FileText, Upload, X, Loader2, CheckCircle2,
   Plus, Trash2, Info, Shield, AlertTriangle,
-  Clock, Users, Star,
+  Clock, Star,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import AssignmentService, { type AssignmentResponse, type UpdateAssignmentDto } from "@/services/assignment.service";
+import AssignmentService, { type UpdateAssignmentDto } from "@/services/assignment.service";
 import CoursesService from "@/services/course.service";
 import UserService, { UserRole } from "@/services/user.service";
-import { FILE_META, getFileType } from "@/data/academicData";
 
 // ==================== TYPES ====================
 
@@ -53,26 +52,14 @@ interface RubricRow {
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(" "); }
 
-function fmt(n: number) {
-  return n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
-}
-
 // ==================== SHARED UI COMPONENTS ====================
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-[22px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.05)] ${className}`}>{children}</div>;
-}
-
-function Fade({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
-  return <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.36, delay, ease: "easeOut" }}>{children}</motion.div>;
-}
-
-function SectionCard({ icon: Icon, title, children, delay = 0, description }: {
+function SectionCard({ icon: Icon, title, children, delay = 0 }: {
   icon: React.ElementType;
   title: string;
   children: React.ReactNode;
   delay?: number;
-  description?: string;
+  description?: string; // kept for call-site compatibility, not rendered
 }) {
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay }}
@@ -113,11 +100,11 @@ function FieldWrap({ children, error }: { children: React.ReactNode; error?: str
 
 // ==================== CUSTOM COMPONENTS ====================
 
-function RichTextarea({ value, onChange, placeholder, ...props }: {
+function RichTextarea({ value, onChange, placeholder }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-} & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+}) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const adjustHeight = useCallback(() => {
     if (ref.current) {
@@ -136,8 +123,7 @@ function RichTextarea({ value, onChange, placeholder, ...props }: {
       }}
       placeholder={placeholder}
       className="w-full px-4 py-3 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 outline-none resize-none transition-all"
-      rows={1}
-      {...props}
+      rows={4}
     />
   );
 }
@@ -319,7 +305,7 @@ function CourseInstructorSelector({
   onInstructorChange: (id: string) => void;
   errors: { course?: string; instructor?: string };
 }) {
-  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+  const { data: courses = [] } = useQuery({
     queryKey: ["courses-list"],
     queryFn: async () => {
       const res = await CoursesService.findAll();
@@ -327,7 +313,7 @@ function CourseInstructorSelector({
     },
   });
 
-  const { data: instructors = [], isLoading: instructorsLoading } = useQuery({
+  const { data: instructors = [] } = useQuery({
     queryKey: ["instructors-list"],
     queryFn: async () => {
       const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 });
@@ -341,9 +327,9 @@ function CourseInstructorSelector({
   // When course is selected, auto-fill instructor if not already set
   const handleCourseChange = (id: string) => {
     onCourseChange(id);
-    const course = courses.find((c: any) => c.id === id);
+    const course = courses.find((c: any) => c.id === id) as any;
     if (course && !selectedInstructorId) {
-      onInstructorChange(course.instructorId || "");
+      onInstructorChange((course.instructorId as string) || "");
     }
   };
 
@@ -373,8 +359,9 @@ function CourseInstructorSelector({
 
         {/* Course preview card */}
         <AnimatePresence>
-          {selectedCourse && (
+          {selectedCourse ? (
             <motion.div
+              key="course-preview"
               initial={{ opacity: 0, y: -8, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -8, height: 0 }}
@@ -393,7 +380,7 @@ function CourseInstructorSelector({
                 </div>
               </div>
             </motion.div>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
 
@@ -421,8 +408,9 @@ function CourseInstructorSelector({
 
         {/* Instructor preview card */}
         <AnimatePresence>
-          {selectedInstructor && (
+          {selectedInstructor ? (
             <motion.div
+              key="instructor-preview"
               initial={{ opacity: 0, y: -8, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -8, height: 0 }}
@@ -439,7 +427,7 @@ function CourseInstructorSelector({
                 </div>
               </div>
             </motion.div>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
     </div>
@@ -472,7 +460,7 @@ export default function AdminEditAssignment() {
     enabled: !!assignmentId,
   });
 
-  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+  const { data: courses = [] } = useQuery({
     queryKey: ["courses-list"],
     queryFn: async () => {
       const res = await CoursesService.findAll();
@@ -480,7 +468,7 @@ export default function AdminEditAssignment() {
     },
   });
 
-  const { data: instructors = [], isLoading: instructorsLoading } = useQuery({
+  const { data: instructors = [] } = useQuery({
     queryKey: ["instructors-list"],
     queryFn: async () => {
       const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 });
@@ -496,21 +484,7 @@ export default function AdminEditAssignment() {
       setSuccess(true);
     },
     onError: (err: unknown) => {
-      console.error('Assignment update failed:', err);
-      let message = "Failed to update assignment. Please try again.";
-      
-      if (err instanceof Error) {
-        if (err.message.includes('400')) {
-          message = "Invalid assignment data. Please check all required fields.";
-        } else if (err.message.includes('403')) {
-          message = "You don't have permission to update assignments.";
-        } else if (err.message.includes('401')) {
-          message = "Please log in to update assignments.";
-        } else {
-          message = err.message;
-        }
-      }
-      
+      const message = err instanceof Error ? err.message : "Failed to update assignment. Please try again.";
       setErrors(p => ({ ...p, submit: message }));
     },
   });

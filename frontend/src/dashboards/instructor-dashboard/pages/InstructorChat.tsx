@@ -216,9 +216,9 @@ function MessageBubble({
         )}
 
         {msg.replyToPreview && (
-          <div className="mb-1.5 pl-3 border-l-2 border-violet-400 dark:border-violet-600">
-            <p className="text-[11px] font-semibold text-violet-500">{msg.replyToPreview.senderName}</p>
-            <p className="text-[11px] text-gray-400 truncate">{msg.replyToPreview.content ?? "Message deleted"}</p>
+          <div className="mb-2 px-3 py-2 rounded-xl bg-violet-50 dark:bg-violet-900/20 border-l-[3px] border-violet-400 dark:border-violet-500">
+            <p className="text-[11px] font-bold text-violet-600 dark:text-violet-400 mb-0.5">{msg.replyToPreview.senderName}</p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{msg.replyToPreview.content ?? "Message deleted"}</p>
           </div>
         )}
 
@@ -1046,6 +1046,28 @@ function ChatView({
       ChatService.reactToMessage(room.id, messageId, reaction),
   });
 
+  const handleReact = (msgId: string, reaction: MessageReaction) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const existing = m.reactions.find((r) => r.reaction === reaction);
+        const alreadyReacted = existing?.userIds.includes(currentUserId);
+        let reactions = m.reactions;
+        if (alreadyReacted) {
+          reactions = reactions
+            .map((r) => r.reaction === reaction ? { ...r, userIds: r.userIds.filter((id) => id !== currentUserId) } : r)
+            .filter((r) => r.userIds.length > 0);
+        } else if (existing) {
+          reactions = reactions.map((r) => r.reaction === reaction ? { ...r, userIds: [...r.userIds, currentUserId] } : r);
+        } else {
+          reactions = [...reactions, { reaction, userIds: [currentUserId] }];
+        }
+        return { ...m, reactions };
+      })
+    );
+    reactMutation.mutate({ messageId: msgId, reaction });
+  };
+
   const pinMutation = useMutation({
     mutationFn: ({ messageId, isPinned }: { messageId: string; isPinned: boolean }) =>
       isPinned ? ChatService.unpinMessage(room.id, messageId) : ChatService.pinMessage(room.id, messageId),
@@ -1104,7 +1126,7 @@ function ChatView({
                   prevSenderId={i > 0 ? messages[i - 1].senderId : undefined}
                   currentUserId={currentUserId}
                   onReply={setReplyTo}
-                  onReact={(msgId, reaction) => reactMutation.mutate({ messageId: msgId, reaction })}
+                  onReact={(msgId, reaction) => handleReact(msgId, reaction)}
                   onDelete={(msgId) => deleteMutation.mutate(msgId)}
                   onPin={(msgId) => {
                     const m = messages.find((x) => x.id === msgId);

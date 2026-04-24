@@ -323,7 +323,7 @@ export default function AdminSettings() {
       await UserService.update(user.id, {
         name,
         bio:   personal.bio   || undefined,
-        phone: personal.phone || undefined,
+        phoneNumber: personal.phone || undefined,
       });
       await authClient.updateUser({ name });
       showToast("Profile saved successfully!");
