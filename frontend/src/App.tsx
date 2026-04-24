@@ -93,7 +93,7 @@ import StudentChat            from "./dashboards/student-dashboard/pages/Student
 import StudentSearch          from "./dashboards/student-dashboard/pages/StudentSearch";
 import StudentCategories      from "./dashboards/student-dashboard/pages/StudentCategories";
 import StudentSingleCategory  from "./dashboards/student-dashboard/pages/StudentSingleCategory";
-import StudentViewCourse      from "./dashboards/student-dashboard/pages/StudentViewCourse";
+import StudentWatchCourse     from "./dashboards/student-dashboard/pages/StudentWatchCourse";
 import StudentStudentInfoForm from "./dashboards/student-dashboard/pages/StudentStudentInfoForm";
 // ── Shared ────────────────────────────────────────────────────
 import NotFound                  from "./landing/_components/NotFound";
@@ -252,7 +252,7 @@ const router = createBrowserRouter([
           { path: "wishlist",                     element: <StudentWishlist /> },
           { path: "courses",                      element: <StudentCourses /> },
           { path: "courses/:id",                  element: <StudentSingleCourse /> },
-          { path: "courses/:id/watch",            element: <StudentViewCourse /> },
+          { path: "courses/:id/watch",            element: <StudentWatchCourse /> },
           { path: "explore",                      element: <StudentExploreCourses /> },
           { path: "instructors/:id",              element: <StudentSingleInstructor /> },
           { path: "cart",                         element: <StudentCart /> },

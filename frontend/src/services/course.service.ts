@@ -83,6 +83,64 @@ export interface PaginatedCourses<T> {
   nextCursor: string | null;
 }
 
+// ─── COURSE RESPONSE TYPES ───────────────────────────────────────────────────
+
+export interface CourseResponse {
+  id: string;
+  title: string;
+  description: string;
+  img: string;
+  price: number;
+  level: CourseLevel;
+  status: CourseStatus;
+  certification: CertificationType;
+  badge?: string;
+  tags: string[];
+  averageRating: number;
+  reviewCount: number;
+  publishedAt: string;
+  instructorId: string;
+  createdAt: string;
+  updatedAt: string;
+  _count: {
+    enrollments: number;
+  };
+  sections?: CourseSection[] | string;
+  totalLectures?: number;
+  totalDuration?: number;
+  isEnrolled?: boolean;
+  videoUrl?: string;
+  syllabus?: string[];
+  includes?: string[];
+}
+
+export interface CourseSection {
+  id: string;
+  title: string;
+  position: number;
+  lessons: CourseLesson[];
+}
+
+export interface CourseLesson {
+  id: string;
+  title: string;
+  description?: string;
+  position: number;
+  duration?: number;
+  isPreview?: boolean;
+  materials?: CourseMaterial[];
+}
+
+export interface CourseMaterial {
+  id: string;
+  type: MaterialType;
+  title: string;
+  url: string;
+  publicId?: string;
+  fileName?: string;
+  size?: number;
+}
+
 // ─── CURRICULUM ───────────────────────────────────────────────────────────────
 
 export interface CreateSectionPayload {
@@ -195,9 +253,21 @@ export default class CoursesService {
    * STUDENT must be enrolled.
    * @param id - Course ID
    */
-  static async findOne(id: string): Promise<unknown> {
+  static async findOne(id: string): Promise<CourseResponse> {
     const response = await APIConfig.fetch(`/courses/${id}`);
-    return response.json();
+    const data = await response.json();
+    
+    // Handle sections field that might come back as string from API
+    if (typeof data.sections === 'string') {
+      try {
+        data.sections = JSON.parse(data.sections);
+      } catch (error) {
+        console.warn('Failed to parse sections field:', error);
+        data.sections = [];
+      }
+    }
+    
+    return data;
   }
 
   /**

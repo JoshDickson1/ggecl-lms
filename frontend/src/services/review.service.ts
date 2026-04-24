@@ -28,6 +28,38 @@ export interface ReviewQuery {
   sortOrder?: "asc" | "desc";
 }
 
+export interface ReviewResponse {
+  id: string;
+  rating: number;
+  comment: string;
+  isEdited: boolean;
+  student: {
+    id: string;
+    user: {
+      id: string;
+      name: string;
+      image?: string;
+    };
+  };
+  reply?: {
+    id: string;
+    comment: string;
+    isEdited: boolean;
+    instructor: {
+      id: string;
+      user: {
+        id: string;
+        name: string;
+        image?: string;
+      };
+    };
+    createdAt: string;
+    updatedAt: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ==================== SERVICE ====================
 
 export default class ReviewService {
@@ -53,7 +85,7 @@ export default class ReviewService {
    * STUDENT only.
    * @param courseId - Course ID
    */
-  static async getMyReview(courseId: string): Promise<unknown> {
+  static async getMyReview(courseId: string): Promise<ReviewResponse | null> {
     const response = await APIConfig.fetch(
       `/reviews/courses/${courseId}/my-review`
     );

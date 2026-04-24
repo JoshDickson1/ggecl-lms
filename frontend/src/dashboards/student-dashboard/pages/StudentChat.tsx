@@ -1,28 +1,56 @@
-// src/dashboards/student/pages/StudentChat.tsx
-import { useState, useRef, useEffect } from "react";
+// src/dashboards/student-dashboard/pages/StudentChat.tsx
+// Real implementation — uses REST API + Socket.IO (hybrid model per WebSocket Integration Guide)
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Hash, Users, Award, Info, ChevronDown, Star } from "lucide-react";
 import {
-  MOCK_CLASSROOMS, MOCK_CLASSGROUPS,
-  CLASSROOM_MESSAGES, CLASSGROUP_MESSAGES,
-  ME,
-  type ChatMessage, type Classroom, type ClassGroup,
-} from "@/data/chatData";
-import type { LetterGrade } from "@/data/academicData";
-// import { GRADE_META } from "@/data/academicData";
-import {
-  Card, ChatBubble, GradeBadge, GradePanel,
-  MessageInput, RoomDetailDialog
-} from "@/data/ChatShare";
-
-// Student only sees rooms they belong to
-const MY_ID = ME.id;
-const myClassrooms = MOCK_CLASSROOMS.filter(c =>
-  c.students.some(s => s.id === MY_ID) || c.instructors.some(i => i.id === MY_ID)
-);
-const myGroups = MOCK_CLASSGROUPS.filter(g => g.members.some(m => m.id === MY_ID));
+  Hash, Users, Info, ChevronDown, MessageSquare,
+  Loader2, AlertCircle, Pin, X, Send, Reply, Smile, Download,
+  Paperclip, Image as ImageIcon, Film, FileText,
+} from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import ChatService, {
+  type RoomSummaryItem, type ChatMessage, type RoomDetail,
+  type MessageReaction, REACTION_EMOJI,
+} from "@/services/chat.service";
+import { useChatSocket } from "@/hooks/useChatSocket";
+import { useDashboardUser } from "@/hooks/useDashboardUser";
+import { APIConfig } from "@/lib/api.config";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+const ROOM_GRADIENTS_CLASSROOM = [
+  "from-blue-500 to-indigo-600",
+  "from-violet-500 to-purple-600",
+  "from-sky-500 to-blue-600",
+  "from-cyan-500 to-teal-600",
+];
+const ROOM_GRADIENTS_GROUP = [
+  "from-emerald-500 to-teal-600",
+  "from-amber-500 to-orange-600",
+  "from-rose-500 to-pink-600",
+  "from-fuchsia-500 to-purple-600",
+];
+
+function roomGradient(type: string, index: number): string {
+  const arr = type === "CLASSROOM" ? ROOM_GRADIENTS_CLASSROOM : ROOM_GRADIENTS_GROUP;
+  return arr[index % arr.length];
+}
+
+// ─── Shared UI ────────────────────────────────────────────────────────────────
 
 function Fade({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   return (
@@ -32,51 +60,52 @@ function Fade({ children, delay = 0 }: { children: React.ReactNode; delay?: numb
   );
 }
 
-// ─── Classroom Card ───────────────────────────────────────────────────────────
-
-function ClassroomCard({ room, onClick }: { room: Classroom; onClick: () => void }) {
-  const memberCount = room.students.length + room.instructors.length;
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onClick} className="cursor-pointer">
-      <Card className="p-5 hover:shadow-md transition-shadow">
-        <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${room.color} flex items-center justify-center text-2xl flex-shrink-0 shadow-md`}>
-            {room.icon}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate">{room.name}</h3>
-            <p className="text-xs text-gray-400 truncate mt-0.5">{room.description}</p>
-            <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
-              <span className="flex items-center gap-1"><Users className="w-3 h-3" />{memberCount} members</span>
-              <span className="flex items-center gap-1"><Hash className="w-3 h-3" />{room.totalMessages} messages</span>
-            </div>
-          </div>
-          <ChevronDown className="-rotate-90 w-4 h-4 text-gray-400 flex-shrink-0" />
-        </div>
-      </Card>
-    </motion.div>
+    <div className={`rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] ${className}`}>
+      {children}
+    </div>
   );
 }
 
-// ─── Group Card ───────────────────────────────────────────────────────────────
+// ─── Room List Card ───────────────────────────────────────────────────────────
 
-function GroupCard({ group, onClick }: { group: ClassGroup; onClick: () => void }) {
+function RoomCard({
+  room, index, onClick,
+}: {
+  room: RoomSummaryItem;
+  index: number;
+  onClick: () => void;
+}) {
+  const gradient = roomGradient(room.type, index);
+  const icon = room.type === "CLASSROOM" ? "🏫" : "👥";
+
   return (
     <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onClick} className="cursor-pointer">
       <Card className="p-5 hover:shadow-md transition-shadow">
         <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${group.color} flex items-center justify-center text-2xl flex-shrink-0 shadow-md`}>
-            {group.icon}
+          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${gradient} flex items-center justify-center text-2xl flex-shrink-0 shadow-md`}>
+            {icon}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
-              <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate">{group.name}</h3>
-              {group.grade && <GradeBadge grade={group.grade} />}
+              <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate">{room.name}</h3>
+              {room.grade && (
+                <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30">
+                  {room.grade.resolvedGrade}%
+                </span>
+              )}
             </div>
-            <p className="text-xs text-gray-400 truncate">{group.classroomName}</p>
+            {room.description && (
+              <p className="text-xs text-gray-400 truncate mt-0.5">{room.description}</p>
+            )}
             <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
-              <span className="flex items-center gap-1"><Users className="w-3 h-3" />{group.members.length} members</span>
-              <span className="flex items-center gap-1"><Hash className="w-3 h-3" />{group.totalMessages} messages</span>
+              <span className="flex items-center gap-1">
+                <Users className="w-3 h-3" />{room.memberCount} members
+              </span>
+              <span className="flex items-center gap-1">
+                <Hash className="w-3 h-3" />{room.totalMessages} messages
+              </span>
             </div>
           </div>
           <ChevronDown className="-rotate-90 w-4 h-4 text-gray-400 flex-shrink-0" />
@@ -86,63 +115,857 @@ function GroupCard({ group, onClick }: { group: ClassGroup; onClick: () => void 
   );
 }
 
-// ─── Chat View ────────────────────────────────────────────────────────────────
+// ─── Emoji Picker ─────────────────────────────────────────────────────────────
 
-function ChatView({
-//   roomId, 
-  roomType, roomName, roomColor, roomIcon,
-  members, messages, onSend, onBack, onInfo,
-  groupGrade, onReact, onPin, onDelete,
+const REACTIONS = Object.entries(REACTION_EMOJI) as [MessageReaction, string][];
+
+function EmojiPicker({ onPick, onClose }: { onPick: (r: MessageReaction) => void; onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9, y: 4 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.12 }}
+      className="absolute bottom-full mb-1 right-0 z-30 flex gap-1 p-2 rounded-2xl bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] shadow-xl"
+    >
+      {REACTIONS.map(([key, emoji]) => (
+        <button
+          key={key}
+          onClick={() => { onPick(key); onClose(); }}
+          className="text-lg hover:scale-125 transition-transform"
+          title={key}
+        >
+          {emoji}
+        </button>
+      ))}
+    </motion.div>
+  );
+}
+
+// ─── Message Bubble ───────────────────────────────────────────────────────────
+
+function MessageBubble({
+  msg, isMe, prevSenderId, currentUserId, onReply, onReact, onDelete,
 }: {
-  roomId: string; roomType: "classroom" | "classgroup";
-  roomName: string; roomColor: string; roomIcon: string;
-  members: any[]; messages: ChatMessage[];
-  onSend: (text: string, files: File[]) => void;
-  onBack: () => void; onInfo: () => void;
-  groupGrade?: LetterGrade;
-  onReact: (msgId: string, emoji: string) => void;
-  onPin: (msgId: string) => void;
+  msg: ChatMessage;
+  isMe: boolean;
+  prevSenderId?: string;
+  currentUserId: string;
+  onReply: (m: ChatMessage) => void;
+  onReact: (msgId: string, reaction: MessageReaction) => void;
   onDelete: (msgId: string) => void;
 }) {
-  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [showActions, setShowActions] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const isGrouped = prevSenderId === msg.senderId;
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
+  if (msg.isDeleted) {
+    return (
+      <div className="px-4 py-1">
+        <span className="text-xs text-gray-400 italic">{msg.deletedLabel ?? "Message deleted"}</span>
+      </div>
+    );
+  }
+
+  const isSending = (msg as any)._sending === true;
+  const isFailed  = (msg as any)._failed  === true;
+
+  const initials = msg.senderName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className={`group relative flex gap-3 px-4 ${isGrouped ? "mt-0.5" : "mt-4"} hover:bg-gray-50/60 dark:hover:bg-white/[0.02] rounded-xl transition-colors`}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => { setShowActions(false); setShowEmoji(false); }}
+    >
+      {/* Avatar */}
+      <div className="w-9 flex-shrink-0 flex flex-col items-center pt-0.5">
+        {!isGrouped ? (
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black overflow-hidden">
+            {msg.senderImage
+              ? <img src={msg.senderImage} alt="" className="w-full h-full object-cover" />
+              : initials}
+          </div>
+        ) : (
+          <span className="text-[10px] text-gray-300 dark:text-gray-700 opacity-0 group-hover:opacity-100 mt-1 w-9 text-center tabular-nums">
+            {formatTime(msg.createdAt)}
+          </span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        {!isGrouped && (
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`text-sm font-bold ${isMe ? "text-blue-600 dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
+              {msg.senderName}
+            </span>
+            {msg.senderIsElevated && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                {msg.senderPlatformRole}
+              </span>
+            )}
+            <span className="text-[10px] text-gray-400">{timeAgo(msg.createdAt)}</span>
+            {msg.isPinned && (
+              <span className="flex items-center gap-0.5 text-[10px] text-amber-500 font-semibold">
+                <Pin className="w-3 h-3" />Pinned
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Reply context */}
+        {msg.replyToPreview && (
+          <div className="mb-1.5 pl-3 border-l-2 border-blue-400 dark:border-blue-600">
+            <p className="text-[11px] font-semibold text-blue-500">{msg.replyToPreview.senderName}</p>
+            <p className="text-[11px] text-gray-400 truncate">{msg.replyToPreview.content ?? "Message deleted"}</p>
+          </div>
+        )}
+
+        {/* Text */}
+        {msg.content && (
+          <p className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${isSending ? "text-gray-400 dark:text-gray-500" : "text-gray-800 dark:text-gray-200"}`}>
+            {msg.content}
+          </p>
+        )}
+
+        {/* Sending / failed indicator */}
+        {(isSending || isFailed) && (
+          <div className={`flex items-center gap-1 mt-1 text-[10px] ${isFailed ? "text-rose-500" : "text-gray-400"}`}>
+            {isSending && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+            {isSending ? "Sending…" : "Failed to send"}
+          </div>
+        )}
+
+        {/* Attachments */}
+        {msg.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {msg.attachments.map((att) => (
+              <a
+                key={att.id}
+                href={att.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-colors max-w-[220px]"
+              >
+                <Download className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{att.fileName}</p>
+                  <p className="text-[10px] text-gray-400">{(att.size / 1024).toFixed(0)} KB</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* Reactions */}
+        {msg.reactions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {msg.reactions.map((r) => {
+              const hasMe = r.userIds.includes(currentUserId);
+              return (
+                <button
+                  key={r.reaction}
+                  onClick={() => onReact(msg.id, r.reaction)}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all ${
+                    hasMe
+                      ? "bg-blue-50 border-blue-300 dark:bg-blue-900/30 dark:border-blue-700"
+                      : "bg-gray-50 border-gray-200 dark:bg-white/[0.04] dark:border-white/[0.08]"
+                  }`}
+                >
+                  <span>{REACTION_EMOJI[r.reaction]}</span>
+                  <span className="text-gray-600 dark:text-gray-400 font-semibold">{r.userIds.length}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Action toolbar */}
+      <AnimatePresence>
+        {showActions && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.1 }}
+            className="absolute right-4 -top-4 flex items-center gap-0.5 px-2 py-1 rounded-xl bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] shadow-lg z-20"
+          >
+            <button
+              onClick={() => onReply(msg)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+              title="Reply"
+            >
+              <Reply className="w-3.5 h-3.5" />
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowEmoji((p) => !p)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all"
+                title="React"
+              >
+                <Smile className="w-3.5 h-3.5" />
+              </button>
+              <AnimatePresence>
+                {showEmoji && (
+                  <EmojiPicker
+                    onPick={(r) => onReact(msg.id, r)}
+                    onClose={() => setShowEmoji(false)}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
+            {isMe && (
+              <button
+                onClick={() => onDelete(msg.id)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all"
+                title="Delete"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// ─── File upload helpers ──────────────────────────────────────────────────────
+
+function getFileIcon(mimeType: string) {
+  if (mimeType.startsWith("image/")) return <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />;
+  if (mimeType.startsWith("video/")) return <Film className="w-3.5 h-3.5 text-blue-500" />;
+  if (mimeType === "application/pdf") return <FileText className="w-3.5 h-3.5 text-rose-500" />;
+  return <Paperclip className="w-3.5 h-3.5 text-gray-400" />;
+}
+
+interface PendingFile {
+  file: File;
+  preview?: string; // for images
+  uploading: boolean;
+  error?: string;
+  result?: { key: string; url: string; fileName: string; mimeType: string; size: number };
+}
+
+async function uploadChatFile(file: File): Promise<{ key: string; url: string; fileName: string; mimeType: string; size: number }> {
+  // Get presigned URL from backend
+  const res = await APIConfig.fetch("/storage/presigned-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      folder: "chat-attachments",
+      fileName: file.name,
+      contentType: file.type,
+      contentLength: file.size,
+    }),
+  });
+  const { uploadUrl, key, publicUrl } = await res.json();
+
+  // PUT directly to R2
+  await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+
+  return { key, url: publicUrl, fileName: file.name, mimeType: file.type, size: file.size };
+}
+
+function MessageInput({
+  replyTo,
+  onCancelReply,
+  onSend,
+  disabled,
+}: {
+  replyTo: ChatMessage | null;
+  onCancelReply: () => void;
+  onSend: (content: string, attachments?: { key: string; url: string; fileName: string; mimeType: string; size: number }[]) => void;
+  disabled?: boolean;
+}) {
+  const [text, setText] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const canSend = (text.trim().length > 0 || pendingFiles.length > 0) && !disabled && !isUploading;
+
+  const addFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const newFiles: PendingFile[] = Array.from(files).map((f) => ({
+      file: f,
+      preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+      uploading: true,
+    }));
+    setPendingFiles((prev) => [...prev, ...newFiles]);
+    setIsUploading(true);
+
+    const results = await Promise.allSettled(
+      newFiles.map((pf) => uploadChatFile(pf.file))
+    );
+
+    setPendingFiles((prev) => {
+      const updated = [...prev];
+      const startIdx = updated.length - newFiles.length;
+      results.forEach((r, i) => {
+        const idx = startIdx + i;
+        if (r.status === "fulfilled") {
+          updated[idx] = { ...updated[idx], uploading: false, result: r.value };
+        } else {
+          updated[idx] = { ...updated[idx], uploading: false, error: "Upload failed" };
+        }
+      });
+      return updated;
+    });
+    setIsUploading(false);
+  };
+
+  const removeFile = (index: number) => {
+    setPendingFiles((prev) => {
+      const f = prev[index];
+      if (f.preview) URL.revokeObjectURL(f.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const submit = () => {
+    if (!canSend) return;
+    const attachments = pendingFiles.filter((f) => f.result).map((f) => f.result!);
+    onSend(text.trim(), attachments.length > 0 ? attachments : undefined);
+    setText("");
+    setPendingFiles([]);
+    if (textareaRef.current) textareaRef.current.style.height = "42px";
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+  };
+
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setText(e.target.value);
+    const el = e.target;
+    el.style.height = "42px";
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  };
+
+  return (
+    <div className="px-4 py-3 border-t border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
+      {/* Reply strip */}
+      {replyTo && (
+        <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/30">
+          <Reply className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-blue-600">{replyTo.senderName}</p>
+            <p className="text-xs text-gray-500 truncate">{replyTo.content}</p>
+          </div>
+          <button onClick={onCancelReply} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Pending file previews */}
+      {pendingFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {pendingFiles.map((pf, i) => (
+            <div key={i} className="relative flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] max-w-[180px]">
+              {pf.preview ? (
+                <img src={pf.preview} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-white/[0.08] flex items-center justify-center flex-shrink-0">
+                  {getFileIcon(pf.file.type)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{pf.file.name}</p>
+                <p className="text-[10px] text-gray-400">
+                  {pf.uploading ? (
+                    <span className="flex items-center gap-1"><Loader2 className="w-2.5 h-2.5 animate-spin" />Uploading…</span>
+                  ) : pf.error ? (
+                    <span className="text-rose-500">{pf.error}</span>
+                  ) : (
+                    `${(pf.file.size / 1024).toFixed(0)} KB`
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => removeFile(i)}
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-500 text-white flex items-center justify-center hover:bg-rose-500 transition-colors"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Input row */}
+      <div className="flex items-end gap-2">
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={disabled}
+          className="p-2.5 rounded-xl text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all flex-shrink-0 disabled:opacity-40"
+          title="Attach file"
+        >
+          <Paperclip className="w-4 h-4" />
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
+          className="hidden"
+          onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
+        />
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={handleInput}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+          disabled={disabled}
+          className="flex-1 px-4 py-2.5 rounded-2xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none transition-all disabled:opacity-50"
+          style={{ minHeight: "42px", maxHeight: "128px" }}
+        />
+        <button
+          onClick={submit}
+          disabled={!canSend}
+          className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0 shadow-md"
+        >
+          {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Room Detail Panel ────────────────────────────────────────────────────────
+
+function RoomDetailPanel({
+  detail,
+  gradient,
+  onClose,
+}: {
+  detail: RoomDetail;
+  gradient: string;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"info" | "members" | "pinned" | "grade">("info");
+  const tabs = [
+    { id: "info",    label: "Info" },
+    { id: "members", label: `Members (${detail.memberCount})` },
+    { id: "pinned",  label: `Pinned (${detail.pinnedMessages.length})` },
+    ...(detail.type === "GROUP" && detail.grade ? [{ id: "grade", label: "Grade" }] : []),
+  ] as const;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.22 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg bg-white dark:bg-[#0f1623] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/[0.08] overflow-hidden max-h-[85vh] flex flex-col"
+      >
+        {/* Header */}
+        <div className={`px-6 py-5 bg-gradient-to-br ${gradient} relative`}>
+          <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle,white 1px,transparent 1px)", backgroundSize: "18px 18px" }} />
+          <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-xl bg-white/20 text-white hover:bg-white/30 transition-all">
+            <X className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-3 relative">
+            <span className="text-4xl">{detail.type === "CLASSROOM" ? "🏫" : "👥"}</span>
+            <div>
+              <span className="text-xs font-bold text-white/70 uppercase tracking-widest">{detail.type}</span>
+              <h2 className="text-xl font-black text-white">{detail.name}</h2>
+              {detail.description && <p className="text-white/70 text-xs mt-0.5">{detail.description}</p>}
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 p-2 border-b border-gray-100 dark:border-white/[0.07] bg-gray-50/60 dark:bg-white/[0.02]">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id as typeof tab)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                tab === t.id
+                  ? "bg-white dark:bg-[#0f1623] shadow-sm text-gray-900 dark:text-white"
+                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {tab === "info" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                {[
+                  { label: "Messages", value: detail.totalMessages },
+                  { label: "Members",  value: detail.memberCount },
+                  { label: "Pinned",   value: detail.pinnedMessages.length },
+                ].map(({ label, value }) => (
+                  <div key={label} className="rounded-xl p-3 bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
+                    <p className="font-black text-gray-900 dark:text-white text-lg">{value}</p>
+                    <p className="text-[11px] text-gray-400">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab === "members" && (
+            <div className="space-y-2">
+              {detail.members.map((m) => {
+                const initials = m.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+                return (
+                  <div key={m.userId} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black overflow-hidden flex-shrink-0">
+                      {m.image ? <img src={m.image} alt="" className="w-full h-full object-cover" /> : initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{m.name}</p>
+                      <p className="text-xs text-gray-400 truncate">{m.email}</p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400">
+                      {m.role}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {tab === "pinned" && (
+            <div className="space-y-3">
+              {detail.pinnedMessages.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">No pinned messages</p>
+              ) : (
+                detail.pinnedMessages.map((msg) => (
+                  <div key={msg.id} className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Pin className="w-3 h-3 text-amber-500" />
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">{msg.senderName}</span>
+                      <span className="text-[10px] text-gray-400">{timeAgo(msg.createdAt)}</span>
+                    </div>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{msg.content}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {tab === "grade" && detail.grade && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 p-5 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
+                <div className="text-4xl font-black text-gray-900 dark:text-white">{detail.grade.resolvedGrade}%</div>
+                <div>
+                  <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Score: {detail.grade.score}</p>
+                  <p className="text-xs text-gray-400">Graded {timeAgo(detail.grade.gradedAt)}</p>
+                </div>
+              </div>
+              {detail.grade.feedback && (
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Feedback</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{detail.grade.feedback}</p>
+                </div>
+              )}
+              {detail.grade.rubricItems.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Rubric</p>
+                  <div className="space-y-3">
+                    {detail.grade.rubricItems.map((r) => {
+                      const pct = Math.round((r.score / r.maxScore) * 100);
+                      return (
+                        <div key={r.id}>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-gray-600 dark:text-gray-400">{r.label}</span>
+                            <span className="font-bold text-gray-900 dark:text-white">{r.score}/{r.maxScore}</span>
+                          </div>
+                          <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Chat View (active room) ──────────────────────────────────────────────────
+
+function ChatView({
+  room,
+  roomIndex,
+  currentUserId,
+  onBack,
+}: {
+  room: RoomSummaryItem;
+  roomIndex: number;
+  currentUserId: string;
+  onBack: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const gradient = roomGradient(room.type, roomIndex);
+
+  // ── Fetch initial messages ────────────────────────────────────────────────
+
+  const { isLoading: loadingMsgs } = useQuery({
+    queryKey: ["chat-messages", room.id],
+    queryFn: async () => {
+      const res = await ChatService.getMessages(room.id, { limit: 50 });
+      // API returns newest-first; reverse for display
+      setMessages([...res.data].reverse());
+      return res;
+    },
+  });
+
+  // ── Fetch room detail (for info panel) ───────────────────────────────────
+
+  const { data: roomDetail } = useQuery({
+    queryKey: ["chat-room-detail", room.id],
+    queryFn: () => ChatService.getRoomSummary(room.id),
+    enabled: showDetail,
+  });
+
+  // ── Socket ────────────────────────────────────────────────────────────────
+
+  const { joinRoom, leaveRoom } = useChatSocket({
+    onMessageNew: useCallback((msg: ChatMessage) => {
+      if (msg.roomId !== room.id) return;
+      setMessages((prev) => {
+        // Deduplicate — socket fires for sender too
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+    }, [room.id]),
+
+    onMessageDeleted: useCallback((payload: import("@/hooks/useChatSocket").MessageDeletedPayload) => {
+      const { messageId, deletedLabel } = payload;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, isDeleted: true, content: null, deletedLabel } : m
+        )
+      );
+    }, []),
+
+    onMessageReacted: useCallback((payload: import("@/hooks/useChatSocket").MessageReactedPayload) => {
+      const { messageId, reaction, userId, toggled } = payload;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId) return m;
+          const existing = m.reactions.find((r) => r.reaction === reaction);
+          let reactions = m.reactions;
+          if (toggled === "added") {
+            if (existing) {
+              reactions = reactions.map((r) =>
+                r.reaction === reaction ? { ...r, userIds: [...r.userIds, userId] } : r
+              );
+            } else {
+              reactions = [...reactions, { reaction, userIds: [userId] }];
+            }
+          } else {
+            reactions = reactions
+              .map((r) =>
+                r.reaction === reaction
+                  ? { ...r, userIds: r.userIds.filter((id) => id !== userId) }
+                  : r
+              )
+              .filter((r) => r.userIds.length > 0);
+          }
+          return { ...m, reactions };
+        })
+      );
+    }, []),
+
+    onMessagePinned: useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: ["chat-room-detail", room.id] });
+    }, [room.id, queryClient]),
+  });
+
+  useEffect(() => {
+    joinRoom(room.id);
+    return () => leaveRoom(room.id);
+  }, [room.id, joinRoom, leaveRoom]);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
+  const sendMutation = useMutation({
+    mutationFn: ({ content, attachments }: { content: string; attachments?: { key: string; url: string; fileName: string; mimeType: string; size: number }[] }) =>
+      ChatService.sendMessage(room.id, {
+        content,
+        replyToId: replyTo?.id,
+        attachments,
+      }),
+    // Optimistic: show message immediately before server responds
+    onMutate: ({ content, attachments }) => {
+      setIsSending(true);
+      const tempId = `temp-${Date.now()}`;
+      const optimistic: ChatMessage & { _tempId: string; _sending: boolean } = {
+        _tempId: tempId,
+        _sending: true,
+        id: tempId,
+        roomId: room.id,
+        senderId: currentUserId,
+        senderName: "You",
+        senderImage: null,
+        senderIsElevated: false,
+        senderPlatformRole: "STUDENT",
+        content,
+        replyToId: replyTo?.id ?? null,
+        replyToPreview: replyTo ? { id: replyTo.id, senderName: replyTo.senderName, content: replyTo.content } : null,
+        attachments: (attachments ?? []).map((a, i) => ({ id: `temp-att-${i}`, fileName: a.fileName, url: a.url, mimeType: a.mimeType, size: a.size })),
+        reactions: [],
+        mentionedUserIds: [],
+        isDeleted: false,
+        deletedLabel: null,
+        isPinned: false,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimistic]);
+      return { tempId };
+    },
+    // Replace temp message with real one from server
+    onSuccess: (msg, _vars, ctx) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === (ctx as any)?.tempId ? msg : m))
+      );
+    },
+    // Mark temp message as failed
+    onError: (_err, _vars, ctx) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === (ctx as any)?.tempId
+            ? { ...m, _failed: true, _sending: false } as any
+            : m
+        )
+      );
+    },
+    onSettled: () => setIsSending(false),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (messageId: string) => ChatService.deleteMessage(room.id, messageId),
+    // Optimistic: socket will confirm via message:deleted
+    onMutate: (messageId) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, isDeleted: true, content: null } : m))
+      );
+    },
+  });
+
+  const reactMutation = useMutation({
+    mutationFn: ({ messageId, reaction }: { messageId: string; reaction: MessageReaction }) =>
+      ChatService.reactToMessage(room.id, messageId, reaction),
+    // Socket will confirm via message:reacted
+  });
+
+  const handleSend = (content: string, attachments?: { key: string; url: string; fileName: string; mimeType: string; size: number }[]) => {
+    sendMutation.mutate({ content, attachments });
+    setReplyTo(null);
+  };
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
-        <button onClick={onBack} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
+        <button
+          onClick={onBack}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all"
+        >
           <ChevronDown className="w-4 h-4 rotate-90" />
         </button>
-        <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${roomColor} flex items-center justify-center text-xl flex-shrink-0`}>{roomIcon}</div>
-        <div className="flex-1 min-w-0">
-          <h2 className="font-black text-gray-900 dark:text-white text-sm truncate">{roomName}</h2>
-          <p className="text-xs text-gray-400">{members.length} members · {roomType === "classgroup" ? "Classgroup" : "Classroom"}</p>
+        <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-xl flex-shrink-0`}>
+          {room.type === "CLASSROOM" ? "🏫" : "👥"}
         </div>
-        {groupGrade && <GradeBadge grade={groupGrade} />}
-        <button onClick={onInfo} className="p-2 rounded-xl text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all" title="Room info">
+        <div className="flex-1 min-w-0">
+          <h2 className="font-black text-gray-900 dark:text-white text-sm truncate">{room.name}</h2>
+          <p className="text-xs text-gray-400">
+            {room.memberCount} members · {room.type === "CLASSROOM" ? "Classroom" : "Group"}
+          </p>
+        </div>
+        {room.grade && (
+          <span className="px-2.5 py-1 rounded-xl text-sm font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30">
+            {room.grade.resolvedGrade}%
+          </span>
+        )}
+        <button
+          onClick={() => setShowDetail(true)}
+          className="p-2 rounded-xl text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+          title="Room info"
+        >
           <Info className="w-4 h-4" />
         </button>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-2">
-        {messages.map((msg, i) => (
-          <ChatBubble
-            key={msg.id}
-            message={msg}
-            isMe={msg.senderId === MY_ID}
-            prevSenderId={i > 0 ? messages[i - 1].senderId : undefined}
-            canPin={false}
-            canDelete={msg.senderId === MY_ID}
-            onReply={() => setReplyTo(msg)}
-            onReact={onReact}
-            onPin={onPin}
-            onDelete={onDelete}
-          />
-        ))}
+        {loadingMsgs ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <MessageSquare className="w-10 h-10 text-gray-300 dark:text-gray-700 mb-3" />
+            <p className="text-sm font-bold text-gray-500 dark:text-gray-400">No messages yet</p>
+            <p className="text-xs text-gray-400 mt-1">Be the first to say something!</p>
+          </div>
+        ) : (
+          messages.map((msg, i) => (
+            <MessageBubble
+              key={msg.id}
+              msg={msg}
+              isMe={msg.senderId === currentUserId}
+              prevSenderId={i > 0 ? messages[i - 1].senderId : undefined}
+              currentUserId={currentUserId}
+              onReply={setReplyTo}
+              onReact={(msgId, reaction) => reactMutation.mutate({ messageId: msgId, reaction })}
+              onDelete={(msgId) => deleteMutation.mutate(msgId)}
+            />
+          ))
+        )}
         <div ref={bottomRef} />
       </div>
 
@@ -150,202 +973,153 @@ function ChatView({
       <MessageInput
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
-        onSend={(text, files) => { onSend(text, files); setReplyTo(null); }}
-        members={members}
+        onSend={handleSend}
+        disabled={isSending}
       />
+
+      {/* Detail panel */}
+      <AnimatePresence>
+        {showDetail && roomDetail && (
+          <RoomDetailPanel
+            detail={roomDetail}
+            gradient={gradient}
+            onClose={() => setShowDetail(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
-  );
-}
-
-// ─── Grade Sidebar (read-only for student) ────────────────────────────────────
-
-function GradeSidebar({ group, onClose }: { group: ClassGroup; onClose: () => void }) {
-  return (
-    <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }} transition={{ duration: 0.22 }}
-      className="w-72 flex-shrink-0 border-l border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex flex-col">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/[0.07]">
-        <div className="flex items-center gap-2">
-          <Award className="w-4 h-4 text-amber-500" />
-          <h3 className="font-black text-sm text-gray-900 dark:text-white">Group Grade</h3>
-        </div>
-        <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
-          ✕
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        <GradePanel group={group} />
-      </div>
-    </motion.div>
   );
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function StudentChat() {
-  const [tab, setTab] = useState<"classrooms" | "classgroups">("classrooms");
-  const [activeRoom, setActiveRoom] = useState<{ id: string; type: "classroom" | "classgroup" } | null>(null);
-  const [classroomMsgs, setClassroomMsgs] = useState<Record<string, ChatMessage[]>>(CLASSROOM_MESSAGES);
-  const [groupMsgs, setGroupMsgs] = useState<Record<string, ChatMessage[]>>(CLASSGROUP_MESSAGES);
-  const [detailRoom, setDetailRoom] = useState<Classroom | ClassGroup | null>(null);
-  const [detailType, setDetailType] = useState<"classroom" | "classgroup">("classroom");
-  const [showGrade, setShowGrade] = useState(false);
+  const { user } = useDashboardUser();
+  const currentUserId = user?.id ?? "";
 
-  const activeClassroom = activeRoom?.type === "classroom" ? myClassrooms.find(c => c.id === activeRoom.id) : null;
-  const activeGroup = activeRoom?.type === "classgroup" ? myGroups.find(g => g.id === activeRoom.id) : null;
+  const [tab, setTab] = useState<"CLASSROOM" | "GROUP">("CLASSROOM");
+  const [activeRoom, setActiveRoom] = useState<{ room: RoomSummaryItem; index: number } | null>(null);
 
-  const messages = activeRoom
-    ? (activeRoom.type === "classroom" ? classroomMsgs[activeRoom.id] ?? [] : groupMsgs[activeRoom.id] ?? [])
-    : [];
+  // ── Fetch all rooms ───────────────────────────────────────────────────────
 
-  const handleSend = (text: string, files: File[]) => {
-    if (!activeRoom) return;
-    const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`, roomId: activeRoom.id,
-      senderId: ME.id, senderName: ME.name, senderAvatar: ME.avatar, senderAvatarBg: ME.avatarBg, senderRole: ME.role,
-      text, attachments: files.map((f, i) => ({ id: `f-${i}`, name: f.name, size: `${(f.size / 1024).toFixed(0)} KB`, type: "other" as any, url: "#" })),
-      reactions: [], taggedUsers: [], createdAt: new Date().toISOString(), isDeleted: false, isPinned: false,
-    };
-    if (activeRoom.type === "classroom") setClassroomMsgs(p => ({ ...p, [activeRoom.id]: [...(p[activeRoom.id] ?? []), newMsg] }));
-    else setGroupMsgs(p => ({ ...p, [activeRoom.id]: [...(p[activeRoom.id] ?? []), newMsg] }));
-  };
+  const { data: roomsData, isLoading, isError } = useQuery({
+    queryKey: ["chat-rooms"],
+    queryFn: () => ChatService.getRooms({ limit: 100 }),
+  });
 
-  const handleReact = (msgId: string, emoji: string) => {
-    const update = (msgs: ChatMessage[]) => msgs.map(m => m.id !== msgId ? m : {
-      ...m, reactions: m.reactions.some(r => r.emoji === emoji)
-        ? m.reactions.map(r => r.emoji === emoji ? { ...r, count: r.reactedByMe ? r.count - 1 : r.count + 1, reactedByMe: !r.reactedByMe } : r).filter(r => r.count > 0)
-        : [...m.reactions, { emoji, count: 1, reactedByMe: true }],
-    });
-    if (activeRoom?.type === "classroom") setClassroomMsgs(p => ({ ...p, [activeRoom.id]: update(p[activeRoom.id] ?? []) }));
-    else if (activeRoom?.type === "classgroup") setGroupMsgs(p => ({ ...p, [activeRoom.id]: update(p[activeRoom.id] ?? []) }));
-  };
+  const allRooms = roomsData?.data ?? [];
+  const classrooms = allRooms.filter((r) => r.type === "CLASSROOM");
+  const groups     = allRooms.filter((r) => r.type === "GROUP");
+  const displayed  = tab === "CLASSROOM" ? classrooms : groups;
 
-  const handleDelete = (msgId: string) => {
-    const update = (msgs: ChatMessage[]) => msgs.map(m => m.id === msgId ? { ...m, isDeleted: true } : m);
-    if (activeRoom?.type === "classroom") setClassroomMsgs(p => ({ ...p, [activeRoom.id]: update(p[activeRoom.id] ?? []) }));
-    else if (activeRoom?.type === "classgroup") setGroupMsgs(p => ({ ...p, [activeRoom.id]: update(p[activeRoom.id] ?? []) }));
-  };
+  // ── Background socket subscriptions (for notifications) ──────────────────
 
-  const currentMembers = activeClassroom
-    ? [...activeClassroom.instructors, ...activeClassroom.students]
-    : activeGroup?.members ?? [];
+  const { joinRooms } = useChatSocket({});
+
+  useEffect(() => {
+    if (allRooms.length > 0) {
+      joinRooms(allRooms.map((r) => r.id));
+    }
+  }, [allRooms.length, joinRooms]);
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <>
-      <div className="h-[calc(100vh-80px)] flex flex-col max-w-[1100px] mx-auto">
-
-        {/* If no active room — show list */}
-        {!activeRoom ? (
-          <div className="flex-1 overflow-y-auto space-y-6 pb-10">
-            {/* Header */}
-            <Fade>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-md">
-                  <Hash className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-black text-gray-900 dark:text-white">Chat</h1>
-                  <p className="text-xs text-gray-400">Your classrooms and groups</p>
-                </div>
+    <div className="-mx-4 lg:-mx-6 -my-6 -mb-16 flex flex-col" style={{ height: "calc(100vh - 82px)" }}>
+      {!activeRoom ? (
+        /* ── Room list ── */
+        <div className="flex-1 overflow-y-auto space-y-6 pb-10 px-4 lg:px-6 pt-6">
+          <Fade>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-md">
+                <Hash className="w-5 h-5 text-white" />
               </div>
-            </Fade>
-
-            {/* Tabs */}
-            <Fade delay={0.04}>
-              <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
-                {[
-                  { id: "classrooms", label: `Classrooms (${myClassrooms.length})` },
-                  { id: "classgroups", label: `Classgroups (${myGroups.length})` },
-                ].map(t => (
-                  <button key={t.id} onClick={() => setTab(t.id as any)}
-                    className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab === t.id ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
-                    {t.label}
-                  </button>
-                ))}
+              <div>
+                <h1 className="text-2xl font-black text-gray-900 dark:text-white">Chat</h1>
+                <p className="text-xs text-gray-400">Your classrooms and groups</p>
               </div>
-            </Fade>
-
-            <AnimatePresence mode="wait">
-              {tab === "classrooms" && (
-                <motion.div key="cls" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                  {myClassrooms.map((c, i) => (
-                    <Fade key={c.id} delay={i * 0.05}>
-                      <ClassroomCard room={c} onClick={() => setActiveRoom({ id: c.id, type: "classroom" })} />
-                    </Fade>
-                  ))}
-                </motion.div>
-              )}
-              {tab === "classgroups" && (
-                <motion.div key="grp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                  {myGroups.length === 0 && (
-                    <Card className="p-10 text-center">
-                      <Users className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
-                      <p className="text-gray-400 text-sm">You haven't been added to any classgroup yet.</p>
-                    </Card>
-                  )}
-                  {myGroups.map((g, i) => (
-                    <Fade key={g.id} delay={i * 0.05}>
-                      <GroupCard group={g} onClick={() => setActiveRoom({ id: g.id, type: "classgroup" })} />
-                    </Fade>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        ) : (
-          /* Chat view */
-          <div className="flex-1 flex overflow-hidden rounded-2xl border border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623]">
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <ChatView
-                roomId={activeRoom.id}
-                roomType={activeRoom.type}
-                roomName={activeClassroom?.name ?? activeGroup?.name ?? ""}
-                roomColor={activeClassroom?.color ?? activeGroup?.color ?? "from-blue-600 to-indigo-700"}
-                roomIcon={activeClassroom?.icon ?? activeGroup?.icon ?? "💬"}
-                members={currentMembers}
-                messages={messages}
-                onSend={handleSend}
-                onBack={() => { setActiveRoom(null); setShowGrade(false); }}
-                onInfo={() => {
-                  setDetailRoom(activeClassroom ?? activeGroup ?? null);
-                  setDetailType(activeRoom.type);
-                }}
-                groupGrade={activeGroup?.grade}
-                onReact={handleReact}
-                onPin={() => {}}
-                onDelete={handleDelete}
-              />
             </div>
+          </Fade>
 
-            {/* Grade sidebar — only for groups */}
-            <AnimatePresence>
-              {showGrade && activeGroup && (
-                <GradeSidebar group={activeGroup} onClose={() => setShowGrade(false)} />
-              )}
+          <Fade delay={0.04}>
+            <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
+              {[
+                { id: "CLASSROOM" as const, label: `Classrooms (${classrooms.length})` },
+                { id: "GROUP"     as const, label: `Groups (${groups.length})` },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
+                    tab === t.id
+                      ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </Fade>
+
+          {isLoading && (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+            </div>
+          )}
+
+          {isError && (
+            <Card className="p-10 text-center">
+              <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
+              <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Couldn't load rooms</p>
+              <p className="text-xs text-gray-400 mt-1">Check your connection and refresh.</p>
+            </Card>
+          )}
+
+          {!isLoading && !isError && (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={tab}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-3"
+              >
+                {displayed.length === 0 ? (
+                  <Card className="p-10 text-center">
+                    <Users className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm">
+                      {tab === "CLASSROOM"
+                        ? "You haven't been added to any classroom yet."
+                        : "You haven't been added to any group yet."}
+                    </p>
+                  </Card>
+                ) : (
+                  displayed.map((room, i) => (
+                    <Fade key={room.id} delay={i * 0.04}>
+                      <RoomCard
+                        room={room}
+                        index={i}
+                        onClick={() => setActiveRoom({ room, index: i })}
+                      />
+                    </Fade>
+                  ))
+                )}
+              </motion.div>
             </AnimatePresence>
-
-            {/* Show grade button — floating inside chat for group rooms */}
-            {activeRoom.type === "classgroup" && activeGroup?.grade && !showGrade && (
-              <motion.button initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-                onClick={() => setShowGrade(true)}
-                className="absolute bottom-20 right-6 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg hover:opacity-90 transition-all z-10">
-                <Star className="w-4 h-4" />View Grade
-              </motion.button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Detail dialog */}
-      <AnimatePresence>
-        {detailRoom && (
-          <RoomDetailDialog
-            room={detailRoom}
-            type={detailType}
-            canGrade={false}
-            onClose={() => setDetailRoom(null)}
+          )}
+        </div>
+      ) : (
+        /* ── Active chat ── */
+        <div className="flex-1 flex overflow-hidden rounded-2xl border border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623]">
+          <ChatView
+            room={activeRoom.room}
+            roomIndex={activeRoom.index}
+            currentUserId={currentUserId}
+            onBack={() => setActiveRoom(null)}
           />
-        )}
-      </AnimatePresence>
-    </>
+        </div>
+      )}
+    </div>
   );
 }

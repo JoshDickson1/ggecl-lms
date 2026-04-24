@@ -7,8 +7,9 @@ import {
   Search, X, Filter, BarChart3, AlertCircle,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import ProgressService, { type TopCourseItem } from "@/services/progress.service";
-import EnrollmentService, { type MyEnrollment, type CourseLevel } from "@/services/enrollment.service";
+import { type CourseLevel } from "@/services/course.service";
+import EnrollmentService from "@/services/enrollment.service";
+import ProgressService from "@/services/progress.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -185,33 +186,46 @@ export default function StudentCourses() {
   const [level, setLevel]       = useState<CourseLevel | "All">("All");
   const [filter, setFilter]     = useState<"all" | "in-progress" | "not-started" | "completed">("all");
 
-  const { data: topCourses = [], isLoading: loadingProgress, isError: errorProgress } = useQuery<TopCourseItem[]>({
-    queryKey: ["my-courses-progress"],
-    queryFn:  () => ProgressService.getTopCourses(),
-  });
-
-  const { data: enrollments = [], isLoading: loadingEnrollments } = useQuery<MyEnrollment[]>({
+  // Source of truth: all courses the student is enrolled in
+  const {
+    data: enrollments = [],
+    isLoading: enrollmentsLoading,
+    isError,
+  } = useQuery({
     queryKey: ["my-enrollments"],
-    queryFn:  () => EnrollmentService.getMine(),
+    queryFn: () => EnrollmentService.getMine(),
   });
 
-  const isLoading = loadingProgress || loadingEnrollments;
+  // Progress data keyed by course id (may not include every enrolled course if
+  // the student hasn't started yet — that's fine, we default progress to 0)
+  const { data: progressData = [], isLoading: progressLoading } = useQuery({
+    queryKey: ["my-course-progress"],
+    queryFn: () => ProgressService.getTopCourses(),
+  });
 
-  // Merge progress + level from enrollments
+  const isLoading = enrollmentsLoading || progressLoading;
+
+  // Merge: enrollments are the source of truth; progress enriches them
   const courses: MyCourse[] = useMemo(() => {
-    const levelMap = new Map<string, CourseLevel>(
-      enrollments.map(e => [e.course.id, e.course.level])
+    if (!enrollments.length) return [];
+
+    const progressMap = new Map(
+      progressData.map((p: any) => [p.id, p])
     );
-    return topCourses.map(c => ({
-      id:          c.id,
-      title:       c.title,
-      img:         c.img,
-      progress:    Number(c.progress) || 0,
-      level:       levelMap.get(c.id) ?? null,
-      enrolledAt:  c.enrolledAt,
-      completedAt: c.completedAt,
-    }));
-  }, [topCourses, enrollments]);
+
+    return enrollments.map((enrollment) => {
+      const prog = progressMap.get(enrollment.courseId);
+      return {
+        id: enrollment.course.id,
+        title: enrollment.course.title,
+        img: enrollment.course.img,
+        progress: prog?.progress ?? 0,
+        level: (enrollment.course.level as CourseLevel) || null,
+        enrolledAt: enrollment.enrolledAt,
+        completedAt: prog?.completedAt ?? null,
+      };
+    });
+  }, [enrollments, progressData]);
 
   const levels = useMemo(() => {
     const found = Array.from(new Set(courses.map(c => c.level).filter(Boolean))) as CourseLevel[];
@@ -341,7 +355,7 @@ export default function StudentCourses() {
       </motion.div>
 
       {/* Error */}
-      {errorProgress && !isLoading && (
+      {isError && !isLoading && (
         <Card className="p-10 text-center">
           <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
           <p className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Couldn't load courses</p>
@@ -357,7 +371,7 @@ export default function StudentCourses() {
       )}
 
       {/* Grid */}
-      {!isLoading && !errorProgress && (
+      {!isLoading && !isError && (
         <AnimatePresence mode="popLayout">
           {filtered.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-20 text-center">

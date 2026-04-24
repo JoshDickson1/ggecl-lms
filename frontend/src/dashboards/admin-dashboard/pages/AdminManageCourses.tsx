@@ -8,7 +8,7 @@ import {
   Plus, Search, Eye, Edit3, Trash2, BookOpen,
   Users, Star, Globe, ChevronDown,
   Loader2, CheckCircle2, Clock, ArchiveIcon,
-  AlertTriangle,
+  AlertTriangle, DollarSign,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, { CourseStatus } from "@/services/course.service";
@@ -267,6 +267,7 @@ export default function AdminManageCourses() {
   const qc = useQueryClient();
   const [search, setSearch]         = useState("");
   const [statusFilter, setStatusF]  = useState<"ALL" | "DRAFT" | "PUBLISHED" | "ARCHIVED">("ALL");
+  const [levelFilter, setLevelF]    = useState<"ALL" | "BEGINNER" | "INTERMEDIATE" | "ADVANCED">("ALL");
   const [deleteTarget, setDeleteTarget] = useState<AdminCourse | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -304,16 +305,16 @@ export default function AdminManageCourses() {
     return courses.filter(c => {
       const matchSearch = !search.trim() || c.title.toLowerCase().includes(search.toLowerCase()) || (c.instructor?.name ?? "").toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "ALL" || c.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchLevel  = levelFilter  === "ALL" || c.level  === levelFilter;
+      return matchSearch && matchStatus && matchLevel;
     });
-  }, [courses, search, statusFilter]);
+  }, [courses, search, statusFilter, levelFilter]);
 
   const stats = useMemo(() => ({
     total:      courseStats?.total ?? courses.length,
     published: courseStats?.published ?? courses.filter(c => c.status === "PUBLISHED").length,
     draft:     courseStats?.draft     ?? courses.filter(c => c.status === "DRAFT").length,
     archived:  courseStats?.archived  ?? courses.filter(c => c.status === "ARCHIVED").length,
-    // Use total enrollments for now - backend may need to provide role-specific counts
     students:  courses.reduce((a, c) => a + (c._count?.enrollments ?? 0), 0),
     revenue:   courses.reduce((a, c) => a + (c.price ?? 0) * (c._count?.enrollments ?? 0), 0),
   }), [courses, courseStats]);
@@ -359,12 +360,13 @@ export default function AdminManageCourses() {
 
         {/* Stats */}
         <Fade delay={0.06}>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             {[
               { icon: BookOpen,    label: "Total Courses",  value: String(stats.total),         sub: `${stats.archived} archived`,  color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-950/40"       },
               { icon: Globe,      label: "Published",       value: String(stats.published),      sub: undefined,                     color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
               { icon: Clock,      label: "Draft",           value: String(stats.draft),          sub: undefined,                     color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"     },
               { icon: Users,      label: "Total Students",  value: fmt(stats.students),          sub: undefined,                     color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40"   },
+              { icon: DollarSign, label: "Est. Revenue",    value: `$${fmt(stats.revenue)}`,     sub: "price × enrollments",         color: "text-teal-600",    bg: "bg-teal-50 dark:bg-teal-950/40"       },
             ].map(({ icon: Icon, label, value, sub, color, bg }) => (
               <Card key={label} className="p-5 flex items-center gap-3">
                 <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", bg)}>
@@ -397,6 +399,17 @@ export default function AdminManageCourses() {
                   {s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}
                 </button>
               ))}
+            </div>
+            {/* Level filter */}
+            <div className="relative">
+              <select value={levelFilter} onChange={e => setLevelF(e.target.value as typeof levelFilter)}
+                className="appearance-none pl-3.5 pr-8 py-2.5 rounded-xl text-xs font-bold bg-white dark:bg-[#0f1623] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 outline-none cursor-pointer focus:border-blue-400">
+                <option value="ALL">All Levels</option>
+                <option value="BEGINNER">Beginner</option>
+                <option value="INTERMEDIATE">Intermediate</option>
+                <option value="ADVANCED">Advanced</option>
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
             </div>
           </div>
         </Fade>

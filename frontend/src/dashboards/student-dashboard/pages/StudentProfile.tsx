@@ -187,16 +187,47 @@ function ReviewTab({ enrollments }: { enrollments: Enrollment[] }) {
   const [comment, setComment]   = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess]   = useState(false);
+  const [existingReview, setExistingReview] = useState<any>(null);
+
+  // Check for existing review when course is selected
+  const handleCourseChange = async (courseId: string) => {
+    setSelectedCourseId(courseId);
+    setExistingReview(null);
+    setRating(0);
+    setComment("");
+    
+    if (courseId) {
+      try {
+        const review = await ReviewService.getMyReview(courseId) as any;
+        if (review && review.rating && review.comment) {
+          setExistingReview(review);
+          setRating(review.rating);
+          setComment(review.comment);
+        }
+      } catch (error) {
+        // No existing review or error fetching
+        console.log('No existing review found');
+      }
+    }
+  };
 
   const handleSubmit = async () => {
-    if (!selectedCourseId || !rating) return;
+    // Validation: course, rating, and comment (min 10 chars) are required
+    if (!selectedCourseId || !rating || comment.trim().length < 10) return;
     setSubmitting(true);
     try {
-      await ReviewService.create({ courseId: selectedCourseId, rating, comment });
+      if (existingReview) {
+        // Update existing review
+        await ReviewService.update(existingReview.id, { rating, comment: comment.trim() });
+      } else {
+        // Create new review
+        await ReviewService.create({ courseId: selectedCourseId, rating, comment: comment.trim() });
+      }
       setSuccess(true);
       setRating(0);
       setComment("");
       setSelectedCourseId("");
+      setExistingReview(null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -213,7 +244,7 @@ function ReviewTab({ enrollments }: { enrollments: Enrollment[] }) {
           <div className="space-y-4">
             <div>
               <label className="text-sm font-semibold text-gray-900 dark:text-white block mb-2">Select Course</label>
-              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+              <Select value={selectedCourseId} onValueChange={handleCourseChange}>
                 <SelectTrigger className="h-12 rounded-2xl border-gray-200 dark:border-white/[0.06] bg-gray-50 dark:bg-white/[0.03]">
                   <SelectValue placeholder="Choose a course" />
                 </SelectTrigger>
@@ -239,16 +270,20 @@ function ReviewTab({ enrollments }: { enrollments: Enrollment[] }) {
       {/* Review form */}
       <div className="xl:col-span-2">
         <Card className="p-6">
-          <p className="text-xs uppercase tracking-[0.2em] text-gray-400 font-bold mb-5">Leave a Review</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-gray-400 font-bold mb-5">
+            {existingReview ? "Edit Your Review" : "Leave a Review"}
+          </p>
 
           {success ? (
             <div className="py-10 flex flex-col items-center gap-3 text-center">
               <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-              <p className="text-base font-bold text-gray-900 dark:text-white">Review submitted!</p>
+              <p className="text-base font-bold text-gray-900 dark:text-white">
+                {existingReview ? "Review updated!" : "Review submitted!"}
+              </p>
               <p className="text-sm text-gray-400">Thank you for your feedback.</p>
               <button onClick={() => setSuccess(false)}
                 className="mt-2 text-xs font-bold text-blue-500 hover:underline">
-                Leave another review
+                {existingReview ? "Edit again" : "Leave another review"}
               </button>
             </div>
           ) : (
@@ -282,23 +317,28 @@ function ReviewTab({ enrollments }: { enrollments: Enrollment[] }) {
                   rows={5}
                   value={comment}
                   onChange={e => setComment(e.target.value)}
-                  placeholder="Tell others what made this course great..."
+                  placeholder="Tell others what made this course great (minimum 10 characters)..."
                   className="w-full rounded-2xl border border-gray-200 dark:border-white/[0.06]
                     bg-gray-50 dark:bg-white/[0.03] px-4 py-3 text-sm outline-none resize-none
                     focus:ring-2 focus:ring-blue-500/20 transition-all"
                 />
+                {comment.length > 0 && comment.length < 10 && (
+                  <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                    Review must be at least 10 characters long ({comment.length}/10)
+                  </p>
+                )}
               </div>
 
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !selectedCourseId || !rating}
+                disabled={submitting || !selectedCourseId || !rating || comment.trim().length < 10}
                 className="w-full h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-700
                   hover:from-blue-700 hover:to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed
                   text-white text-sm font-bold shadow-lg shadow-blue-500/20 transition-all
                   flex items-center justify-center gap-2">
                 {submitting
-                  ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting…</>
-                  : "Submit Review"}
+                  ? <><Loader2 className="w-4 h-4 animate-spin" />{existingReview ? "Updating…" : "Submitting…"}</>
+                  : existingReview ? "Update Review" : "Submit Review"}
               </button>
             </>
           )}

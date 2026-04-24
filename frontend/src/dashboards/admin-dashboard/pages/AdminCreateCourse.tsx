@@ -209,18 +209,12 @@ function StudentPicker({ selected, onChange }: {
   const { data: results = [], isFetching } = useQuery<StudentUser[]>({
     queryKey: ["students-search", debouncedSearch],
     queryFn: async () => {
-      try {
-        const res = await UserService.findAll({
-          role: UserRole.STUDENT,
-          search: debouncedSearch,
-          limit: 20,
-        }) as { data?: StudentUser[] } | StudentUser[];
-        const students = Array.isArray(res) ? res : ((res as { data?: StudentUser[] }).data ?? []);
-        return students;
-      } catch (err) {
-        console.error('Error searching students:', err);
-        return [];
-      }
+      const res = await UserService.findAll({
+        role: UserRole.STUDENT,
+        search: debouncedSearch,
+        limit: 20,
+      }) as { data?: StudentUser[] } | StudentUser[];
+      return Array.isArray(res) ? res : ((res as { data?: StudentUser[] }).data ?? []);
     },
     enabled: debouncedSearch.length >= 2,
     staleTime: 1000 * 30,
@@ -320,17 +314,9 @@ function StudentPicker({ selected, onChange }: {
       {selected.length === 0 && (
         <p className="text-xs text-gray-400 flex items-center gap-1.5">
           <Users className="w-3.5 h-3.5" />
-          No students selected. Search above to add students.
+          No students selected. Search above to add students to this course on creation.
         </p>
       )}
-
-      {/* Backend callout */}
-      <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
-        <Info className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-amber-700 dark:text-amber-400">
-          Backend should provide: <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">POST /enrollments/admin {"{ courseId, studentIds[] }"}</code> — bulk-enroll students as admin.
-        </p>
-      </div>
     </div>
   );
 }
@@ -392,14 +378,8 @@ export default function AdminCreateCourse() {
   const { data: instructors = [], isLoading: instructorsLoading } = useQuery<InstructorUser[]>({
     queryKey: ["instructors-list"],
     queryFn: async () => {
-      try {
-        const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 }) as { data?: InstructorUser[] } | InstructorUser[];
-        const instructorList = Array.isArray(res) ? res : ((res as { data?: InstructorUser[] }).data ?? []);
-        return instructorList;
-      } catch (err) {
-        console.error('Error loading instructors:', err);
-        return [];
-      }
+      const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 }) as { data?: InstructorUser[] } | InstructorUser[];
+      return Array.isArray(res) ? res : ((res as { data?: InstructorUser[] }).data ?? []);
     },
     staleTime: 1000 * 60 * 10,
     retry: 2,
@@ -411,73 +391,39 @@ export default function AdminCreateCourse() {
       qc.invalidateQueries({ queryKey: ["admin-courses"] });
       qc.invalidateQueries({ queryKey: ["courses"] });
 
-      // Fetch the actual total enrollment count for the course
       const courseId = (data as { id?: string })?.id;
-      console.log('Course created with ID:', courseId);
-      
+
       if (courseId && courseId.trim()) {
         try {
           if (selectedStudents.length > 0) {
-            console.log(`Attempting to enroll ${selectedStudents.length} students in course ${courseId}`);
             await EnrollmentService.adminEnroll(courseId, selectedStudents.map(s => s.id));
-            console.log(`Successfully enrolled ${selectedStudents.length} students`);
           }
-          
-          // Fetch the actual total enrollment count for the course
+
           try {
             const enrollments = await EnrollmentService.findByCourse(courseId);
-            const totalEnrolled = Array.isArray(enrollments) ? enrollments.length : 0;
-            setEnrolledCount(totalEnrolled);
-            console.log(`Total students enrolled in course ${courseId}: ${totalEnrolled}`);
-          } catch (fetchErr) {
-            console.error('Failed to fetch enrollment count:', fetchErr);
-            // Fallback to selected students count if fetch fails
+            setEnrolledCount(Array.isArray(enrollments) ? enrollments.length : 0);
+          } catch {
             setEnrolledCount(selectedStudents.length);
           }
         } catch (enrollErr) {
-          console.error('Enrollment failed:', enrollErr);
-          
-          // Show enrollment error but don't fail course creation
-          const errorMessage = enrollErr instanceof Error ? enrollErr.message : 'Enrollment failed';
-          setErrors(p => ({ 
-            ...p, 
-            enrollment: `Course created successfully, but enrollment failed: ${errorMessage}` 
+          const errorMessage = enrollErr instanceof Error ? enrollErr.message : "Enrollment failed";
+          setErrors(p => ({
+            ...p,
+            enrollment: `Course created, but enrollment failed: ${errorMessage}`,
           }));
-          
-          // Try to get existing enrollments even if new enrollment failed
-          try {
-            const enrollments = await EnrollmentService.findByCourse(courseId);
-            const totalEnrolled = Array.isArray(enrollments) ? enrollments.length : 0;
-            setEnrolledCount(totalEnrolled);
-          } catch (fetchErr) {
-            setEnrolledCount(0);
-          }
+          setEnrolledCount(0);
         }
-      } else {
-        console.error('Invalid course ID received:', courseId);
-        setErrors(p => ({ 
-          ...p, 
-          submit: 'Course created but received invalid ID. Please check the course list.' 
-        }));
       }
       setSuccess(true);
     },
     onError: (err: unknown) => {
-      console.error('Course creation failed:', err);
       let message = "Failed to create course. Please try again.";
-      
       if (err instanceof Error) {
-        if (err.message.includes('400')) {
-          message = "Invalid course data. Please check all required fields.";
-        } else if (err.message.includes('403')) {
-          message = "You don't have permission to create courses.";
-        } else if (err.message.includes('401')) {
-          message = "Please log in to create courses.";
-        } else {
-          message = err.message;
-        }
+        if (err.message.includes("400"))      message = "Invalid course data. Please check all required fields.";
+        else if (err.message.includes("403")) message = "You don't have permission to create courses.";
+        else if (err.message.includes("401")) message = "Please log in to create courses.";
+        else                                  message = err.message;
       }
-      
       setErrors(p => ({ ...p, submit: message }));
     },
   });
@@ -494,44 +440,20 @@ export default function AdminCreateCourse() {
     if (!description.trim())                    e.description = "Short description is required";
     if (!price || isNaN(+price) || +price < 0)  e.price       = "Valid price is required";
     if (instructors.length === 0)               e.instructor  = "No instructors available. Please contact support.";
-    
-    // Debug instructor selection
-    console.log('Instructor ID:', instructorId);
-    console.log('Available instructors:', instructors.map(i => ({ id: i.id, name: i.name, hasProfile: !!i.instructorProfile })));
-    
-    // Check if selected instructor has a profile
-    const selectedInstructor = instructors.find(i => i.id === instructorId);
-    console.log('Selected instructor:', selectedInstructor);
-    
-    // Check if selected instructor exists - let backend validate profile
-    if (instructorId && selectedInstructor) {
-      const profile = selectedInstructor.instructorProfile;
-      console.log('Instructor profile data:', profile);
-      
-      // Basic check - if instructor exists, let backend validate profile completeness
-      // Backend will return proper error if profile is incomplete
-      if (!profile) {
-        console.log('Instructor has no profile record');
-        e.instructor = "Selected instructor does not have a profile. Please ask them to complete their instructor profile first.";
-      }
-    }
-    
-    // Validate video URL if provided
+
     if (videoUrl.trim()) {
-      try {
-        new URL(videoUrl.trim());
-      } catch {
+      try { new URL(videoUrl.trim()); } catch {
         e.videoUrl = "Please enter a valid URL for the intro video (e.g., https://example.com/video.mp4)";
       }
     }
-    
+
     setErrors(e);
     return !Object.keys(e).length;
   };
 
   const handleCreate = () => {
     if (!validate()) return;
-    
+
     const payload: CreateCoursePayload = {
       title:         title.trim(),
       description:   description.trim(),
@@ -543,20 +465,13 @@ export default function AdminCreateCourse() {
       tags:     tags.filter(Boolean),
       syllabus: syllabus.filter(Boolean),
       includes: includes.filter(Boolean),
-      // Only include videoUrl if it's a valid URL
       ...(videoUrl.trim() && (() => {
-        try {
-          new URL(videoUrl.trim());
-          return { videoUrl: videoUrl.trim() };
-        } catch {
-          return {};
-        }
+        try { new URL(videoUrl.trim()); return { videoUrl: videoUrl.trim() }; } catch { return {}; }
       })()),
-      ...(img              && { img }),
-      ...(badge            && { badge }),
+      ...(img   && { img }),
+      ...(badge && { badge }),
     };
-    
-    console.log('Creating course with payload:', payload);
+
     saveCreate(payload);
   };
 
@@ -607,24 +522,11 @@ export default function AdminCreateCourse() {
                   className={cn("w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border text-gray-800 dark:text-white outline-none cursor-pointer",
                     errors.instructor ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]")}>
                   <option value="">Select instructor...</option>
-                  {instructors.map(i => {
-                    const hasCompleteProfile = i.instructorProfile && (
-                      i.instructorProfile.bio || 
-                      i.instructorProfile.description || 
-                      i.instructorProfile.specialization ||
-                      (i.instructorProfile.tags && i.instructorProfile.tags.length > 0) ||
-                      (i.instructorProfile.areasOfExpertise && i.instructorProfile.areasOfExpertise.length > 0)
-                    );
-                    
-                    return (
-                      <option key={i.id} value={i.id}>
-                        {i.name} - {hasCompleteProfile ? 
-                          `${i.instructorProfile?.specialization || 'Instructor'} (Ready)` : 
-                          'Incomplete Profile (Cannot create courses)'
-                        }
-                      </option>
-                    );
-                  })}
+                  {instructors.map(i => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}{i.instructorProfile?.specialization ? ` — ${i.instructorProfile.specialization}` : ""}
+                    </option>
+                  ))}
                 </select>
               )}
             </Field>

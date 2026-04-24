@@ -6,19 +6,69 @@ import {
   Search, SlidersHorizontal, X, Star, Clock, BookOpen,
   Users, Tag, ShoppingCartIcon, CheckCircle2, Heart,
 } from "lucide-react";
-import { courses, type Course } from "@/data/courses";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import CoursesService, { CourseLevel } from "@/services/course.service";
+import ProgressService from "@/services/progress.service";
+import CartService from "@/services/cart.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
 }
 
-const ALL_LEVELS = Array.from(new Set(courses.map(c => c.level)));
-const ALL_CATEGORIES = Array.from(new Set(courses.map(c => c.categoryId)));
 const ALL_BADGES = ["Bestseller", "Hot & New", "New"] as const;
 
-// IDs of courses the student is already carted in
-const CARTED_IDS = new Set(["dev-001", "dev-002", "mkt-001", "biz-001", "ds-001", "design-001"]);
+// Course interface matching the API response
+interface Course {
+  id: string;
+  title: string;
+  description: string;
+  img: string;
+  price: number;
+  level: CourseLevel;
+  status: string;
+  certification: string;
+  badge?: string;
+  tags: string[];
+  averageRating: number;
+  reviewCount: number;
+  publishedAt: string;
+  instructorId: string;
+  createdAt: string;
+  updatedAt: string;
+  _count: {
+    enrollments: number;
+  };
+  totalLectures?: number;
+  totalDuration?: number;
+  instructor?: {
+    id: string;
+    user: {
+      id: string;
+      name: string;
+      image?: string;
+    };
+  };
+}
+
+// Helper to format course duration
+function formatDuration(minutes?: number): string {
+  if (!minutes) return "0h";
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+}
+
+// Helper to get instructor name
+function getInstructorName(course: Course): string {
+  return course.instructor?.user.name || "Instructor";
+}
+
+// Helper to get instructor initials
+function getInstructorInitials(course: Course): string {
+  const name = getInstructorName(course);
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+}
 
 // ─── Badge chip ───────────────────────────────────────────────────────────────
 function CourseBadge({ badge }: { badge: Course["badge"] }) {
@@ -32,17 +82,28 @@ function CourseBadge({ badge }: { badge: Course["badge"] }) {
 }
 
 // ─── Course Card ──────────────────────────────────────────────────────────────
-function CourseCard({ course, index }: { course: Course; index: number }) {
+function CourseCard({ course, index, cartCourseIds, addToCartMutation }: { 
+  course: Course; 
+  index: number; 
+  cartCourseIds: Set<string>;
+  addToCartMutation: any;
+}) {
   const [hovered, setHovered] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
-  const [carted, setCarted] = useState(CARTED_IDS.has(course.id));
+  const carted = cartCourseIds.has(course.id);
   const [enrollAnim, setCartAnim] = useState(false);
-  const Icon = course.icon;
-  const discount = Math.round(((course.originalPrice - course.price) / course.originalPrice) * 100);
+  
+  // Generate deterministic gradient based on course id
+  const gradients = ["from-blue-500 to-indigo-600", "from-emerald-500 to-teal-600", "from-violet-500 to-purple-600", "from-sky-500 to-blue-500", "from-amber-500 to-orange-500", "from-rose-500 to-pink-600"];
+  const gradient = gradients[course.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % gradients.length];
+  
+  // Default icon (BookOpen) since API doesn't provide icons
+  const Icon = BookOpen;
+  const discount = 0; // No discount info in API
 
   const handleCart = () => {
     if (carted) return;
-    setCarted(true);
+    addToCartMutation.mutate(course.id);
     setCartAnim(true);
     setTimeout(() => setCartAnim(false), 2000);
   };
@@ -71,13 +132,17 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
           style={{ background: "radial-gradient(circle at 50% 0%, rgba(59,130,246,0.08) 0%, transparent 65%)" }} />
 
         {/* Thumbnail */}
-        <div className={`relative w-full h-40 bg-gradient-to-br ${course.thumbnail} flex items-center justify-center overflow-hidden flex-shrink-0`}>
-          <motion.div animate={hovered ? { scale: 1.1, rotate: 5 } : { scale: 1, rotate: 0 }} transition={{ duration: 0.4 }}
-            className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-            <Icon className="w-7 h-7 text-white drop-shadow-lg" />
-          </motion.div>
+        <div className={`relative w-full h-40 bg-gradient-to-br ${gradient} flex items-center justify-center overflow-hidden flex-shrink-0`}>
+          {course.img ? (
+            <img src={course.img} alt={course.title} className="w-full h-full object-cover" />
+          ) : (
+            <motion.div animate={hovered ? { scale: 1.1, rotate: 5 } : { scale: 1, rotate: 0 }} transition={{ duration: 0.4 }}
+              className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+              <Icon className="w-7 h-7 text-white drop-shadow-lg" />
+            </motion.div>
+          )}
           {course.badge && <div className="absolute top-3 left-3"><CourseBadge badge={course.badge} /></div>}
-          <div className="absolute top-3 right-3 px-2 py-1 rounded-lg bg-black/30 backdrop-blur-sm text-white text-[11px] font-bold">-{discount}%</div>
+          {discount > 0 && <div className="absolute top-3 right-3 px-2 py-1 rounded-lg bg-black/30 backdrop-blur-sm text-white text-[11px] font-bold">-{discount}%</div>}
           <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/25 backdrop-blur-sm text-white text-[11px] font-semibold">{course.level}</div>
           {carted && (
             <div className="absolute bottom-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/90 backdrop-blur-sm">
@@ -91,10 +156,10 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
         <div className="relative z-10 flex flex-col gap-2.5 p-5">
           {/* Instructor */}
           <div className="flex items-center gap-2">
-            <span className={`w-6 h-6 rounded-full text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0 ${course.instructor.avatarBg}`}>
-              {course.instructor.avatar}
+            <span className="w-6 h-6 rounded-full text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0 bg-blue-600">
+              {getInstructorInitials(course)}
             </span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{course.instructor.name}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{getInstructorName(course)}</span>
           </div>
 
           <Link to={`/student/courses/${course.id}`}>
@@ -104,15 +169,15 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
           {/* Rating */}
           <div className="flex items-center gap-1.5">
             <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-            <span className="text-xs font-bold text-gray-800 dark:text-white">{course.rating}</span>
-            <span className="text-xs text-gray-400">({fmt(course.reviews)})</span>
+            <span className="text-xs font-bold text-gray-800 dark:text-white">{course.averageRating.toFixed(1)}</span>
+            <span className="text-xs text-gray-400">({fmt(course.reviewCount)})</span>
           </div>
 
           {/* Meta */}
           <div className="flex items-center gap-3 text-xs text-gray-400">
-            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{course.duration}</span>
-            <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{course.lectures}</span>
-            <span className="flex items-center gap-1"><Users className="w-3 h-3" />{fmt(course.students)}</span>
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(course.totalDuration)}</span>
+            <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{course.totalLectures || 0}</span>
+            <span className="flex items-center gap-1"><Users className="w-3 h-3" />{fmt(course._count.enrollments)}</span>
           </div>
 
           {/* Tags */}
@@ -128,7 +193,7 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
       <div className="flex items-center justify-between px-1 pt-3 pb-1">
         <div className="flex items-baseline gap-2">
           <span className="text-lg font-black text-gray-900 dark:text-white">${course.price.toFixed(2)}</span>
-          <span className="text-sm text-gray-400 line-through">${course.originalPrice.toFixed(2)}</span>
+          {discount > 0 && <span className="text-sm text-gray-400 line-through">${(course.price * (1 + discount / 100)).toFixed(2)}</span>}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setWishlisted(p => !p)}
@@ -177,6 +242,7 @@ function FilterSidebar({
   sortBy, setSortBy,
   showCarted, setShowCarted,
   onClear, hasFilters,
+  availableTags,
 }: {
   search: string; setSearch: (v: string) => void;
   activeLevel: string | null; setActiveLevel: (v: string | null) => void;
@@ -185,6 +251,7 @@ function FilterSidebar({
   sortBy: string; setSortBy: (v: string) => void;
   showCarted: boolean; setShowCarted: (v: boolean) => void;
   onClear: () => void; hasFilters: boolean;
+  availableTags: string[];
 }) {
   const panel = "rounded-2xl p-5 bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.04)]";
   const lbl = "text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-3";
@@ -219,16 +286,18 @@ function FilterSidebar({
         <p className={`${lbl} flex items-center gap-1.5`}><Tag className="w-3 h-3" />Level</p>
         <div className="flex flex-col gap-2">
           <button onClick={() => setActiveLevel(null)} className={btn(activeLevel === null)}>All levels</button>
-          {ALL_LEVELS.map(l => <button key={l} onClick={() => setActiveLevel(activeLevel === l ? null : l)} className={btn(activeLevel === l)}>{l}</button>)}
+          {Object.values(CourseLevel).map(l => <button key={l} onClick={() => setActiveLevel(activeLevel === l ? null : l)} className={btn(activeLevel === l)}>{l.charAt(0) + l.slice(1).toLowerCase()}</button>)}
         </div>
       </div>
 
-      {/* Category */}
+      {/* Category - using tags as categories */}
       <div className={panel}>
-        <p className={`${lbl} flex items-center gap-1.5`}><Tag className="w-3 h-3" />Category</p>
+        <p className={`${lbl} flex items-center gap-1.5`}><Tag className="w-3 h-3" />Tags</p>
         <div className="flex flex-col gap-2">
           <button onClick={() => setActiveCategory(null)} className={btn(activeCategory === null)}>All</button>
-          {ALL_CATEGORIES.map(c => <button key={c} onClick={() => setActiveCategory(activeCategory === c ? null : c)} className={btn(activeCategory === c)}>{c.charAt(0).toUpperCase() + c.slice(1)}</button>)}
+          {availableTags.map(tag => (
+            <button key={tag} onClick={() => setActiveCategory(activeCategory === tag ? null : tag)} className={btn(activeCategory === tag)}>{tag}</button>
+          ))}
         </div>
       </div>
 
@@ -276,24 +345,78 @@ export default function StudentExploreCourses() {
   const [sortBy, setSortBy] = useState("rating");
   const [showCarted, setShowCarted] = useState(false);
 
+  // Fetch all courses
+  const { data: allCoursesData = [], isLoading: coursesLoading } = useQuery({
+    queryKey: ["all-public-courses-explore"],
+    queryFn: async () => {
+      const response = await CoursesService.findAllPublic() as { items: Course[] };
+      return response.items || [];
+    },
+  });
+
+  // Fetch enrolled courses to filter them out
+  const { data: progressData = [] } = useQuery({
+    queryKey: ["course-progress-explore"],
+    queryFn: () => ProgressService.getTopCourses(),
+  });
+
+  // Fetch cart data
+  const { data: cartData } = useQuery({
+    queryKey: ["cart"],
+    queryFn: () => CartService.getCart(),
+  });
+
+  const queryClient = useQueryClient();
+
+  // Add to cart mutation
+  const addToCartMutation = useMutation({
+    mutationFn: (courseId: string) => CartService.addToCart(courseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+    },
+  });
+
+  // Get enrolled course IDs
+  const enrolledCourseIds = useMemo(() => {
+    return new Set(progressData.map((p: any) => p.id));
+  }, [progressData]);
+
+  // Get cart course IDs
+  const cartCourseIds = useMemo(() => {
+    return new Set(cartData?.items?.map((item: any) => item.course.id) || []);
+  }, [cartData]);
+
+  // Filter out enrolled courses
+  const availableCourses = useMemo(() => {
+    return allCoursesData.filter(course => !enrolledCourseIds.has(course.id));
+  }, [allCoursesData, enrolledCourseIds]);
+
+  // Get unique tags for filtering
+  const availableTags = useMemo(() => {
+    const tags = new Set<string>();
+    availableCourses.forEach(course => {
+      course.tags.forEach(tag => tags.add(tag));
+    });
+    return Array.from(tags);
+  }, [availableCourses]);
+
   const hasFilters = search.trim() !== "" || activeLevel !== null || activeCategory !== null || activeBadge !== null || sortBy !== "rating" || showCarted;
 
   const filtered = useMemo(() => {
-    let list = [...courses];
-    if (search.trim()) list = list.filter(c => c.title.toLowerCase().includes(search.toLowerCase()) || c.instructor.name.toLowerCase().includes(search.toLowerCase()));
+    let list = [...availableCourses];
+    if (search.trim()) list = list.filter(c => c.title.toLowerCase().includes(search.toLowerCase()) || getInstructorName(c).toLowerCase().includes(search.toLowerCase()));
     if (activeLevel) list = list.filter(c => c.level === activeLevel);
-    if (activeCategory) list = list.filter(c => c.categoryId === activeCategory);
+    if (activeCategory) list = list.filter(c => c.tags.includes(activeCategory));
     if (activeBadge) list = list.filter(c => c.badge === activeBadge);
-    if (showCarted) list = list.filter(c => !CARTED_IDS.has(c.id));
     switch (sortBy) {
-      case "rating": list.sort((a, b) => b.rating - a.rating); break;
-      case "popular": list.sort((a, b) => b.students - a.students); break;
+      case "rating": list.sort((a, b) => b.averageRating - a.averageRating); break;
+      case "popular": list.sort((a, b) => b._count.enrollments - a._count.enrollments); break;
       case "price-asc": list.sort((a, b) => a.price - b.price); break;
       case "price-desc": list.sort((a, b) => b.price - a.price); break;
       case "az": list.sort((a, b) => a.title.localeCompare(b.title)); break;
     }
     return list;
-  }, [search, activeLevel, activeCategory, activeBadge, sortBy, showCarted]);
+  }, [availableCourses, search, activeLevel, activeCategory, activeBadge, sortBy]);
 
   const clearAll = () => { setSearch(""); setActiveLevel(null); setActiveCategory(null); setActiveBadge(null); setSortBy("rating"); setShowCarted(false); };
 
@@ -311,7 +434,7 @@ export default function StudentExploreCourses() {
           Browse <span className="text-blue-600 dark:text-blue-400">Courses</span>
         </h1>
         <p className="mt-1.5 text-gray-500 dark:text-gray-400 text-sm">
-          {filtered.length} {filtered.length === 1 ? "course" : "courses"} available · {CARTED_IDS.size} carted
+          {filtered.length} {filtered.length === 1 ? "course" : "courses"} available
         </p>
       </div>
 
@@ -325,14 +448,26 @@ export default function StudentExploreCourses() {
           sortBy={sortBy} setSortBy={setSortBy}
           showCarted={showCarted} setShowCarted={setShowCarted}
           onClear={clearAll} hasFilters={hasFilters}
+          availableTags={availableTags}
         />
 
         <div className="flex-1 min-w-0">
           <AnimatePresence mode="popLayout">
-            {filtered.length > 0 ? (
+            {coursesLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-x-5 gap-y-2">
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                  <div key={i} className="animate-pulse">
+                    <div className="rounded-2xl bg-gray-100 dark:bg-white/[0.06] h-40 mb-3" />
+                    <div className="h-4 bg-gray-100 dark:bg-white/[0.06] rounded mb-2" />
+                    <div className="h-3 bg-gray-100 dark:bg-white/[0.06] rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-gray-100 dark:bg-white/[0.06] rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : filtered.length > 0 ? (
               <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-x-5 gap-y-2">
                 <AnimatePresence mode="popLayout">
-                  {filtered.map((course, i) => <CourseCard key={course.id} course={course} index={i} />)}
+                  {filtered.map((course, i) => <CourseCard key={course.id} course={course} index={i} cartCourseIds={cartCourseIds} addToCartMutation={addToCartMutation} />)}
                 </AnimatePresence>
               </motion.div>
             ) : (
