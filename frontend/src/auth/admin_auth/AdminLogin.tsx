@@ -499,14 +499,15 @@ const AdminLogin = () => {
           callbackURL: "/admin",
       });
 
-      setIsPending(false);
-
       if (error) {
+          setIsPending(false);
           setAuthErr(error.message ?? "Sign in failed. Please try again.");
           return;
       }
 
+      await new Promise(r => setTimeout(r, 800));
       navigate("/admin");
+      setIsPending(false);
   };
 
   return (

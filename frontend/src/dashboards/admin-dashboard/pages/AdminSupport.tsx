@@ -257,15 +257,24 @@ function TicketDetailPanel({
 
               {/* Attachment */}
               {ticket.attachment && (
-                <a
-                  href={ticket.attachment}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit hover:border-rose-300 hover:text-rose-500 transition-all text-gray-600 dark:text-gray-400"
-                >
-                  <Paperclip className="w-3.5 h-3.5" />
-                  <span className="text-xs font-medium">View attachment</span>
-                </a>
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Attachment</p>
+                  {/\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i.test(ticket.attachment) && (
+                    <div className="rounded-xl overflow-hidden ring-2 ring-rose-200 dark:ring-rose-800/40 max-w-sm">
+                      <img src={ticket.attachment} alt="Attachment" className="w-full object-contain max-h-64" />
+                    </div>
+                  )}
+                  <a
+                    href={ticket.attachment}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 shadow-[0_3px_10px_rgba(225,29,72,0.3)] transition-all"
+                  >
+                    <Paperclip className="w-3.5 h-3.5" />
+                    {/\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i.test(ticket.attachment) ? "Download Image" : "Download File"}
+                  </a>
+                </div>
               )}
 
               {/* Notes */}

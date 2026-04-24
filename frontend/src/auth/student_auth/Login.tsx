@@ -410,14 +410,17 @@ const Login = () => {
       callbackURL: "/student",
     });
 
-    setLoading(false);
-
     if (error) {
+      setLoading(false);
       setError(error.message ?? "Sign in failed");
       return;
     }
 
+    // Give the session cookie time to be set and propagated.
+    // iOS Safari needs a brief delay before the session is readable.
+    await new Promise(r => setTimeout(r, 800));
     navigate("/student");
+    setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {

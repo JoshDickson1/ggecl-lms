@@ -26,7 +26,7 @@ import SupportTicketService, {
   TicketCategory as ServiceTicketCategory,
   TicketPriority as ServiceTicketPriority,
 } from "@/services/support-ticket.service.ts";
-import { FileUploadService } from "@/services/file-upload.service.ts";
+import StorageService from "@/services/storage.service";
 
 // ─── Helpers (same pattern as StudentSupport) ─────────────────────────────────
 
@@ -34,6 +34,45 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   return (
     <div className={`rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] ${className}`}>
       {children}
+    </div>
+  );
+}
+
+function isImage(url: string) {
+  return /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i.test(url);
+}
+
+async function downloadAttachment(url: string) {
+  try {
+    const res  = await fetch(url);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = url.split("/").pop()?.split("?")[0] ?? "attachment";
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
+function AttachmentView({ url }: { url: string }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Attachment</p>
+      {isImage(url) && (
+        <div className="rounded-xl overflow-hidden ring-2 ring-violet-200 dark:ring-violet-800/40 max-w-sm">
+          <img src={url} alt="Attachment" className="w-full object-contain max-h-64" />
+        </div>
+      )}
+      <button
+        onClick={() => downloadAttachment(url)}
+        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 shadow-[0_3px_10px_rgba(139,92,246,0.3)] transition-all"
+      >
+        <Paperclip className="w-3.5 h-3.5" />
+        {isImage(url) ? "Download Image" : "Download File"}
+      </button>
     </div>
   );
 }
@@ -146,12 +185,7 @@ function TicketModal({ ticket, onClose }: { ticket: SupportTicket; onClose: () =
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Description</p>
             <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{ticket.description}</p>
           </div>
-          {ticket.attachment && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit">
-              <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">{ticket.attachment.split('/').pop()}</span>
-            </div>
-          )}
+          {ticket.attachment && <AttachmentView url={ticket.attachment} />}
           {ticket.notes.length > 0 && (
             <div>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Admin Notes</p>
@@ -264,21 +298,12 @@ export default function InstructorSupport() {
       };
       
       if (file) {
-        // Validate file
-        const validation = FileUploadService.validateFile(file);
-        if (!validation.valid) {
-          setFileError(validation.error || 'Invalid file');
-          setSubmitting(false);
-          return;
-        }
-        
-        // Upload file
         setUploadingFile(true);
         try {
-          const fileUrl = await FileUploadService.uploadFile(file);
+          const fileUrl = await StorageService.upload("assignments", file);
           payload.attachment = fileUrl;
-        } catch (uploadError) {
-          setFileError('Failed to upload file. Please try again.');
+        } catch {
+          setFileError("Failed to upload file. Please try again.");
           setSubmitting(false);
           setUploadingFile(false);
           return;
@@ -489,47 +514,39 @@ export default function InstructorSupport() {
                       {errors.description && <p className="text-xs text-rose-500 mt-1">{errors.description}</p>}
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Attachment <span className="font-normal text-gray-400">(optional)</span></label>
-                      <input ref={fileRef} type="file" className="hidden" onChange={(e) => {
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Screenshot <span className="font-normal text-gray-400">(optional)</span></label>
+                      <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => {
                         const selectedFile = e.target.files?.[0];
                         if (selectedFile) {
-                          const validation = FileUploadService.validateFile(selectedFile);
-                          if (validation.valid) {
+                          if (selectedFile.size > 10 * 1024 * 1024) {
+                            setFileError("File size must be less than 10MB");
+                          } else {
                             setFile(selectedFile);
                             setFileError(null);
-                          } else {
-                            setFileError(validation.error || 'Invalid file');
                           }
                         }
                       }} />
                       {file ? (
-                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] w-fit">
-                          <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">{file.name}</span>
-                          <button 
-                            onClick={() => {
-                              setFile(null);
-                              setFileError(null);
-                              if (fileRef.current) fileRef.current.value = '';
-                            }} 
-                            className="text-gray-400 hover:text-rose-500 transition-colors ml-1"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
+                        <div className="space-y-2">
+                          {file.type.startsWith("image/") && (
+                            <div className="rounded-xl overflow-hidden ring-2 ring-violet-100 dark:ring-violet-900/40 max-w-xs">
+                              <img src={URL.createObjectURL(file)} alt="Preview" className="w-full object-contain max-h-48" />
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{file.name}</span>
+                            <button onClick={() => { setFile(null); setFileError(null); if (fileRef.current) fileRef.current.value = ""; }} className="text-gray-400 hover:text-rose-500 transition-colors">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ) : (
-                        <button 
-                          type="button" 
-                          onClick={() => fileRef.current?.click()}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-white/[0.12] hover:border-violet-400 hover:text-violet-500 transition-all"
-                        >
-                          <Paperclip className="w-4 h-4" />Attach screenshot or file
+                        <button type="button" onClick={() => fileRef.current?.click()}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-white/[0.12] hover:border-violet-400 hover:text-violet-500 transition-all">
+                          <Paperclip className="w-4 h-4" />Attach screenshot
                         </button>
                       )}
-                      {fileError && (
-                        <p className="text-xs text-rose-500 mt-1">{fileError}</p>
-                      )}
-                      <p className="text-xs text-gray-400 mt-1">Supported: Images, PDFs, text documents (max 10MB)</p>
+                      {fileError && <p className="text-xs text-rose-500 mt-1">{fileError}</p>}
                     </div>
                     <button 
                       onClick={handleSubmit} 

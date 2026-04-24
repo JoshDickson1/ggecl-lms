@@ -238,14 +238,15 @@ const InstructorLogin = () => {
       callbackURL: "/instructor",
     });
 
-    setIsPending(false);
-
     if (error) {
+      setIsPending(false);
       setAuthErr(error.message ?? "Sign in failed. Please try again.");
       return;
     }
 
+    await new Promise(r => setTimeout(r, 800));
     navigate("/instructor");
+    setIsPending(false);
   };
 
   const handleGoogleSignIn = async () => {

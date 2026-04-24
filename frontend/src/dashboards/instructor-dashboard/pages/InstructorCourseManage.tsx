@@ -886,7 +886,7 @@ function MaterialsSectionBlock({
     setUploading(p => ({ ...p, [lessonId]: true }));
     try {
       for (const file of validFiles) {
-        const url = await StorageService.upload("lesson-materials", file);
+        const url = await StorageService.upload("assignments", file);
         await CoursesService.addMaterial(courseId, sec.sectionId, lessonId, {
           type:     materialTypeFromFile(file),
           title:    file.name.replace(/\.[^/.]+$/, ""),

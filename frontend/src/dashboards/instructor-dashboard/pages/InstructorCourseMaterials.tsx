@@ -385,8 +385,11 @@ function SectionBlock({
     else setUploadingFile(true);
     try {
       for (const f of rawFiles) {
-        const folder = type === "videos" ? "course-videos" as const : "lesson-materials" as const;
-        const url = await StorageService.upload(folder, f);
+        // pickFolder auto-selects the correct folder based on MIME type
+        const url = await StorageService.upload(
+          type === "videos" ? "course-videos" : "assignments",
+          f
+        );
         const lesson = await CoursesService.createLesson(courseId, section.id, {
           title: f.name.replace(/\.[^/.]+$/, ""),
           position: (type === "videos" ? section.videos.length : section.files.length) + 1,
