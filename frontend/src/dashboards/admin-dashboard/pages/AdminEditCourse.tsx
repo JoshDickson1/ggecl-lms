@@ -1,13 +1,13 @@
 // src/dashboards/admin-dashboard/pages/AdminEditCourse.tsx
 // Route: /admin/courses/:id/edit
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Shield, BookOpen, GraduationCap, DollarSign,
   FileText, X, Loader2, CheckCircle2, Plus, Info,
-  ImageIcon, Video, Tag, Save,
+  ImageIcon, Video, Tag, Save, Users, Search, UserPlus, UserMinus,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, {
@@ -16,6 +16,7 @@ import CoursesService, {
 } from "@/services/course.service";
 import UserService, { UserRole } from "@/services/user.service";
 import StorageService from "@/services/storage.service";
+import EnrollmentService from "@/services/enrollment.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,231 @@ interface CourseDetail {
   certification: string | null;
   instructorId: string | null;
   instructor?: { id: string; name: string; image: string | null; email: string };
+}
+
+interface StudentUser {
+  id: string;
+  name: string;
+  image: string | null;
+  email: string;
+}
+
+// ─── Student Enrollment Manager ─────────────────────────────────────────────────
+
+function StudentEnrollmentManager({ courseId }: { courseId: string }) {
+  const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const qc = useQueryClient();
+
+  const handleSearch = useCallback((v: string) => {
+    setSearch(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(v), 350);
+  }, []);
+
+  // Get current enrollments
+  const { data: enrollments = [], isLoading: enrollmentsLoading } = useQuery({
+    queryKey: ["course-enrollments", courseId],
+    queryFn: () => EnrollmentService.findByCourse(courseId),
+    staleTime: 1000 * 30,
+  });
+
+  // Get all students for enrollment
+  const { data: allStudents = [], isFetching: studentsFetching } = useQuery<StudentUser[]>({
+    queryKey: ["students-list", showAll ? "all" : "search", debouncedSearch],
+    queryFn: async () => {
+      const res = await UserService.findAll({
+        role: UserRole.STUDENT,
+        search: showAll ? "" : debouncedSearch,
+        limit: showAll ? 100 : 20,
+      }) as { data?: StudentUser[] } | StudentUser[];
+      return Array.isArray(res) ? res : ((res as { data?: StudentUser[] }).data ?? []);
+    },
+    enabled: showAll || debouncedSearch.length >= 2,
+    staleTime: 1000 * 30,
+    retry: 1,
+  });
+
+  // Mutations for enrollment management
+  const enrollMutation = useMutation({
+    mutationFn: (studentIds: string[]) => EnrollmentService.adminEnroll(courseId, studentIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["course-enrollments", courseId] });
+      qc.invalidateQueries({ queryKey: ["admin-courses"] });
+    },
+  });
+
+  const unenrollMutation = useMutation({
+    mutationFn: (_studentIds: string[]) => {
+      // Note: You'll need to implement adminUnenroll in EnrollmentService
+      // For now, we'll use a placeholder or remove students from enrollments
+      return Promise.resolve([]);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["course-enrollments", courseId] });
+      qc.invalidateQueries({ queryKey: ["admin-courses"] });
+    },
+  });
+
+  const enrolledStudentIds = new Set((enrollments as any[]).map((e: any) => e.student?.id || e.studentId));
+  const availableStudents = allStudents.filter(s => !enrolledStudentIds.has(s.id));
+
+  const handleEnroll = (studentIds: string[]) => {
+    enrollMutation.mutate(studentIds);
+  };
+
+  const handleUnenroll = (studentIds: string[]) => {
+    unenrollMutation.mutate(studentIds);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Currently Enrolled Students */}
+      <div>
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <Users className="w-4 h-4" />
+          Currently Enrolled ({(enrollments as any[]).length})
+        </h3>
+        
+        {enrollmentsLoading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading enrollments...
+          </div>
+        ) : (enrollments as any[]).length > 0 ? (
+          <div className="space-y-2">
+            {(enrollments as any[]).map((enrollment: any) => {
+              const student = enrollment.student || { id: enrollment.studentId, name: 'Unknown Student', email: '', image: null };
+              return (
+                <div key={student.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                  {student.image ? (
+                    <img src={student.image} alt={student.name} className="w-8 h-8 rounded-xl object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                      <span className="text-white text-xs font-black">
+                        {student.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{student.name}</p>
+                    <p className="text-xs text-gray-400 truncate">{student.email}</p>
+                  </div>
+                  <button
+                    onClick={() => handleUnenroll([student.id])}
+                    disabled={unenrollMutation.isPending}
+                    className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
+                  >
+                    <UserMinus className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-400">
+            <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No students enrolled yet</p>
+          </div>
+        )}
+      </div>
+
+      {/* Add New Students */}
+      <div>
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <UserPlus className="w-4 h-4" />
+          Enroll New Students
+        </h3>
+        
+        <div className="flex gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => { 
+                handleSearch(e.target.value); 
+                setOpen(true); 
+                if (showAll) {
+                  setShowAll(false);
+                }
+              }}
+              onFocus={() => setOpen(true)}
+              onBlur={() => setTimeout(() => setOpen(false), 200)}
+              placeholder="Search students to enroll…"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all"
+            />
+            {studentsFetching && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 animate-spin" />
+            )}
+          </div>
+          <button
+            onClick={() => { 
+              const newShowAll = !showAll;
+              setShowAll(newShowAll);
+              setSearch("");
+              setDebouncedSearch("");
+              setOpen(true);
+            }}
+            className="px-4 py-2.5 rounded-xl text-sm font-bold bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/[0.08] transition-all"
+          >
+            {showAll ? "Search" : "Show All"}
+          </button>
+        </div>
+
+        <AnimatePresence>
+          {open && (showAll || debouncedSearch.length >= 2) && availableStudents.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="rounded-2xl bg-white dark:bg-[#141c2b] border border-gray-100 dark:border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden max-h-64"
+            >
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-white/[0.06]">
+                <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                  {availableStudents.length} available student{availableStudents.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {availableStudents.map(student => (
+                  <div key={student.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
+                    {student.image ? (
+                      <img src={student.image} alt={student.name} className="w-8 h-8 rounded-xl object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                        <span className="text-white text-xs font-black">
+                          {student.name.split(" ").map(w => w[0]).join("").slice(0, 2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{student.name}</p>
+                      <p className="text-xs text-gray-400 truncate">{student.email}</p>
+                    </div>
+                    <button
+                      onClick={() => handleEnroll([student.id])}
+                      disabled={enrollMutation.isPending}
+                      className="p-2 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors disabled:opacity-50"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {!showAll && search.length === 0 && (
+          <div className="text-center py-6 text-gray-400">
+            <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm mb-2">Search for students or click "Show All" to browse</p>
+            <p className="text-xs">Enroll students by clicking the + button</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Shared atoms ─────────────────────────────────────────────────────────────
@@ -373,7 +599,12 @@ export default function AdminEditCourse() {
                 className={cn("w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border text-gray-800 dark:text-white outline-none cursor-pointer",
                   errors.instructor ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]")}>
                 <option value="">Select instructor…</option>
-                {instructors.map(i => (
+                {[
+                  // Put currently selected instructor first
+                  ...(instructorId ? instructors.filter(i => i.id === instructorId) : []),
+                  // Then the rest of instructors
+                  ...instructors.filter(i => i.id !== instructorId)
+                ].map(i => (
                   <option key={i.id} value={i.id}>
                     {i.name}{i.instructorProfile?.specialization ? ` — ${i.instructorProfile.specialization}` : ""}
                   </option>
@@ -531,6 +762,11 @@ export default function AdminEditCourse() {
         {/* 6. Requirements */}
         <SectionCard icon={CheckCircle2} title="Requirements & Prerequisites" delay={0.19}>
           <StringListEditor items={includes} onChange={setIncludes} placeholder="e.g. Basic JavaScript knowledge" />
+        </SectionCard>
+
+        {/* 5. Student Enrollment Management */}
+        <SectionCard icon={Users} title="Student Enrollment Management" delay={0.16}>
+          <StudentEnrollmentManager courseId={id!} />
         </SectionCard>
 
         {/* Save bar */}

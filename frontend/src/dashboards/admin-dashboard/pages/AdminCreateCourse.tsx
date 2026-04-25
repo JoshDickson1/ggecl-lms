@@ -7,7 +7,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Shield, BookOpen, GraduationCap, DollarSign,
   FileText, X, Loader2, CheckCircle2, Plus, Info,
-  ImageIcon, Video, Tag, Users, Search, UserCheck,
+  ImageIcon, Video, Tag, Users, Search, Check,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, {
@@ -197,6 +197,7 @@ function StudentPicker({ selected, onChange }: {
 }) {
   const [search, setSearch] = useState("");
   const [open, setOpen]     = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const debounceRef         = useRef<ReturnType<typeof setTimeout>>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -206,17 +207,18 @@ function StudentPicker({ selected, onChange }: {
     debounceRef.current = setTimeout(() => setDebouncedSearch(v), 350);
   }, []);
 
+  // Load all students when showAll is true, or search results when searching
   const { data: results = [], isFetching } = useQuery<StudentUser[]>({
-    queryKey: ["students-search", debouncedSearch],
+    queryKey: ["students-list", showAll ? "all" : "search", debouncedSearch],
     queryFn: async () => {
       const res = await UserService.findAll({
         role: UserRole.STUDENT,
-        search: debouncedSearch,
-        limit: 20,
+        search: showAll ? "" : debouncedSearch,
+        limit: showAll ? 100 : 20,
       }) as { data?: StudentUser[] } | StudentUser[];
       return Array.isArray(res) ? res : ((res as { data?: StudentUser[] }).data ?? []);
     },
-    enabled: debouncedSearch.length >= 2,
+    enabled: showAll || debouncedSearch.length >= 2,
     staleTime: 1000 * 30,
     retry: 1,
   });
@@ -231,91 +233,184 @@ function StudentPicker({ selected, onChange }: {
 
   const remove = (id: string) => onChange(selected.filter(s => s.id !== id));
 
+  const toggleAll = () => {
+    if (selected.length === results.length && results.length > 0) {
+      onChange([]);
+    } else {
+      const newSelection = results.filter(student => !selected.some(s => s.id === student.id));
+      onChange([...selected, ...newSelection]);
+    }
+  };
+
+  const isAllSelected = results.length > 0 && selected.length === results.length;
+  // const isPartiallySelected = selected.length > 0 && selected.length < results.length;
+
   return (
     <div className="space-y-4">
-      {/* Search input */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-        <input
-          value={search}
-          onChange={e => { handleSearch(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 200)}
-          placeholder="Search students by name or email…"
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 transition-all"
-        />
-        {isFetching && (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-500 animate-spin" />
-        )}
-
-        {/* Dropdown results */}
-        <AnimatePresence>
-          {open && debouncedSearch.length >= 2 && results.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="absolute top-full left-0 right-0 mt-1.5 rounded-2xl bg-white dark:bg-[#141c2b] border border-gray-100 dark:border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.12)] z-20 overflow-hidden max-h-52 overflow-y-auto">
-              {results.map(student => {
-                const isSelected = selected.some(s => s.id === student.id);
-                return (
-                  <button key={student.id} onMouseDown={() => toggle(student)}
-                    className={cn("w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors text-left",
-                      isSelected && "bg-violet-50/60 dark:bg-violet-950/20")}>
-                    {student.image ? (
-                      <img src={student.image} alt={student.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xs font-black">
-                          {student.name.split(" ").map(w => w[0]).join("").slice(0, 2)}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{student.name}</p>
-                      <p className="text-xs text-gray-400 truncate">{student.email}</p>
-                    </div>
-                    {isSelected && <UserCheck className="w-4 h-4 text-violet-600 flex-shrink-0" />}
-                  </button>
-                );
-              })}
-            </motion.div>
+      {/* Search and controls */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => { 
+            handleSearch(e.target.value); 
+            setOpen(true); 
+            if (showAll) {
+              setShowAll(false);
+            }
+          }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 200)}
+            placeholder="Search students by name or email…"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 transition-all"
+          />
+          {isFetching && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-500 animate-spin" />
           )}
-          {open && debouncedSearch.length >= 2 && !isFetching && results.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="absolute top-full left-0 right-0 mt-1.5 rounded-2xl bg-white dark:bg-[#141c2b] border border-gray-100 dark:border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.12)] z-20 px-4 py-6 text-center">
-              <p className="text-sm text-gray-400">No students found for "{debouncedSearch}"</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        </div>
+        <button
+          onClick={() => { 
+            const newShowAll = !showAll;
+            setShowAll(newShowAll);
+            setSearch("");
+            setDebouncedSearch("");
+            setOpen(true);
+          }}
+          className="px-4 py-2.5 rounded-xl text-sm font-bold bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/[0.08] transition-all"
+        >
+          {showAll ? "Search" : "Show All"}
+        </button>
       </div>
 
-      {/* Selected students chips */}
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {selected.map(student => (
-            <motion.span key={student.id} initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300">
-              {student.image ? (
-                <img src={student.image} alt={student.name} className="w-5 h-5 rounded-lg object-cover" />
+      {/* Dropdown results */}
+      <AnimatePresence>
+        {open && (showAll || debouncedSearch.length >= 2) && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="rounded-2xl bg-white dark:bg-[#141c2b] border border-gray-100 dark:border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.12)] z-20 overflow-hidden"
+          >
+            {/* Header with select all */}
+            {results.length > 0 && (
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-white/[0.06] flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                  {results.length} student{results.length !== 1 ? "s" : ""} found
+                </span>
+                <button
+                  onClick={toggleAll}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all
+                    bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800/40
+                    hover:bg-violet-100 dark:hover:bg-violet-950/50"
+                >
+                  {isAllSelected ? (
+                    <><X className="w-3 h-3" /> Deselect All</>
+                  ) : (
+                    <><CheckCircle2 className="w-3 h-3" /> Select All</>
+                  )}
+                </button>
+              </div>
+            )}
+            
+            {/* Student list with checkboxes */}
+            <div className="max-h-64 overflow-y-auto">
+              {results.length > 0 ? (
+                results.map(student => {
+                  const isSelected = selected.some(s => s.id === student.id);
+                  return (
+                    <div key={student.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
+                      <button
+                        onClick={() => toggle(student)}
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all flex-shrink-0 ${
+                          isSelected
+                            ? "bg-violet-600 border-violet-600"
+                            : "border-gray-300 dark:border-gray-600 hover:border-violet-400"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3 text-white" />}
+                      </button>
+                      
+                      {student.image ? (
+                        <img src={student.image} alt={student.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center flex-shrink-0">
+                          <span className="text-white text-xs font-black">
+                            {student.name.split(" ").map(w => w[0]).join("").slice(0, 2)}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{student.name}</p>
+                        <p className="text-xs text-gray-400 truncate">{student.email}</p>
+                      </div>
+                      
+                      {isSelected && (
+                        <div className="px-2 py-1 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
+                          <span className="text-xs font-bold">Selected</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
-                <div className="w-5 h-5 rounded-lg bg-violet-500 flex items-center justify-center">
-                  <span className="text-white text-[9px] font-black">{student.name[0]}</span>
+                <div className="px-4 py-8 text-center">
+                  <p className="text-sm text-gray-400">
+                    {showAll ? "No students available" : `No students found for "${debouncedSearch}"`}
+                  </p>
                 </div>
               )}
-              <span className="text-xs font-bold max-w-[120px] truncate">{student.name}</span>
-              <button onClick={() => remove(student.id)} className="text-violet-400 hover:text-violet-700 dark:hover:text-violet-200 transition-colors">
-                <X className="w-3 h-3" />
-              </button>
-            </motion.span>
-          ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Selected students summary */}
+      {selected.length > 0 && (
+        <div className="p-4 rounded-2xl bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/40">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-bold text-violet-700 dark:text-violet-300">
+              {selected.length} student{selected.length !== 1 ? "s" : ""} selected
+            </span>
+            <button
+              onClick={() => onChange([])}
+              className="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-200 transition-colors"
+            >
+              Clear all
+            </button>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            {selected.slice(0, 10).map(student => (
+              <motion.span key={student.id} initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
+                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl bg-white dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/40 text-violet-700 dark:text-violet-300">
+                {student.image ? (
+                  <img src={student.image} alt={student.name} className="w-4 h-4 rounded-lg object-cover" />
+                ) : (
+                  <div className="w-4 h-4 rounded-lg bg-violet-500 flex items-center justify-center">
+                    <span className="text-white text-[8px] font-black">{student.name[0]}</span>
+                  </div>
+                )}
+                <span className="text-xs font-bold max-w-[100px] truncate">{student.name}</span>
+                <button onClick={() => remove(student.id)} className="text-violet-400 hover:text-violet-700 dark:hover:text-violet-200 transition-colors">
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </motion.span>
+            ))}
+            {selected.length > 10 && (
+              <span className="text-xs text-violet-600 dark:text-violet-400 font-bold px-2 py-1">
+                +{selected.length - 10} more
+              </span>
+            )}
+          </div>
         </div>
       )}
 
-      {selected.length === 0 && (
-        <p className="text-xs text-gray-400 flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5" />
-          No students selected. Search above to add students to this course on creation.
-        </p>
+      {!showAll && search.length === 0 && selected.length === 0 && (
+        <div className="text-center py-6">
+          <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <p className="text-sm text-gray-400 mb-2">No students selected</p>
+          <p className="text-xs text-gray-400">Search for students or click "Show All" to browse</p>
+        </div>
       )}
     </div>
   );
@@ -419,10 +514,21 @@ export default function AdminCreateCourse() {
     onError: (err: unknown) => {
       let message = "Failed to create course. Please try again.";
       if (err instanceof Error) {
-        if (err.message.includes("400"))      message = "Invalid course data. Please check all required fields.";
+        if (err.message.includes("400")) {
+          if (err.message.includes("videoUrl")) {
+            message = "Invalid video URL. Please enter a valid HTTP/HTTPS URL or leave it empty.";
+          } else if (err.message.includes("Instructor profile")) {
+            message = "The selected instructor does not have a complete profile. Please ask them to complete their instructor profile first.";
+          } else {
+            message = "Invalid course data. Please check all required fields.";
+          }
+        }
         else if (err.message.includes("403")) message = "You don't have permission to create courses.";
         else if (err.message.includes("401")) message = "Please log in to create courses.";
-        else                                  message = err.message;
+        else if (err.message.includes("Instructor profile not found")) {
+          message = "The selected instructor does not have a complete profile. Please ask them to complete their instructor profile first.";
+        }
+        else message = err.message;
       }
       setErrors(p => ({ ...p, submit: message }));
     },
@@ -442,7 +548,12 @@ export default function AdminCreateCourse() {
     if (instructors.length === 0)               e.instructor  = "No instructors available. Please contact support.";
 
     if (videoUrl.trim()) {
-      try { new URL(videoUrl.trim()); } catch {
+      try { 
+        const url = new URL(videoUrl.trim());
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          e.videoUrl = "Please enter a valid HTTP or HTTPS URL for the intro video (e.g., https://example.com/video.mp4)";
+        }
+      } catch {
         e.videoUrl = "Please enter a valid URL for the intro video (e.g., https://example.com/video.mp4)";
       }
     }
@@ -466,7 +577,16 @@ export default function AdminCreateCourse() {
       syllabus: syllabus.filter(Boolean),
       includes: includes.filter(Boolean),
       ...(videoUrl.trim() && (() => {
-        try { new URL(videoUrl.trim()); return { videoUrl: videoUrl.trim() }; } catch { return {}; }
+        try { 
+          const url = new URL(videoUrl.trim());
+          // Ensure it's a valid URL with protocol
+          if (url.protocol === 'http:' || url.protocol === 'https:') {
+            return { videoUrl: videoUrl.trim() };
+          }
+          return {};
+        } catch { 
+          return {}; 
+        }
       })()),
       ...(img   && { img }),
       ...(badge && { badge }),

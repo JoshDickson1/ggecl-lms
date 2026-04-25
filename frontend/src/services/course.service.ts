@@ -21,10 +21,55 @@ export enum CertificationType {
 }
 
 export enum MaterialType {
-  VIDEO    = "VIDEO",
-  DOCUMENT = "DOCUMENT",
-  AUDIO    = "AUDIO",
-  LINK     = "LINK",
+  VIDEO = "VIDEO",
+  PDF    = "PDF",
+  AUDIO  = "AUDIO",
+  LINK   = "LINK",
+  QUIZ   = "QUIZ",
+}
+
+// Helper function to determine material type from file
+export function getMaterialTypeFromFile(file: File): MaterialType {
+  const mimeType = file.type.toLowerCase();
+  const fileName = file.name.toLowerCase();
+  
+  if (mimeType.startsWith('video/')) {
+    return MaterialType.VIDEO;
+  }
+  if (mimeType.startsWith('audio/')) {
+    return MaterialType.AUDIO;
+  }
+  // All other file types (PDF, images, documents) map to PDF according to backend API
+  if (mimeType === 'application/pdf' || 
+      mimeType.includes('document') || 
+      mimeType.includes('sheet') || 
+      mimeType.includes('presentation') ||
+      mimeType.startsWith('image/') ||
+      fileName.endsWith('.pdf') ||
+      fileName.endsWith('.doc') || fileName.endsWith('.docx') ||
+      fileName.endsWith('.xls') || fileName.endsWith('.xlsx') ||
+      fileName.endsWith('.ppt') || fileName.endsWith('.pptx') ||
+      fileName.endsWith('.txt') || fileName.endsWith('.rtf') ||
+      fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') ||
+      fileName.endsWith('.png') || fileName.endsWith('.gif') ||
+      fileName.endsWith('.webp') || fileName.endsWith('.bmp') ||
+      fileName.endsWith('.zip') || fileName.endsWith('.rar')) {
+    return MaterialType.PDF;
+  }
+  // Default to PDF for other file types
+  return MaterialType.PDF;
+}
+
+// Helper function to get display name for material type
+export function getMaterialTypeDisplayName(type: MaterialType): string {
+  switch (type) {
+    case MaterialType.VIDEO: return 'Video';
+    case MaterialType.AUDIO: return 'Audio';
+    case MaterialType.PDF: return 'Document';
+    case MaterialType.LINK: return 'Link';
+    case MaterialType.QUIZ: return 'Quiz';
+    default: return 'File';
+  }
 }
 
 // ==================== TYPES ====================
@@ -169,6 +214,17 @@ export interface AddMaterialPayload {
   size?: number;
 }
 
+// Enhanced material creation payload for better file handling
+export interface CreateMaterialPayload extends AddMaterialPayload {
+  lessonId?: string;
+  // If lessonId is not provided, create a new lesson
+  lessonTitle?: string;
+  lessonPosition?: number;
+  lessonDescription?: string;
+  lessonDuration?: number;
+  lessonIsPreview?: boolean;
+}
+
 // ==================== SERVICE ====================
 
 export default class CoursesService {
@@ -254,20 +310,81 @@ export default class CoursesService {
    * @param id - Course ID
    */
   static async findOne(id: string): Promise<CourseResponse> {
-    const response = await APIConfig.fetch(`/courses/${id}`);
-    const data = await response.json();
-    
-    // Handle sections field that might come back as string from API
-    if (typeof data.sections === 'string') {
-      try {
-        data.sections = JSON.parse(data.sections);
-      } catch (error) {
-        console.warn('Failed to parse sections field:', error);
+    try {
+      const response = await APIConfig.fetch(`/courses/${id}`);
+      const data = await response.json();
+      
+      // Handle sections field that might come back as string from API
+      if (typeof data.sections === 'string') {
+        try {
+          data.sections = JSON.parse(data.sections);
+        } catch (error) {
+          console.warn('Failed to parse sections field:', error);
+          data.sections = [];
+        }
+      }
+      
+      // Ensure sections is always an array
+      if (!Array.isArray(data.sections)) {
+        console.warn('Sections field is not an array, defaulting to empty array');
         data.sections = [];
       }
+      
+      // Validate sections structure
+      data.sections = data.sections.map((section: any) => {
+        if (!section || typeof section !== 'object') {
+          console.warn('Invalid section data, using fallback');
+          return {
+            id: section?.id || `fallback-${Date.now()}`,
+            title: section?.title || 'Untitled Section',
+            position: section?.position || 0,
+            lessons: Array.isArray(section?.lessons) ? section.lessons : [],
+          };
+        }
+        
+        // Ensure lessons is always an array
+        if (!Array.isArray(section.lessons)) {
+          section.lessons = [];
+        }
+        
+        // Validate lessons structure
+        section.lessons = section.lessons.map((lesson: any) => {
+          if (!lesson || typeof lesson !== 'object') {
+            return {
+              id: lesson?.id || `lesson-fallback-${Date.now()}`,
+              title: lesson?.title || 'Untitled Lesson',
+              position: lesson?.position || 0,
+              materials: [],
+            };
+          }
+          
+          // Ensure materials is always an array
+          if (!Array.isArray(lesson.materials)) {
+            lesson.materials = [];
+          }
+          
+          return lesson;
+        });
+        
+        return section;
+      });
+      
+      return data;
+    } catch (error) {
+      console.error(`Failed to fetch course ${id}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error(`Course not found: ${id}. The course may not exist or you may not have access to it.`);
+        } else if (error.message.includes('403')) {
+          throw new Error(`Access denied to course ${id}. You may not be enrolled in this course.`);
+        } else if (error.message.includes('401')) {
+          throw new Error('Please log in to access course details.');
+        }
+      }
+      
+      throw error;
     }
-    
-    return data;
   }
 
   /**
@@ -277,12 +394,28 @@ export default class CoursesService {
    * @param payload - Fields to update
    */
   static async update(id: string, payload: UpdateCoursePayload): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    return response.json();
+    try {
+      const response = await APIConfig.fetch(`/courses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      return response.json();
+    } catch (error) {
+      console.error(`Failed to update course ${id}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error(`Course not found: ${id}. Cannot update a course that doesn't exist.`);
+        } else if (error.message.includes('403')) {
+          throw new Error(`Access denied. You don't have permission to update this course.`);
+        } else if (error.message.includes('401')) {
+          throw new Error('Please log in to update courses.');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   /**
@@ -291,8 +424,24 @@ export default class CoursesService {
    * @param id - Course ID
    */
   static async remove(id: string): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${id}`, { method: "DELETE" });
-    return response.json();
+    try {
+      const response = await APIConfig.fetch(`/courses/${id}`, { method: "DELETE" });
+      return response.json();
+    } catch (error) {
+      console.error(`Failed to delete course ${id}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error(`Course not found: ${id}. Cannot delete a course that doesn't exist.`);
+        } else if (error.message.includes('403')) {
+          throw new Error(`Access denied. You don't have permission to delete this course.`);
+        } else if (error.message.includes('401')) {
+          throw new Error('Please log in to delete courses.');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   // ─── PUBLISH / ARCHIVE ───────────────────────────────────────────────────────
@@ -321,24 +470,56 @@ export default class CoursesService {
    * Add a section to a course.
    */
   static async createSection(courseId: string, payload: CreateSectionPayload): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${courseId}/sections`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    return response.json();
+    try {
+      const response = await APIConfig.fetch(`/courses/${courseId}/sections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      return response.json();
+    } catch (error) {
+      console.error(`Failed to create section for course ${courseId}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error(`Course not found: ${courseId}. Cannot add sections to a course that doesn't exist.`);
+        } else if (error.message.includes('403')) {
+          throw new Error(`Access denied. You don't have permission to add sections to this course.`);
+        } else if (error.message.includes('401')) {
+          throw new Error('Please log in to manage course sections.');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   /**
    * Update a section.
    */
   static async updateSection(courseId: string, sectionId: string, payload: UpdateSectionPayload): Promise<unknown> {
-    const response = await APIConfig.fetch(`/courses/${courseId}/sections/${sectionId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    return response.json();
+    try {
+      const response = await APIConfig.fetch(`/courses/${courseId}/sections/${sectionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      return response.json();
+    } catch (error) {
+      console.error(`Failed to update section ${sectionId} for course ${courseId}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error(`Course or section not found. Cannot update a section that doesn't exist.`);
+        } else if (error.message.includes('403')) {
+          throw new Error(`Access denied. You don't have permission to update this section.`);
+        } else if (error.message.includes('401')) {
+          throw new Error('Please log in to manage course sections.');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   /**
@@ -407,6 +588,44 @@ export default class CoursesService {
       }
     );
     return response.json();
+  }
+
+  /**
+   * Create a material with optional lesson creation.
+   * If lessonId is not provided, creates a new lesson first.
+   */
+  static async createMaterial(courseId: string, sectionId: string, payload: CreateMaterialPayload): Promise<{ material: any; lesson: any }> {
+    let lessonId = payload.lessonId;
+    let lesson: any = null;
+
+    // Create lesson if not provided
+    if (!lessonId) {
+      lesson = await this.createLesson(courseId, sectionId, {
+        title: payload.lessonTitle || payload.title,
+        description: payload.lessonDescription || '',
+        position: payload.lessonPosition || 1,
+        duration: payload.lessonDuration,
+        isPreview: payload.lessonIsPreview || false,
+      });
+      lessonId = (lesson as any).id;
+    }
+
+    // Ensure lessonId is defined before adding material
+    if (!lessonId) {
+      throw new Error('Failed to create or find lesson for material');
+    }
+
+    // Add material to the lesson
+    const material = await this.addMaterial(courseId, sectionId, lessonId, {
+      type: payload.type,
+      title: payload.title,
+      url: payload.url,
+      publicId: payload.publicId,
+      fileName: payload.fileName,
+      size: payload.size,
+    });
+
+    return { material, lesson };
   }
 
   /**

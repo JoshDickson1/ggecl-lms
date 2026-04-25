@@ -1,22 +1,22 @@
 // InstructorCourseMaterials.tsx — real API: courses, sections, lessons, materials via CoursesService + StorageService
 
 import { useState, useRef, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown, Plus, Upload, Video, FileText, Image as ImageIcon,
   Package, X, Edit3, Trash2, GripVertical, Clock,
-  CheckCircle2, Circle, ChevronRight, BookOpen, ListChecks,
-  Paperclip, Eye, EyeOff, Save, HelpCircle, Check, Layers,
+  CheckCircle2, ChevronRight, BookOpen, ListChecks,
+  Paperclip, Save, HelpCircle, Check, Layers,
   Film, Send, Sparkles, Pencil, Loader2, AlertTriangle,
 } from "lucide-react";
 import {
-  Section, CourseFile, InlineQuiz, QuizQuestion,
-  FileType, getFileType,
+  CourseFile, FileType, getFileType,
 } from "@/data/courseTypes";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import CoursesService, { MaterialType } from "@/services/course.service";
+import CoursesService, { getMaterialTypeFromFile, CreateMaterialPayload } from "@/services/course.service";
 import StorageService from "@/services/storage.service";
+import QuizService, { type QuizResponse, type CreateQuizDto } from "@/services/quiz.service";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -62,9 +62,15 @@ interface CourseFileExt extends CourseFile {
 }
 
 // Extended Section that uses CourseFileExt
-interface SectionExt extends Omit<Section, "videos" | "files"> {
+interface SectionExt {
+  id: string;
+  title: string;
+  description: string;
+  order: number;
+  isPublished: boolean;
   videos: CourseFileExt[];
   files:  CourseFileExt[];
+  quizzes: QuizResponse[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -193,21 +199,54 @@ function UploadZone({ label, accept, onFiles, uploading }: {
 
 // ─── Quiz Editor Modal ────────────────────────────────────────────────────────
 
+// Local quiz question structure for editing
+interface LocalQuizQuestion {
+  id: string;
+  text: string;
+  options: {
+    id: string;
+    text: string;
+    isCorrect: boolean;
+  }[];
+}
+
 function QuizEditor({
-  quiz, onSave, onClose,
-}: { quiz: InlineQuiz | null; onClose: () => void; onSave: (q: InlineQuiz) => void }) {
+  quiz, onSave, onClose, sectionId,
+}: { 
+  quiz: QuizResponse | null; 
+  onClose: () => void; 
+  onSave: (q: CreateQuizDto) => void;
+  sectionId: string;
+}) {
   const [title, setTitle]         = useState(quiz?.title ?? "");
   const [passMark, setPassMark]   = useState(quiz?.passMark ?? 70);
-  const [questions, setQuestions] = useState<QuizQuestion[]>(quiz?.questions ?? []);
-  const [isPublished, setIsPublished] = useState(quiz?.isPublished ?? false);
+  const [questions, setQuestions] = useState<LocalQuizQuestion[]>(() => {
+    if (quiz?.questions) {
+      return quiz.questions.map(q => ({
+        id: q.id,
+        text: q.text,
+        options: q.options.map((opt, idx) => ({
+          id: opt.id,
+          text: opt.text,
+          isCorrect: idx === 0 // Default to first option as correct (backend will validate)
+        }))
+      }));
+    }
+    return [];
+  });
 
   const addQuestion = () => setQuestions(p => [...p, {
-    id: `qq-${Date.now()}`, question: "",
-    options: [{ id: "o-1", text: "" }, { id: "o-2", text: "" }, { id: "o-3", text: "" }, { id: "o-4", text: "" }],
-    correctOptionId: "o-1",
+    id: `qq-${Date.now()}`, 
+    text: "",
+    options: [
+      { id: "o-1", text: "", isCorrect: true },
+      { id: "o-2", text: "", isCorrect: false },
+      { id: "o-3", text: "", isCorrect: false },
+      { id: "o-4", text: "", isCorrect: false }
+    ],
   }]);
 
-  const updateQuestion = (id: string, updates: Partial<QuizQuestion>) =>
+  const updateQuestion = (id: string, updates: Partial<LocalQuizQuestion>) =>
     setQuestions(p => p.map(q => q.id === id ? { ...q, ...updates } : q));
 
   const updateOption = (qId: string, oId: string, text: string) =>
@@ -215,9 +254,39 @@ function QuizEditor({
       q.id !== qId ? q : { ...q, options: q.options.map(o => o.id === oId ? { ...o, text } : o) }
     ));
 
+  const setCorrectOption = (qId: string, oId: string) =>
+    setQuestions(p => p.map(q =>
+      q.id !== qId ? q : { ...q, options: q.options.map(o => ({ ...o, isCorrect: o.id === oId })) }
+    ));
+
   const handleSave = () => {
     if (!title.trim() || questions.length === 0) return;
-    onSave({ id: quiz?.id ?? `q-${Date.now()}`, title, passMark, questions, isPublished });
+    
+    // Validate each question has exactly one correct option
+    const isValid = questions.every(q => {
+      const correctCount = q.options.filter(o => o.isCorrect).length;
+      return correctCount === 1 && q.options.every(o => o.text.trim());
+    });
+    
+    if (!isValid) {
+      alert('Each question must have exactly one correct option and all options must have text.');
+      return;
+    }
+    
+    const createQuizDto: CreateQuizDto = {
+      title: title.trim(),
+      sectionId,
+      passMark,
+      questions: questions.map(q => ({
+        text: q.text.trim(),
+        options: q.options.map(o => ({
+          text: o.text.trim(),
+          isCorrect: o.isCorrect
+        }))
+      }))
+    };
+    
+    onSave(createQuizDto);
   };
 
   return (
@@ -289,7 +358,7 @@ function QuizEditor({
                   className="border border-slate-200 dark:border-white/[0.07] rounded-2xl overflow-hidden">
                   <div className="px-4 py-3 bg-slate-50 dark:bg-white/[0.03] border-b border-slate-200 dark:border-white/[0.06] flex items-center gap-2">
                     <span className="text-xs font-bold text-slate-400 dark:text-white/30">Q{qi + 1}</span>
-                    <input value={q.question} onChange={e => updateQuestion(q.id, { question: e.target.value })}
+                    <input value={q.text} onChange={e => updateQuestion(q.id, { text: e.target.value })}
                       placeholder="Enter question text…"
                       className="flex-1 text-sm font-semibold bg-transparent text-slate-800 dark:text-white/80 placeholder:text-slate-300 dark:placeholder:text-white/20 focus:outline-none" />
                     <button onClick={() => setQuestions(p => p.filter(x => x.id !== q.id))}
@@ -300,11 +369,11 @@ function QuizEditor({
                   <div className="p-4 grid grid-cols-2 gap-2">
                     {q.options.map(opt => (
                       <div key={opt.id} className="flex items-center gap-2">
-                        <button onClick={() => updateQuestion(q.id, { correctOptionId: opt.id })}
+                        <button onClick={() => setCorrectOption(q.id, opt.id)}
                           className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
-                            q.correctOptionId === opt.id ? "border-emerald-500 bg-emerald-500" : "border-slate-300 dark:border-white/20"
+                            opt.isCorrect ? "border-emerald-500 bg-emerald-500" : "border-slate-300 dark:border-white/20"
                           }`}>
-                          {q.correctOptionId === opt.id && <Check className="w-3 h-3 text-white" />}
+                          {opt.isCorrect && <Check className="w-3 h-3 text-white" />}
                         </button>
                         <input value={opt.text} onChange={e => updateOption(q.id, opt.id, e.target.value)}
                           placeholder={`Option ${opt.id.replace("o-", "")}`}
@@ -325,15 +394,9 @@ function QuizEditor({
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-white/[0.07]">
-            <button onClick={() => setIsPublished(p => !p)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
-                isPublished
-                  ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700"
-                  : "border-slate-200 dark:border-white/[0.07] text-slate-400 dark:text-white/30"
-              }`}>
-              {isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              {isPublished ? "Published" : "Draft"}
-            </button>
+            <div className="text-xs text-slate-400 dark:text-white/30">
+              Quiz will be created and saved to the backend
+            </div>
             <button onClick={handleSave} disabled={!title.trim() || questions.length === 0}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:opacity-90 disabled:opacity-30 transition-all shadow-md shadow-blue-200 dark:shadow-none">
               <Save className="w-4 h-4" />Save Quiz
@@ -360,7 +423,7 @@ function SectionBlock({
   const [tab, setTab]                   = useState<"videos" | "files" | "quizzes">("videos");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft]     = useState(section.title);
-  const [editingQuiz, setEditingQuiz]   = useState<InlineQuiz | null | "new">(null);
+  const [editingQuiz, setEditingQuiz]   = useState<QuizResponse | null | "new">(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingFile, setUploadingFile]   = useState(false);
 
@@ -383,38 +446,72 @@ function SectionBlock({
   const addFiles = async (rawFiles: File[], type: "videos" | "files") => {
     if (type === "videos") setUploadingVideo(true);
     else setUploadingFile(true);
-    try {
-      for (const f of rawFiles) {
-        // pickFolder auto-selects the correct folder based on MIME type
-        const url = await StorageService.upload(
-          type === "videos" ? "course-videos" : "assignments",
-          f
-        );
-        const lesson = await CoursesService.createLesson(courseId, section.id, {
-          title: f.name.replace(/\.[^/.]+$/, ""),
-          position: (type === "videos" ? section.videos.length : section.files.length) + 1,
-        }) as { id: string };
-        await CoursesService.addMaterial(courseId, section.id, lesson.id, {
-          type: type === "videos" ? MaterialType.VIDEO : MaterialType.DOCUMENT,
+    
+    const uploadPromises = rawFiles.map(async (f) => {
+      try {
+        // Determine material type from file
+        const materialType = getMaterialTypeFromFile(f);
+        
+        // Select appropriate storage folder
+        const storageFolder = type === "videos" ? "course-videos" : "lesson-materials";
+        
+        // Upload file to storage
+        const url = await StorageService.upload(storageFolder, f);
+        
+        // Determine lesson position
+        const currentPosition = type === "videos" ? section.videos.length : section.files.length;
+        
+        // Create material with lesson
+        const payload: CreateMaterialPayload = {
+          type: materialType,
           title: f.name,
           url,
           fileName: f.name,
           size: f.size,
-        });
+          lessonTitle: f.name.replace(/\.[^/.]+$/, ""),
+          lessonPosition: currentPosition + 1,
+          lessonDescription: `Uploaded file: ${f.name}`,
+        };
+        
+        const result = await CoursesService.createMaterial(courseId, section.id, payload);
+        
+        // Create file object for UI
         const newFile: CourseFileExt = {
-          id: lesson.id,
+          id: result.material.id,
           name: f.name,
           type: getFileType(f.name),
           size: `${(f.size / 1024 / 1024).toFixed(1)} MB`,
           url,
           uploadedAt: new Date().toISOString().split("T")[0],
-          lessonId: lesson.id,
+          lessonId: result.lesson.id,
         };
-        if (type === "videos") onUpdate(section.id, { videos: [...section.videos, newFile] });
-        else onUpdate(section.id, { files: [...section.files, newFile] });
+        
+        // Update local state
+        if (type === "videos") {
+          onUpdate(section.id, { videos: [...section.videos, newFile] });
+        } else {
+          onUpdate(section.id, { files: [...section.files, newFile] });
+        }
+        
+        return { success: true, file: newFile, error: null };
+      } catch (error) {
+        console.error(`Failed to upload file ${f.name}:`, error);
+        return { 
+          success: false, 
+          file: null, 
+          error: error instanceof Error ? error.message : 'Upload failed' 
+        };
       }
-    } catch {
-      // file stays pending — user can retry
+    });
+    
+    try {
+      const results = await Promise.allSettled(uploadPromises);
+      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success));
+      
+      if (failed.length > 0) {
+        console.error(`${failed.length} files failed to upload`);
+        // You could show a toast notification here
+      }
     } finally {
       setUploadingVideo(false);
       setUploadingFile(false);
@@ -429,13 +526,26 @@ function SectionBlock({
     else onUpdate(section.id, { files: section.files.filter(f => f.id !== fileId) });
   };
 
-  const saveQuiz = (quiz: InlineQuiz) => {
-    const exists = section.quizzes.some(q => q.id === quiz.id);
-    const updated = exists
-      ? section.quizzes.map(q => q.id === quiz.id ? quiz : q)
-      : [...section.quizzes, quiz];
-    onUpdate(section.id, { quizzes: updated });
-    setEditingQuiz(null);
+  const saveQuiz = async (quizDto: CreateQuizDto) => {
+    try {
+      const createdQuiz = await QuizService.createQuiz(quizDto);
+      const updated = [...section.quizzes, createdQuiz];
+      onUpdate(section.id, { quizzes: updated });
+      setEditingQuiz(null);
+    } catch (error) {
+      console.error('Failed to create quiz:', error);
+      alert('Failed to create quiz. Please try again.');
+    }
+  };
+
+  const removeQuiz = async (quizId: string) => {
+    try {
+      await QuizService.deleteQuiz(quizId);
+      onUpdate(section.id, { quizzes: section.quizzes.filter(q => q.id !== quizId) });
+    } catch (error) {
+      console.error('Failed to delete quiz:', error);
+      alert('Failed to delete quiz. Please try again.');
+    }
   };
 
   const TABS = [
@@ -576,7 +686,12 @@ function SectionBlock({
                             <FileRow key={f.id} file={f} onDelete={id => removeFile(id, "files")} />
                           ))}
                         </AnimatePresence>
-                        <UploadZone label="Upload File (PDF, slides, images, archives…)" accept="*/*" onFiles={f => addFiles(f, "files")} uploading={uploadingFile} />
+                        <UploadZone 
+                          label="Upload File (PDF, slides, images, archives…)" 
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp" 
+                          onFiles={f => addFiles(f, "files")} 
+                          uploading={uploadingFile} 
+                        />
                       </motion.div>
                     )}
                     {tab === "quizzes" && (
@@ -599,16 +714,13 @@ function SectionBlock({
                                 <p className="text-sm font-semibold text-slate-800 dark:text-white/80 truncate">{quiz.title}</p>
                                 <p className="text-xs text-slate-400 dark:text-white/30">{quiz.questions.length} questions · {quiz.passMark}% pass</p>
                               </div>
-                              {quiz.isPublished
-                                ? <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Live</span>
-                                : <span className="text-xs font-bold text-slate-400 dark:text-white/25 flex items-center gap-1"><Circle className="w-3 h-3" />Draft</span>
-                              }
+                              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Active</span>
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button onClick={() => setEditingQuiz(quiz)}
                                   className="p-1.5 rounded-lg text-slate-300 dark:text-white/25 hover:text-blue-500 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/20 transition-all">
                                   <Edit3 className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={() => onUpdate(section.id, { quizzes: section.quizzes.filter(q => q.id !== quiz.id) })}
+                                <button onClick={() => removeQuiz(quiz.id)}
                                   className="p-1.5 rounded-lg text-slate-300 dark:text-white/25 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-all">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -636,6 +748,7 @@ function SectionBlock({
             quiz={editingQuiz === "new" ? null : editingQuiz}
             onClose={() => setEditingQuiz(null)}
             onSave={saveQuiz}
+            sectionId={section.id}
           />
         )}
       </AnimatePresence>
@@ -733,6 +846,8 @@ function CoursePicker({ courses, selected, onSelect, loading }: {
 
 export default function InstructorCourseMaterials() {
   const location = useLocation();
+  const params = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [selectedCourse, setSelectedCourse] = useState<ApiCourse | null>(null);
@@ -762,18 +877,36 @@ export default function InstructorCourseMaterials() {
   useEffect(() => {
     if (courseDetail) {
       const detail = courseDetail as ApiCourseDetail;
-      setSections((detail.sections ?? []).map(mapApiSection));
+      const sectionsWithoutQuizzes = (detail.sections ?? []).map(mapApiSection);
+      setSections(sectionsWithoutQuizzes);
+      
+      // Load quizzes for each section
+      sectionsWithoutQuizzes.forEach(async (section) => {
+        try {
+          const quizData = await QuizService.getQuizzes({ sectionId: section.id });
+          const updatedSection = {
+            ...section,
+            quizzes: quizData.data
+          };
+          setSections(prev => prev.map(s => s.id === section.id ? updatedSection : s));
+        } catch (error) {
+          console.error(`Failed to load quizzes for section ${section.id}:`, error);
+        }
+      });
     }
   }, [courseDetail]);
 
-  // Auto-select course if navigated from VideoUpload with state
+  // Auto-select course from URL parameter or navigation state
   useEffect(() => {
+    const urlCourseId = params.id;
     const stateId = (location.state as { courseId?: string } | null)?.courseId;
-    if (stateId && courses.length > 0 && !selectedCourse) {
-      const match = courses.find(c => c.id === stateId);
+    const courseId = urlCourseId || stateId;
+    
+    if (courseId && courses.length > 0 && !selectedCourse) {
+      const match = courses.find(c => c.id === courseId);
       if (match) setSelectedCourse(match);
     }
-  }, [courses, location.state, selectedCourse]);
+  }, [courses, location.state, selectedCourse, params.id]);
 
   // Mutations
   const createSectionMutation = useMutation({
@@ -814,6 +947,14 @@ export default function InstructorCourseMaterials() {
     } catch {
       // error handled by react-query
     }
+  };
+
+  const onSelect = (c: ApiCourse) => { 
+    setSelectedCourse(c); 
+    setSections([]); 
+    setPublished(false);
+    // Navigate to the course-specific URL
+    navigate(`/instructor/course-materials/${c.id}`, { replace: true });
   };
 
   const handlePublish = async () => {
@@ -900,7 +1041,7 @@ export default function InstructorCourseMaterials() {
             <CoursePicker
               courses={courses}
               selected={selectedCourse}
-              onSelect={c => { setSelectedCourse(c); setSections([]); setPublished(false); }}
+              onSelect={onSelect}
               loading={coursesLoading}
             />
           </motion.div>

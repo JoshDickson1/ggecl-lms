@@ -135,7 +135,7 @@ function formatSize(bytes: number | null): string {
 function materialTypeFromFile(file: File): MaterialType {
   if (file.type.startsWith("video/")) return MaterialType.VIDEO;
   if (file.type.startsWith("audio/")) return MaterialType.AUDIO;
-  return MaterialType.DOCUMENT;
+  return MaterialType.PDF;
 }
 
 function resolvePreviewType(apiType: string, fileName: string | null): PreviewFileType {

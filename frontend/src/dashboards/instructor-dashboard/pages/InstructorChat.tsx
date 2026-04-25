@@ -7,6 +7,7 @@ import {
   Hash, Users, Info, ChevronDown, MessageSquare, Plus,
   Loader2, AlertCircle, Pin, X, Send, Reply, Smile, Download,
   Paperclip, Image as ImageIcon, Film, FileText, Award, CheckCircle2,
+  ZoomIn,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ChatService, {
@@ -67,14 +68,133 @@ function Fade({ children, delay = 0 }: { children: React.ReactNode; delay?: numb
   );
 }
 
-// ─── File upload ──────────────────────────────────────────────────────────────
+// ─── Attachment preview helpers ───────────────────────────────────────────────
 
-function getFileIcon(mimeType: string) {
-  if (mimeType.startsWith("image/")) return <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />;
-  if (mimeType.startsWith("video/")) return <Film className="w-3.5 h-3.5 text-blue-500" />;
-  if (mimeType === "application/pdf") return <FileText className="w-3.5 h-3.5 text-rose-500" />;
-  return <Paperclip className="w-3.5 h-3.5 text-gray-400" />;
+function isImage(mime: string) { return mime.startsWith("image/"); }
+function isVideo(mime: string) { return mime.startsWith("video/"); }
+function isPDF(mime: string)   { return mime === "application/pdf"; }
+
+/** Lightbox for full-size image / video preview */
+function MediaLightbox({ src, mime, name, onClose }: { src: string; mime: string; name: string; onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative max-w-5xl max-h-[90vh] flex flex-col items-center gap-3"
+      >
+        <button onClick={onClose} className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all">
+          <X className="w-4 h-4" />
+        </button>
+        {isImage(mime) && (
+          <img src={src} alt={name} className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-2xl" />
+        )}
+        {isVideo(mime) && (
+          <video src={src} controls autoPlay className="max-h-[80vh] max-w-full rounded-2xl shadow-2xl" />
+        )}
+        <a href={src} download={name} target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-all">
+          <Download className="w-4 h-4" /> Download
+        </a>
+      </motion.div>
+    </motion.div>
+  );
 }
+
+/** Renders a single attachment inline */
+function AttachmentPreview({ att }: { att: { id: string; url: string; fileName: string; mimeType: string; size: number } }) {
+  const [lightbox, setLightbox] = useState(false);
+
+  if (isImage(att.mimeType)) {
+    return (
+      <>
+        <div
+          className="relative group/img cursor-zoom-in rounded-2xl overflow-hidden border border-gray-200 dark:border-white/[0.08] max-w-xs"
+          onClick={() => setLightbox(true)}
+        >
+          <img
+            src={att.url}
+            alt={att.fileName}
+            className="w-full max-h-60 object-cover rounded-2xl transition-transform group-hover/img:scale-[1.02]"
+          />
+          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-all rounded-2xl flex items-center justify-center">
+            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 transition-opacity drop-shadow" />
+          </div>
+          <div className="absolute bottom-2 left-2 right-2">
+            <p className="text-[10px] text-white/80 font-medium truncate drop-shadow">{att.fileName}</p>
+          </div>
+        </div>
+        <AnimatePresence>
+          {lightbox && <MediaLightbox src={att.url} mime={att.mimeType} name={att.fileName} onClose={() => setLightbox(false)} />}
+        </AnimatePresence>
+      </>
+    );
+  }
+
+  if (isVideo(att.mimeType)) {
+    return (
+      <>
+        <div
+          className="relative group/vid cursor-pointer rounded-2xl overflow-hidden border border-gray-200 dark:border-white/[0.08] max-w-xs bg-black"
+          onClick={() => setLightbox(true)}
+        >
+          <video src={att.url} className="w-full max-h-52 object-contain rounded-2xl opacity-90" muted />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/vid:bg-black/40 transition-all rounded-2xl">
+            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
+              <Film className="w-5 h-5 text-white ml-0.5" />
+            </div>
+          </div>
+          <div className="absolute bottom-2 left-2 right-2">
+            <p className="text-[10px] text-white/80 font-medium truncate drop-shadow">{att.fileName}</p>
+            <p className="text-[9px] text-white/60">{(att.size / 1024).toFixed(0)} KB</p>
+          </div>
+        </div>
+        <AnimatePresence>
+          {lightbox && <MediaLightbox src={att.url} mime={att.mimeType} name={att.fileName} onClose={() => setLightbox(false)} />}
+        </AnimatePresence>
+      </>
+    );
+  }
+
+  if (isPDF(att.mimeType)) {
+    return (
+      <a href={att.url} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-rose-200 dark:border-rose-800/30 bg-rose-50 dark:bg-rose-900/10 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors max-w-xs group/pdf"
+      >
+        <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center flex-shrink-0">
+          <FileText className="w-5 h-5 text-rose-500" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{att.fileName}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">PDF · {(att.size / 1024).toFixed(0)} KB</p>
+        </div>
+        <Download className="w-4 h-4 text-gray-400 group-hover/pdf:text-rose-500 flex-shrink-0 transition-colors" />
+      </a>
+    );
+  }
+
+  // Generic file card
+  return (
+    <a href={att.url} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-colors max-w-xs group/file"
+    >
+      <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/[0.08] flex items-center justify-center flex-shrink-0">
+        <Paperclip className="w-5 h-5 text-gray-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{att.fileName}</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">{(att.size / 1024).toFixed(0)} KB</p>
+      </div>
+      <Download className="w-4 h-4 text-gray-400 group-hover/file:text-violet-500 flex-shrink-0 transition-colors" />
+    </a>
+  );
+}
+
+// ─── Pending file preview (before upload) ─────────────────────────────────────
 
 interface PendingFile {
   file: File;
@@ -82,6 +202,13 @@ interface PendingFile {
   uploading: boolean;
   error?: string;
   result?: { key: string; url: string; fileName: string; mimeType: string; size: number };
+}
+
+function getFileIcon(mimeType: string) {
+  if (mimeType.startsWith("image/")) return <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />;
+  if (mimeType.startsWith("video/")) return <Film className="w-3.5 h-3.5 text-blue-500" />;
+  if (mimeType === "application/pdf") return <FileText className="w-3.5 h-3.5 text-rose-500" />;
+  return <Paperclip className="w-3.5 h-3.5 text-gray-400" />;
 }
 
 async function uploadChatFile(file: File): Promise<{ key: string; url: string; fileName: string; mimeType: string; size: number }> {
@@ -146,7 +273,7 @@ function EmojiPicker({ onPick, onClose }: { onPick: (r: MessageReaction) => void
   );
 }
 
-// ─── Message Bubble (instructor: can pin + delete any) ────────────────────────
+// ─── Message Bubble ───────────────────────────────────────────────────────────
 
 function MessageBubble({
   msg, isMe, prevSenderId, currentUserId,
@@ -172,8 +299,11 @@ function MessageBubble({
 
   const isSending = (msg as any)._sending === true;
   const isFailed  = (msg as any)._failed  === true;
+  const initials = msg.senderName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
 
-  const initials = msg.senderName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+  // Group images together for a nice grid
+  const imageAtts = msg.attachments.filter(a => isImage(a.mimeType));
+  const otherAtts = msg.attachments.filter(a => !isImage(a.mimeType));
 
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}
@@ -235,42 +365,50 @@ function MessageBubble({
           </div>
         )}
 
-        {msg.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {msg.attachments.map((att) => (
-              <a key={att.id} href={att.url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-colors max-w-[220px]">
-                <Download className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{att.fileName}</p>
-                  <p className="text-[10px] text-gray-400">{(att.size / 1024).toFixed(0)} KB</p>
-                </div>
-              </a>
+        {/* Image grid */}
+        {imageAtts.length > 0 && (
+          <div className={`mt-2 ${imageAtts.length > 1 ? "grid grid-cols-2 gap-1.5" : "flex"} max-w-sm`}>
+            {imageAtts.map((att) => (
+              <AttachmentPreview key={att.id} att={att} />
             ))}
           </div>
         )}
 
+        {/* Other attachments */}
+        {otherAtts.length > 0 && (
+          <div className="flex flex-col gap-2 mt-2">
+            {otherAtts.map((att) => (
+              <AttachmentPreview key={att.id} att={att} />
+            ))}
+          </div>
+        )}
+
+        {/* Reactions — rendered immediately from local state */}
         {msg.reactions.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {msg.reactions.map((r) => {
               const hasMe = r.userIds.includes(currentUserId);
               return (
-                <button key={r.reaction} onClick={() => onReact(msg.id, r.reaction)}
+                <motion.button
+                  key={r.reaction}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  onClick={() => onReact(msg.id, r.reaction)}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all ${hasMe ? "bg-violet-50 border-violet-300 dark:bg-violet-900/30 dark:border-violet-700" : "bg-gray-50 border-gray-200 dark:bg-white/[0.04] dark:border-white/[0.08]"}`}>
                   <span>{REACTION_EMOJI[r.reaction]}</span>
                   <span className="text-gray-600 dark:text-gray-400 font-semibold">{r.userIds.length}</span>
-                </button>
+                </motion.button>
               );
             })}
           </div>
         )}
       </div>
 
-      {/* Action toolbar — instructor gets pin button too */}
+      {/* Action toolbar */}
       <AnimatePresence>
         {showActions && (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.1 }}
-            className="absolute right-4 -top-4 flex items-center gap-0.5 px-2 py-1 rounded-xl bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] shadow-lg z-20">
+            className="absolute right-4 -top-5 flex items-center gap-0.5 px-2 py-1.5 rounded-xl bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] shadow-lg z-20">
             <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg text-gray-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all" title="Reply">
               <Reply className="w-3.5 h-3.5" />
             </button>
@@ -282,13 +420,11 @@ function MessageBubble({
                 {showEmoji && <EmojiPicker onPick={(r) => onReact(msg.id, r)} onClose={() => setShowEmoji(false)} />}
               </AnimatePresence>
             </div>
-            {/* Instructor-only: pin any message */}
             <button onClick={() => onPin(msg.id)}
               className={`p-1.5 rounded-lg transition-all ${msg.isPinned ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20" : "text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20"}`}
               title={msg.isPinned ? "Unpin" : "Pin"}>
               <Pin className="w-3.5 h-3.5" />
             </button>
-            {/* Instructor-only: delete any message */}
             <button onClick={() => onDelete(msg.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all" title="Delete">
               <X className="w-3.5 h-3.5" />
             </button>
@@ -351,7 +487,7 @@ function MessageInput({
     const attachments = pendingFiles.filter((f) => f.result).map((f) => f.result!);
     onSend(text.trim(), attachments.length > 0 ? attachments : undefined);
     setText(""); setPendingFiles([]);
-    if (textareaRef.current) textareaRef.current.style.height = "42px";
+    if (textareaRef.current) { textareaRef.current.style.height = "42px"; }
   };
 
   return (
@@ -368,22 +504,34 @@ function MessageInput({
       )}
 
       {pendingFiles.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex flex-wrap gap-2 mb-3">
           {pendingFiles.map((pf, i) => (
-            <div key={i} className="relative flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] max-w-[180px]">
-              {pf.preview
-                ? <img src={pf.preview} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                : <div className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-white/[0.08] flex items-center justify-center flex-shrink-0">{getFileIcon(pf.file.type)}</div>
-              }
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{pf.file.name}</p>
-                <p className="text-[10px] text-gray-400">
-                  {pf.uploading ? <span className="flex items-center gap-1"><Loader2 className="w-2.5 h-2.5 animate-spin" />Uploading…</span>
-                    : pf.error ? <span className="text-rose-500">{pf.error}</span>
-                    : `${(pf.file.size / 1024).toFixed(0)} KB`}
-                </p>
-              </div>
-              <button onClick={() => removeFile(i)} className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-500 text-white flex items-center justify-center hover:bg-rose-500 transition-colors">
+            <div key={i} className="relative">
+              {pf.preview ? (
+                <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-200 dark:border-white/[0.08]">
+                  <img src={pf.preview} alt="" className="w-full h-full object-cover" />
+                  {pf.uploading && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] max-w-[160px]">
+                  <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-white/[0.08] flex items-center justify-center flex-shrink-0">
+                    {getFileIcon(pf.file.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{pf.file.name}</p>
+                    <p className="text-[10px] text-gray-400">
+                      {pf.uploading ? <span className="flex items-center gap-1"><Loader2 className="w-2 h-2 animate-spin" />Uploading…</span>
+                        : pf.error ? <span className="text-rose-500">{pf.error}</span>
+                        : `${(pf.file.size / 1024).toFixed(0)} KB`}
+                    </p>
+                  </div>
+                </div>
+              )}
+              <button onClick={() => removeFile(i)} className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-600 dark:bg-gray-400 text-white flex items-center justify-center hover:bg-rose-500 transition-colors z-10">
                 <X className="w-2.5 h-2.5" />
               </button>
             </div>
@@ -401,7 +549,7 @@ function MessageInput({
         <textarea ref={textareaRef} value={text}
           onChange={(e) => { setText(e.target.value); const el = e.target; el.style.height = "42px"; el.style.height = `${Math.min(el.scrollHeight, 128)}px`; }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
-          placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+          placeholder="Type a message… (Enter to send)"
           disabled={disabled}
           className="flex-1 px-4 py-2.5 rounded-2xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none transition-all disabled:opacity-50"
           style={{ minHeight: "42px", maxHeight: "128px" }} />
@@ -414,7 +562,7 @@ function MessageInput({
   );
 }
 
-// ─── Grade Panel (instructor-only sidebar) ────────────────────────────────────
+// ─── Grade Panel ──────────────────────────────────────────────────────────────
 
 function GradePanel({
   room, onClose, onGraded,
@@ -431,8 +579,7 @@ function GradePanel({
   const [success, setSuccess] = useState(false);
 
   const gradeMutation = useMutation({
-    mutationFn: () =>
-      ChatService.gradeRoom(room.id, { score, feedback, strengths, improvements }),
+    mutationFn: () => ChatService.gradeRoom(room.id, { score, feedback, strengths, improvements }),
     onSuccess: () => {
       setSuccess(true);
       queryClient.invalidateQueries({ queryKey: ["chat-rooms"] });
@@ -468,7 +615,6 @@ function GradePanel({
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {/* Score slider */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Score</label>
@@ -482,24 +628,18 @@ function GradePanel({
                 className={`h-full rounded-full bg-gradient-to-r ${color}`} />
             </div>
           </div>
-
-          {/* Feedback */}
           <div>
             <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Feedback</label>
             <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={3}
               placeholder="Overall feedback for the group…"
               className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/25 resize-none" />
           </div>
-
-          {/* Strengths */}
           <div>
             <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-2">Strengths</label>
             <textarea value={strengths} onChange={(e) => setStrengths(e.target.value)} rows={2}
               placeholder="What did the group do well?"
               className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 resize-none" />
           </div>
-
-          {/* Improvements */}
           <div>
             <label className="block text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">Improvements</label>
             <textarea value={improvements} onChange={(e) => setImprovements(e.target.value)} rows={2}
@@ -574,11 +714,10 @@ function RoomDetailPanel({ detail, gradient, onClose }: { detail: RoomDetail; gr
               ))}
             </div>
           )}
-
           {tab === "members" && (
             <div className="space-y-2">
               {detail.members.map((m) => {
-                const initials = m.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+                const initials = m.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
                 return (
                   <div key={m.userId} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-black overflow-hidden flex-shrink-0">
@@ -594,7 +733,6 @@ function RoomDetailPanel({ detail, gradient, onClose }: { detail: RoomDetail; gr
               })}
             </div>
           )}
-
           {tab === "pinned" && (
             <div className="space-y-3">
               {detail.pinnedMessages.length === 0
@@ -612,7 +750,6 @@ function RoomDetailPanel({ detail, gradient, onClose }: { detail: RoomDetail; gr
               }
             </div>
           )}
-
           {tab === "grade" && detail.grade && (
             <div className="space-y-4">
               <div className="flex items-center gap-4 p-5 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
@@ -655,14 +792,12 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const classrooms = roomsData?.data.filter((r) => r.type === "CLASSROOM") ?? [];
   const selectedClassroom = classrooms.find((c) => c.id === selectedRoomId);
 
-  // Fetch members of the selected classroom
   const { data: classroomDetail, isLoading: loadingMembers } = useQuery({
     queryKey: ["chat-room-detail", selectedRoomId],
     queryFn: () => ChatService.getRoomSummary(selectedRoomId),
     enabled: !!selectedRoomId,
   });
 
-  // Only show non-instructor members (students) for selection
   const availableMembers = (classroomDetail?.members ?? []).filter(
     (m) => m.role === "MEMBER" || m.role === "STUDENT"
   );
@@ -689,7 +824,6 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
     }
   };
 
-  // Reset member selection when classroom changes
   const handleClassroomChange = (roomId: string) => {
     setSelectedRoomId(roomId);
     setSelectedMemberIds(new Set());
@@ -730,7 +864,6 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md bg-white dark:bg-[#0f1623] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/[0.08] overflow-hidden max-h-[90vh] flex flex-col">
 
-        {/* Header */}
         <div className="px-6 py-5 border-b border-gray-100 dark:border-white/[0.07] flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="font-black text-gray-900 dark:text-white">Create Group</h2>
@@ -751,8 +884,6 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-
-            {/* Step 1 — Classroom */}
             <div>
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">
                 Classroom <span className="text-violet-500">*</span>
@@ -767,47 +898,31 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   No classrooms found. Create a classroom first.
                 </div>
               ) : (
-                <select
-                  value={selectedRoomId}
-                  onChange={(e) => handleClassroomChange(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-                >
+                <select value={selectedRoomId} onChange={(e) => handleClassroomChange(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-500/30">
                   <option value="">— Select a classroom —</option>
-                  {classrooms.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  {classrooms.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               )}
             </div>
 
-            {/* Step 2 — Group name */}
             <div>
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">
                 Group Name <span className="text-violet-500">*</span>
               </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Team Alpha"
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-              />
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Team Alpha"
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
             </div>
 
-            {/* Step 3 — Description */}
             <div>
               <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">
                 Description <span className="font-normal text-gray-400">(optional)</span>
               </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={2}
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
                 placeholder="What is this group for?"
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none"
-              />
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none" />
             </div>
 
-            {/* Step 4 — Member picker (only shown after classroom selected) */}
             {selectedRoomId && (
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -820,10 +935,7 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
                     )}
                   </label>
                   {availableMembers.length > 0 && (
-                    <button
-                      onClick={toggleAll}
-                      className="text-[11px] font-bold text-violet-600 dark:text-violet-400 hover:underline"
-                    >
+                    <button onClick={toggleAll} className="text-[11px] font-bold text-violet-600 dark:text-violet-400 hover:underline">
                       {selectedMemberIds.size === availableMembers.length ? "Deselect all" : "Select all"}
                     </button>
                   )}
@@ -840,52 +952,31 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   </div>
                 ) : (
                   <div className="border border-gray-200 dark:border-white/[0.08] rounded-xl overflow-hidden">
-                    {/* Search */}
                     {availableMembers.length > 5 && (
                       <div className="px-3 py-2 border-b border-gray-100 dark:border-white/[0.06]">
-                        <input
-                          value={memberSearch}
-                          onChange={(e) => setMemberSearch(e.target.value)}
+                        <input value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)}
                           placeholder="Search members…"
-                          className="w-full text-sm bg-transparent text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none"
-                        />
+                          className="w-full text-sm bg-transparent text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none" />
                       </div>
                     )}
-                    {/* Member list */}
                     <div className="max-h-48 overflow-y-auto divide-y divide-gray-100 dark:divide-white/[0.05]">
                       {filteredMembers.length === 0 ? (
                         <p className="px-3.5 py-3 text-sm text-gray-400 text-center">No results</p>
                       ) : (
                         filteredMembers.map((m) => {
                           const isSelected = selectedMemberIds.has(m.userId);
-                          const initials = m.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+                          const initials = m.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
                           return (
-                            <button
-                              key={m.userId}
-                              onClick={() => toggleMember(m.userId)}
-                              className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors ${
-                                isSelected
-                                  ? "bg-violet-50 dark:bg-violet-900/20"
-                                  : "hover:bg-gray-50 dark:hover:bg-white/[0.03]"
-                              }`}
-                            >
-                              {/* Avatar */}
+                            <button key={m.userId} onClick={() => toggleMember(m.userId)}
+                              className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors ${isSelected ? "bg-violet-50 dark:bg-violet-900/20" : "hover:bg-gray-50 dark:hover:bg-white/[0.03]"}`}>
                               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-black overflow-hidden flex-shrink-0">
-                                {m.image
-                                  ? <img src={m.image} alt="" className="w-full h-full object-cover" />
-                                  : initials}
+                                {m.image ? <img src={m.image} alt="" className="w-full h-full object-cover" /> : initials}
                               </div>
-                              {/* Info */}
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{m.name}</p>
                                 <p className="text-[11px] text-gray-400 truncate">{m.email}</p>
                               </div>
-                              {/* Checkbox */}
-                              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                                isSelected
-                                  ? "bg-violet-600 border-violet-600"
-                                  : "border-gray-300 dark:border-white/[0.2]"
-                              }`}>
+                              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${isSelected ? "bg-violet-600 border-violet-600" : "border-gray-300 dark:border-white/[0.2]"}`}>
                                 {isSelected && (
                                   <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -902,7 +993,6 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
               </div>
             )}
 
-            {/* Error */}
             {error && (
               <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/30 text-sm text-rose-600 dark:text-rose-400">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -912,17 +1002,11 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </div>
         )}
 
-        {/* Footer */}
         {!success && (
           <div className="px-6 py-4 border-t border-gray-100 dark:border-white/[0.07] flex-shrink-0">
-            <button
-              onClick={() => createMutation.mutate()}
-              disabled={!canSubmit}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-violet-600 to-purple-700 hover:opacity-90 disabled:opacity-40 transition-all shadow-md"
-            >
-              {createMutation.isPending
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <Plus className="w-4 h-4" />}
+            <button onClick={() => createMutation.mutate()} disabled={!canSubmit}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-violet-600 to-purple-700 hover:opacity-90 disabled:opacity-40 transition-all shadow-md">
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
               {canSubmit
                 ? `Create Group with ${selectedMemberIds.size} member${selectedMemberIds.size !== 1 ? "s" : ""}`
                 : "Create Group"}
@@ -965,19 +1049,15 @@ function ChatView({
     enabled: showDetail,
   });
 
-  // ── Socket ────────────────────────────────────────────────────────────────
-
   const { joinRoom, leaveRoom } = useChatSocket({
     onMessageNew: useCallback((msg: ChatMessage) => {
       if (msg.roomId !== room.id) return;
       setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
     }, [room.id]),
-
     onMessageDeleted: useCallback((payload: import("@/hooks/useChatSocket").MessageDeletedPayload) => {
       const { messageId, deletedLabel } = payload;
       setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, isDeleted: true, content: null, deletedLabel } : m));
     }, []),
-
     onMessageReacted: useCallback((payload: import("@/hooks/useChatSocket").MessageReactedPayload) => {
       const { messageId, reaction, userId, toggled } = payload;
       setMessages((prev) => prev.map((m) => {
@@ -993,18 +1073,14 @@ function ChatView({
         return { ...m, reactions };
       }));
     }, []),
-
     onMessagePinned: useCallback(() => {
       queryClient.invalidateQueries({ queryKey: ["chat-room-detail", room.id] });
-      // Refresh messages to get updated isPinned flags
       ChatService.getMessages(room.id, { limit: 50 }).then((res) => setMessages([...res.data].reverse()));
     }, [room.id, queryClient]),
   });
 
   useEffect(() => { joinRoom(room.id); return () => leaveRoom(room.id); }, [room.id, joinRoom, leaveRoom]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
-
-  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const sendMutation = useMutation({
     mutationFn: ({ content, attachments }: { content: string; attachments?: { key: string; url: string; fileName: string; mimeType: string; size: number }[] }) =>
@@ -1046,6 +1122,7 @@ function ChatView({
       ChatService.reactToMessage(room.id, messageId, reaction),
   });
 
+  // Optimistic reaction — updates UI immediately, fires mutation after
   const handleReact = (msgId: string, reaction: MessageReaction) => {
     setMessages((prev) =>
       prev.map((m) => {
@@ -1077,9 +1154,9 @@ function ChatView({
   });
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
         <button onClick={onBack} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
           <ChevronDown className="w-4 h-4 rotate-90" />
         </button>
@@ -1091,26 +1168,25 @@ function ChatView({
           <p className="text-xs text-gray-400">{room.memberCount} members · {room.type === "CLASSROOM" ? "Classroom" : "Group"}</p>
         </div>
         {room.grade && (
-          <span className="px-2.5 py-1 rounded-xl text-sm font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30">
+          <span className="px-2.5 py-1 rounded-xl text-sm font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30 flex-shrink-0">
             {room.grade.resolvedGrade}%
           </span>
         )}
-        {/* Grade button — only for GROUP rooms */}
         {room.type === "GROUP" && (
           <button onClick={() => setShowGrade((p) => !p)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${showGrade ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700" : "border-gray-200 dark:border-white/[0.07] text-gray-500 hover:border-amber-300 hover:text-amber-600"}`}>
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex-shrink-0 ${showGrade ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700" : "border-gray-200 dark:border-white/[0.07] text-gray-500 hover:border-amber-300 hover:text-amber-600"}`}>
             <Award className="w-3.5 h-3.5" />{room.grade ? "Update Grade" : "Grade"}
           </button>
         )}
-        <button onClick={() => setShowDetail(true)} className="p-2 rounded-xl text-gray-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all" title="Room info">
+        <button onClick={() => setShowDetail(true)} className="p-2 rounded-xl text-gray-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all flex-shrink-0" title="Room info">
           <Info className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Body: messages + optional grade panel */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Messages */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Body */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Messages + Input */}
+        <div className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto py-2">
             {loadingMsgs ? (
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 text-violet-500 animate-spin" /></div>
@@ -1126,7 +1202,7 @@ function ChatView({
                   prevSenderId={i > 0 ? messages[i - 1].senderId : undefined}
                   currentUserId={currentUserId}
                   onReply={setReplyTo}
-                  onReact={(msgId, reaction) => handleReact(msgId, reaction)}
+                  onReact={handleReact}
                   onDelete={(msgId) => deleteMutation.mutate(msgId)}
                   onPin={(msgId) => {
                     const m = messages.find((x) => x.id === msgId);
@@ -1150,7 +1226,7 @@ function ChatView({
         </AnimatePresence>
       </div>
 
-      {/* Detail panel */}
+      {/* Detail modal */}
       <AnimatePresence>
         {showDetail && roomDetail && (
           <RoomDetailPanel detail={roomDetail} gradient={gradient} onClose={() => setShowDetail(false)} />
@@ -1188,77 +1264,78 @@ export default function InstructorChat() {
 
   return (
     <>
-      <div className="-mx-4 lg:-mx-6 -my-6 -mb-16 flex flex-col" style={{ height: "calc(100vh - 82px)" }}>
+      {/* Full-height container that fills the page content area */}
+      <div className="flex flex-col" style={{ height: "calc(100vh - 82px)", margin: "-1.5rem -1rem -4rem", overflow: "hidden" }}>
         {!activeRoom ? (
-          <div className="flex-1 overflow-y-auto space-y-6 pb-10 px-4 lg:px-6 pt-6">
-            <Fade>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center shadow-md">
-                    <Hash className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl font-black text-gray-900 dark:text-white">Chat</h1>
-                    <p className="text-xs text-gray-400">Manage your classrooms and groups</p>
-                  </div>
-                </div>
-                <button onClick={() => setShowCreate(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-violet-600 to-purple-700 hover:opacity-90 transition-all shadow-md">
-                  <Plus className="w-4 h-4" />New Group
-                </button>
-              </div>
-            </Fade>
-
-            <Fade delay={0.04}>
-              <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
-                {[
-                  { id: "CLASSROOM" as const, label: `Classrooms (${classrooms.length})` },
-                  { id: "GROUP"     as const, label: `Groups (${groups.length})` },
-                ].map((t) => (
-                  <button key={t.id} onClick={() => setTab(t.id)}
-                    className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab === t.id ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </Fade>
-
-            {isLoading && (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-6 h-6 text-violet-500 animate-spin" />
-              </div>
-            )}
-
-            {isError && (
-              <div className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] p-10 text-center">
-                <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
-                <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Couldn't load rooms</p>
-              </div>
-            )}
-
-            {!isLoading && !isError && (
-              <AnimatePresence mode="wait">
-                <motion.div key={tab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                  {displayed.length === 0 ? (
-                    <div className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] p-10 text-center">
-                      <Users className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
-                      <p className="text-gray-400 text-sm">
-                        {tab === "CLASSROOM" ? "No classrooms yet." : "No groups yet. Create one to get started."}
-                      </p>
+          /* ── Room list ── */
+          <div className="flex-1 overflow-y-auto">
+            <div className="space-y-5 p-6 pb-10">
+              <Fade>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center shadow-md">
+                      <Hash className="w-5 h-5 text-white" />
                     </div>
-                  ) : (
-                    displayed.map((room, i) => (
-                      <Fade key={room.id} delay={i * 0.04}>
-                        <RoomCard room={room} index={i} onClick={() => setActiveRoom({ room, index: i })} />
-                      </Fade>
-                    ))
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            )}
+                    <div>
+                      <h1 className="text-2xl font-black text-gray-900 dark:text-white">Chat</h1>
+                      <p className="text-xs text-gray-400">Manage your classrooms and groups</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowCreate(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-violet-600 to-purple-700 hover:opacity-90 transition-all shadow-md">
+                    <Plus className="w-4 h-4" />New Group
+                  </button>
+                </div>
+              </Fade>
+
+              <Fade delay={0.04}>
+                <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
+                  {[
+                    { id: "CLASSROOM" as const, label: `Classrooms (${classrooms.length})` },
+                    { id: "GROUP"     as const, label: `Groups (${groups.length})` },
+                  ].map((t) => (
+                    <button key={t.id} onClick={() => setTab(t.id)}
+                      className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab === t.id ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </Fade>
+
+              {isLoading && <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-violet-500 animate-spin" /></div>}
+
+              {isError && (
+                <div className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] p-10 text-center">
+                  <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
+                  <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Couldn't load rooms</p>
+                </div>
+              )}
+
+              {!isLoading && !isError && (
+                <AnimatePresence mode="wait">
+                  <motion.div key={tab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+                    {displayed.length === 0 ? (
+                      <div className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] p-10 text-center">
+                        <Users className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
+                        <p className="text-gray-400 text-sm">
+                          {tab === "CLASSROOM" ? "No classrooms yet." : "No groups yet. Create one to get started."}
+                        </p>
+                      </div>
+                    ) : (
+                      displayed.map((room, i) => (
+                        <Fade key={room.id} delay={i * 0.04}>
+                          <RoomCard room={room} index={i} onClick={() => setActiveRoom({ room, index: i })} />
+                        </Fade>
+                      ))
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </div>
           </div>
         ) : (
-          <div className="flex-1 flex overflow-hidden border-t border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623]">
+          /* ── Active chat ── */
+          <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-[#0f1623]">
             <ChatView
               room={activeRoom.room}
               roomIndex={activeRoom.index}

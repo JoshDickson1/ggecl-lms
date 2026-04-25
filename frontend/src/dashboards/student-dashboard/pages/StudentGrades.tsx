@@ -4,13 +4,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Award, ChevronDown,
   CheckCircle2, Clock, Star, BookOpen,
-  BarChart3, MessageSquare, Loader2,
+  BarChart3, MessageSquare, Loader2, Users,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import AssignmentService, {
   type StudentAssignmentItem,
   type MySubmission,
 } from "@/services/AssignmentService";
+import ChatService from "@/services/chat.service";
 import { GRADE_META, type LetterGrade } from "@/data/academicData";
 import { ApiErrorPage } from "@/components/ui/ApiError";
 
@@ -38,6 +39,23 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 function letterToGPA(grade?: LetterGrade | null): number {
   if (!grade) return 0;
   return GRADE_META[grade]?.gpa ?? 0;
+}
+
+// Derive a letter grade from a raw score when the API doesn't return one
+function scoreToGrade(score?: number | null, maxScore?: number | null): LetterGrade | null {
+  if (score == null || !maxScore) return null;
+  const pct = (score / maxScore) * 100;
+  if (pct >= 97) return "A+";
+  if (pct >= 93) return "A";
+  if (pct >= 90) return "A-";
+  if (pct >= 87) return "B+";
+  if (pct >= 83) return "B";
+  if (pct >= 80) return "B-";
+  if (pct >= 77) return "C+";
+  if (pct >= 73) return "C";
+  if (pct >= 70) return "C-";
+  if (pct >= 60) return "D";
+  return "F";
 }
 
 function calcGPA(items: StudentAssignmentItem[]): number {
@@ -75,7 +93,12 @@ function GPARing({ gpa }: { gpa: number }) {
 
 // ─── Grade pill ───────────────────────────────────────────────────────────────
 
-function GradePill({ grade }: { grade: LetterGrade }) {
+function GradePill({ grade }: { grade: LetterGrade | null }) {
+  if (!grade) return (
+    <span className="rounded-xl border text-lg font-black px-4 py-1.5 inline-flex items-center bg-gray-50 dark:bg-white/[0.04] text-gray-400 border-gray-200 dark:border-white/[0.08]">
+      —
+    </span>
+  );
   const m = GRADE_META[grade] ?? GRADE_META["B"];
   return (
     <span className={`rounded-xl border text-lg font-black px-4 py-1.5 inline-flex items-center ${m.color} ${m.bg} ${m.border}`}>
@@ -100,10 +123,10 @@ function GradeCard({ assignment, index }: { assignment: StudentAssignmentItem; i
       .finally(() => setLoadingSub(false));
   }, [open, assignment.id, submission, loadingSub]);
 
-  const grade   = assignment.grade!;
-  const meta    = GRADE_META[grade] ?? GRADE_META["B"];
-  const pct     = assignment.maxScore
-    ? Math.round(((assignment.score ?? 0) / assignment.maxScore) * 100)
+  const grade   = assignment.grade ?? scoreToGrade(assignment.score, assignment.maxScore);
+  const meta    = grade ? (GRADE_META[grade] ?? GRADE_META["B"]) : GRADE_META["B"];
+  const pct     = assignment.maxScore && assignment.score != null
+    ? Math.round((assignment.score / assignment.maxScore) * 100)
     : null;
   const gpa     = letterToGPA(grade);
 
@@ -287,13 +310,24 @@ function GradeSkeleton() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function StudentGrades() {
+  const [tab, setTab] = useState<"assignments" | "groups">("assignments");
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["student-assignments-graded"],
     queryFn: () => AssignmentService.getMyAssignments({ limit: 100 }),
     staleTime: 1000 * 60 * 5,
   });
 
-  if (isLoading) {
+  // Fetch group grades from chat rooms
+  const { data: roomsData, isLoading: loadingRooms } = useQuery({
+    queryKey: ["student-chat-rooms"],
+    queryFn: () => ChatService.getRooms({ type: "GROUP", limit: 100 }),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const groupRooms = (roomsData?.data ?? []).filter((r) => r.grade != null);
+
+  if (isLoading || loadingRooms) {
     return (
       <div className="max-w-[900px] mx-auto space-y-6 pb-10">
         <div className="h-10 w-48 rounded-xl bg-gray-100 dark:bg-white/[0.05] animate-pulse" />
@@ -310,7 +344,13 @@ export default function StudentGrades() {
   if (isError) return <ApiErrorPage onRetry={refetch} message="Failed to load your grades." />;
 
   const all      = data?.data ?? [];
-  const graded   = all.filter(a => a.grade && (a.status === "graded" || a.status === "returned"));
+  // Show any assignment that has a grade OR a score — regardless of exact status string
+  const graded   = all.filter(a =>
+    a.grade != null ||
+    a.score != null ||
+    a.status === "graded" ||
+    a.status === "returned"
+  );
   const gpa      = calcGPA(graded);
   const avgPct   = graded.length
     ? Math.round(
@@ -335,101 +375,176 @@ export default function StudentGrades() {
           <h1 className="text-3xl font-black text-gray-900 dark:text-white">
             My <span className="text-blue-600 dark:text-blue-400">Grades</span>
           </h1>
-          <p className="text-sm text-gray-400 mt-1">Graded assignments from your enrolled courses</p>
+          <p className="text-sm text-gray-400 mt-1">Assignment and group project grades</p>
         </div>
       </Fade>
 
-      {/* Summary row */}
-      <Fade delay={0.06}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* GPA ring */}
-          <Card className="p-6 flex flex-col items-center gap-3">
-            <GPARing gpa={gpa} />
-            <div className="text-center">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cumulative GPA</p>
-              <p className="text-xs text-gray-400 mt-0.5">{gpaLabel}</p>
-            </div>
-          </Card>
+      {/* Tabs */}
+      <Fade delay={0.04}>
+        <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
+          {[
+            { id: "assignments" as const, label: `Assignments (${graded.length})`, icon: BookOpen },
+            { id: "groups" as const, label: `Group Projects (${groupRooms.length})`, icon: Users },
+          ].map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all ${
+                  tab === t.id
+                    ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm"
+                    : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </Fade>
 
-          {/* Stats */}
-          <Card className="p-6 flex flex-col justify-center gap-4">
-            {[
-              { icon: BarChart3,    label: "Average Score", value: graded.length ? `${avgPct}%` : "—" },
-              { icon: CheckCircle2, label: "Graded",        value: String(graded.length) },
-              { icon: Clock,        label: "Pending",       value: String(all.filter(a => a.status === "pending" || a.status === "submitted").length) },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400">{label}</p>
-                  <p className="text-sm font-black text-gray-900 dark:text-white">{value}</p>
-                </div>
-              </div>
-            ))}
-          </Card>
-
-          {/* Grade distribution */}
-          <Card className="p-6">
-            <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4">Distribution</p>
-            <div className="flex flex-col gap-2">
-              {["A", "B", "C", "D", "F"].map(letter => {
-                const count = gradeCounts[letter] ?? 0;
-                const pct   = graded.length ? (count / graded.length) * 100 : 0;
-                const color = letter === "A" ? "bg-emerald-500" : letter === "B" ? "bg-blue-500"
-                  : letter === "C" ? "bg-amber-500" : letter === "D" ? "bg-orange-500" : "bg-red-500";
-                return (
-                  <div key={letter} className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-gray-500 w-3">{letter}</span>
-                    <div className="flex-1 h-2 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                      <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}
-                        transition={{ duration: 0.7, delay: 0.3 }}
-                        className={`h-full rounded-full ${color}`} />
-                    </div>
-                    <span className="text-xs text-gray-400 w-3 text-right">{count}</span>
+      <AnimatePresence mode="wait">
+        {tab === "assignments" ? (
+          <motion.div key="assignments" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {/* Summary row */}
+            <Fade delay={0.06}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* GPA ring */}
+                <Card className="p-6 flex flex-col items-center gap-3">
+                  <GPARing gpa={gpa} />
+                  <div className="text-center">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Cumulative GPA</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{gpaLabel}</p>
                   </div>
-                );
-              })}
-            </div>
-          </Card>
-        </div>
-      </Fade>
+                </Card>
 
-      {/* Grade cards */}
-      <div className="flex flex-col gap-4">
-        {graded.length === 0 ? (
-          <Fade delay={0.1}>
-            <Card className="p-16 text-center">
-              <Award className="w-12 h-12 text-gray-200 dark:text-gray-700 mx-auto mb-3" />
-              <p className="text-sm font-bold text-gray-400">No grades yet</p>
-              <p className="text-xs text-gray-400 mt-1">
-                Your grades will appear here once your assignments have been marked.
-              </p>
-            </Card>
-          </Fade>
-        ) : (
-          graded.map((a, i) => (
-            <Fade key={a.id} delay={0.1 + i * 0.06}>
-              <GradeCard assignment={a} index={i} />
+                {/* Stats */}
+                <Card className="p-6 flex flex-col justify-center gap-4">
+                  {[
+                    { icon: BarChart3,    label: "Average Score", value: graded.length ? `${avgPct}%` : "—" },
+                    { icon: CheckCircle2, label: "Graded",        value: String(graded.length) },
+                    { icon: Clock,        label: "Pending",       value: String(all.filter(a => a.status === "pending" || a.status === "submitted").length) },
+                  ].map(({ icon: Icon, label, value }) => (
+                    <div key={label} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center flex-shrink-0">
+                        <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">{label}</p>
+                        <p className="text-sm font-black text-gray-900 dark:text-white">{value}</p>
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+
+                {/* Grade distribution */}
+                <Card className="p-6">
+                  <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4">Distribution</p>
+                  <div className="flex flex-col gap-2">
+                    {["A", "B", "C", "D", "F"].map(letter => {
+                      const count = gradeCounts[letter] ?? 0;
+                      const pct   = graded.length ? (count / graded.length) * 100 : 0;
+                      const color = letter === "A" ? "bg-emerald-500" : letter === "B" ? "bg-blue-500"
+                        : letter === "C" ? "bg-amber-500" : letter === "D" ? "bg-orange-500" : "bg-red-500";
+                      return (
+                        <div key={letter} className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-gray-500 w-3">{letter}</span>
+                          <div className="flex-1 h-2 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                              transition={{ duration: 0.7, delay: 0.3 }}
+                              className={`h-full rounded-full ${color}`} />
+                          </div>
+                          <span className="text-xs text-gray-400 w-3 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              </div>
             </Fade>
-          ))
-        )}
-      </div>
 
-      {/* Pending assignments notice */}
-      {all.filter(a => !a.grade).length > 0 && (
-        <Fade delay={0.2}>
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl
-            bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
-            <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              <span className="font-bold">{all.filter(a => !a.grade).length} assignment{all.filter(a => !a.grade).length !== 1 ? "s" : ""}</span>{" "}
-              pending grading — check back soon.
-            </p>
-          </div>
-        </Fade>
-      )}
+            {/* Grade cards */}
+            <div className="flex flex-col gap-4 mt-6">
+              {graded.length === 0 ? (
+                <Fade delay={0.1}>
+                  <Card className="p-16 text-center">
+                    <Award className="w-12 h-12 text-gray-200 dark:text-gray-700 mx-auto mb-3" />
+                    <p className="text-sm font-bold text-gray-400">No grades yet</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Your grades will appear here once your assignments have been marked.
+                    </p>
+                  </Card>
+                </Fade>
+              ) : (
+                graded.map((a, i) => (
+                  <Fade key={a.id} delay={0.1 + i * 0.06}>
+                    <GradeCard assignment={a} index={i} />
+                  </Fade>
+                ))
+              )}
+            </div>
+
+            {/* Pending assignments notice */}
+            {all.filter(a => !a.grade).length > 0 && (
+              <Fade delay={0.2}>
+                <div className="flex items-center gap-2 px-4 py-3 rounded-xl
+                  bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
+                  <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    <span className="font-bold">{all.filter(a => !a.grade).length} assignment{all.filter(a => !a.grade).length !== 1 ? "s" : ""}</span>{" "}
+                    pending grading — check back soon.
+                  </p>
+                </div>
+              </Fade>
+            )}
+          </motion.div>
+        ) : (
+          <motion.div key="groups" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {/* Group grades */}
+            <div className="flex flex-col gap-4 mt-6">
+              {groupRooms.length === 0 ? (
+                <Fade delay={0.1}>
+                  <Card className="p-16 text-center">
+                    <Users className="w-12 h-12 text-gray-200 dark:text-gray-700 mx-auto mb-3" />
+                    <p className="text-sm font-bold text-gray-400">No group grades yet</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Your group project grades will appear here once they've been marked.
+                    </p>
+                  </Card>
+                </Fade>
+              ) : (
+                groupRooms.map((room, i) => (
+                  <Fade key={room.id} delay={0.1 + i * 0.06}>
+                    <Card className="p-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                          <Users className="w-6 h-6 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">{room.name}</h3>
+                          {room.description && <p className="text-xs text-gray-400 truncate mt-0.5">{room.description}</p>}
+                          <div className="flex items-center gap-3 mt-1.5">
+                            <span className="text-xs text-gray-400">{room.memberCount} members</span>
+                            <span className="text-xs text-gray-400">{room.totalMessages} messages</span>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-2xl font-black text-violet-600 dark:text-violet-400">
+                            {room.grade!.resolvedGrade}%
+                          </p>
+                          <p className="text-[10px] text-gray-400">Score: {room.grade!.score}</p>
+                        </div>
+                      </div>
+                    </Card>
+                  </Fade>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

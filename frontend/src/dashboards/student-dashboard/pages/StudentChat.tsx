@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Hash, Users, Info, ChevronDown, MessageSquare,
   Loader2, AlertCircle, Pin, X, Send, Reply, Smile, Download,
-  Paperclip, Image as ImageIcon, Film, FileText,
+  Paperclip, Image as ImageIcon, Film, FileText, ZoomIn,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ChatService, {
@@ -50,8 +50,6 @@ function roomGradient(type: string, index: number): string {
   return arr[index % arr.length];
 }
 
-// ─── Shared UI ────────────────────────────────────────────────────────────────
-
 function Fade({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay }}>
@@ -68,15 +66,114 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   );
 }
 
+// ─── Attachment preview ───────────────────────────────────────────────────────
+
+function isImage(mime: string) { return mime.startsWith("image/"); }
+function isVideo(mime: string) { return mime.startsWith("video/"); }
+function isPDF(mime: string)   { return mime === "application/pdf"; }
+
+function MediaLightbox({ src, mime, name, onClose }: { src: string; mime: string; name: string; onClose: () => void }) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+      onClick={onClose}>
+      <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative max-w-5xl max-h-[90vh] flex flex-col items-center gap-3">
+        <button onClick={onClose} className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all">
+          <X className="w-4 h-4" />
+        </button>
+        {isImage(mime) && <img src={src} alt={name} className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-2xl" />}
+        {isVideo(mime) && <video src={src} controls autoPlay className="max-h-[80vh] max-w-full rounded-2xl shadow-2xl" />}
+        <a href={src} download={name} target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-all">
+          <Download className="w-4 h-4" /> Download
+        </a>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function AttachmentPreview({ att }: { att: { id: string; url: string; fileName: string; mimeType: string; size: number } }) {
+  const [lightbox, setLightbox] = useState(false);
+
+  if (isImage(att.mimeType)) {
+    return (
+      <>
+        <div className="relative group/img cursor-zoom-in rounded-2xl overflow-hidden border border-gray-200 dark:border-white/[0.08] max-w-xs"
+          onClick={() => setLightbox(true)}>
+          <img src={att.url} alt={att.fileName} className="w-full max-h-60 object-cover rounded-2xl transition-transform group-hover/img:scale-[1.02]" />
+          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-all rounded-2xl flex items-center justify-center">
+            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 transition-opacity drop-shadow" />
+          </div>
+          <div className="absolute bottom-2 left-2 right-2">
+            <p className="text-[10px] text-white/80 font-medium truncate drop-shadow">{att.fileName}</p>
+          </div>
+        </div>
+        <AnimatePresence>
+          {lightbox && <MediaLightbox src={att.url} mime={att.mimeType} name={att.fileName} onClose={() => setLightbox(false)} />}
+        </AnimatePresence>
+      </>
+    );
+  }
+
+  if (isVideo(att.mimeType)) {
+    return (
+      <>
+        <div className="relative group/vid cursor-pointer rounded-2xl overflow-hidden border border-gray-200 dark:border-white/[0.08] max-w-xs bg-black"
+          onClick={() => setLightbox(true)}>
+          <video src={att.url} className="w-full max-h-52 object-contain rounded-2xl opacity-90" muted />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/vid:bg-black/40 transition-all rounded-2xl">
+            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
+              <Film className="w-5 h-5 text-white ml-0.5" />
+            </div>
+          </div>
+          <div className="absolute bottom-2 left-2 right-2">
+            <p className="text-[10px] text-white/80 font-medium truncate drop-shadow">{att.fileName}</p>
+            <p className="text-[9px] text-white/60">{(att.size / 1024).toFixed(0)} KB</p>
+          </div>
+        </div>
+        <AnimatePresence>
+          {lightbox && <MediaLightbox src={att.url} mime={att.mimeType} name={att.fileName} onClose={() => setLightbox(false)} />}
+        </AnimatePresence>
+      </>
+    );
+  }
+
+  if (isPDF(att.mimeType)) {
+    return (
+      <a href={att.url} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-rose-200 dark:border-rose-800/30 bg-rose-50 dark:bg-rose-900/10 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors max-w-xs group/pdf">
+        <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center flex-shrink-0">
+          <FileText className="w-5 h-5 text-rose-500" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{att.fileName}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">PDF · {(att.size / 1024).toFixed(0)} KB</p>
+        </div>
+        <Download className="w-4 h-4 text-gray-400 group-hover/pdf:text-rose-500 flex-shrink-0 transition-colors" />
+      </a>
+    );
+  }
+
+  return (
+    <a href={att.url} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-colors max-w-xs group/file">
+      <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/[0.08] flex items-center justify-center flex-shrink-0">
+        <Paperclip className="w-5 h-5 text-gray-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{att.fileName}</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">{(att.size / 1024).toFixed(0)} KB</p>
+      </div>
+      <Download className="w-4 h-4 text-gray-400 group-hover/file:text-blue-500 flex-shrink-0 transition-colors" />
+    </a>
+  );
+}
+
 // ─── Room List Card ───────────────────────────────────────────────────────────
 
-function RoomCard({
-  room, index, onClick,
-}: {
-  room: RoomSummaryItem;
-  index: number;
-  onClick: () => void;
-}) {
+function RoomCard({ room, index, onClick }: { room: RoomSummaryItem; index: number; onClick: () => void }) {
   const gradient = roomGradient(room.type, index);
   const icon = room.type === "CLASSROOM" ? "🏫" : "👥";
 
@@ -96,16 +193,10 @@ function RoomCard({
                 </span>
               )}
             </div>
-            {room.description && (
-              <p className="text-xs text-gray-400 truncate mt-0.5">{room.description}</p>
-            )}
+            {room.description && <p className="text-xs text-gray-400 truncate mt-0.5">{room.description}</p>}
             <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
-              <span className="flex items-center gap-1">
-                <Users className="w-3 h-3" />{room.memberCount} members
-              </span>
-              <span className="flex items-center gap-1">
-                <Hash className="w-3 h-3" />{room.totalMessages} messages
-              </span>
+              <span className="flex items-center gap-1"><Users className="w-3 h-3" />{room.memberCount} members</span>
+              <span className="flex items-center gap-1"><Hash className="w-3 h-3" />{room.totalMessages} messages</span>
             </div>
           </div>
           <ChevronDown className="-rotate-90 w-4 h-4 text-gray-400 flex-shrink-0" />
@@ -121,20 +212,11 @@ const REACTIONS = Object.entries(REACTION_EMOJI) as [MessageReaction, string][];
 
 function EmojiPicker({ onPick, onClose }: { onPick: (r: MessageReaction) => void; onClose: () => void }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9, y: 4 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ duration: 0.12 }}
-      className="absolute bottom-full mb-1 right-0 z-30 flex gap-1 p-2 rounded-2xl bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] shadow-xl"
-    >
+    <motion.div initial={{ opacity: 0, scale: 0.9, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.12 }}
+      className="absolute bottom-full mb-1 right-0 z-30 flex gap-1 p-2 rounded-2xl bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] shadow-xl">
       {REACTIONS.map(([key, emoji]) => (
-        <button
-          key={key}
-          onClick={() => { onPick(key); onClose(); }}
-          className="text-lg hover:scale-125 transition-transform"
-          title={key}
-        >
+        <button key={key} onClick={() => { onPick(key); onClose(); }} className="text-lg hover:scale-125 transition-transform" title={key}>
           {emoji}
         </button>
       ))}
@@ -147,10 +229,7 @@ function EmojiPicker({ onPick, onClose }: { onPick: (r: MessageReaction) => void
 function MessageBubble({
   msg, isMe, prevSenderId, currentUserId, onReply, onReact, onDelete,
 }: {
-  msg: ChatMessage;
-  isMe: boolean;
-  prevSenderId?: string;
-  currentUserId: string;
+  msg: ChatMessage; isMe: boolean; prevSenderId?: string; currentUserId: string;
   onReply: (m: ChatMessage) => void;
   onReact: (msgId: string, reaction: MessageReaction) => void;
   onDelete: (msgId: string) => void;
@@ -169,30 +248,22 @@ function MessageBubble({
 
   const isSending = (msg as any)._sending === true;
   const isFailed  = (msg as any)._failed  === true;
+  const initials = msg.senderName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
 
-  const initials = msg.senderName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  const imageAtts = msg.attachments.filter(a => isImage(a.mimeType));
+  const otherAtts = msg.attachments.filter(a => !isImage(a.mimeType));
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}
       className={`group relative flex gap-3 px-4 ${isGrouped ? "mt-0.5" : "mt-4"} hover:bg-gray-50/60 dark:hover:bg-white/[0.02] rounded-xl transition-colors`}
       onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => { setShowActions(false); setShowEmoji(false); }}
-    >
+      onMouseLeave={() => { setShowActions(false); setShowEmoji(false); }}>
+
       {/* Avatar */}
       <div className="w-9 flex-shrink-0 flex flex-col items-center pt-0.5">
         {!isGrouped ? (
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black overflow-hidden">
-            {msg.senderImage
-              ? <img src={msg.senderImage} alt="" className="w-full h-full object-cover" />
-              : initials}
+            {msg.senderImage ? <img src={msg.senderImage} alt="" className="w-full h-full object-cover" /> : initials}
           </div>
         ) : (
           <span className="text-[10px] text-gray-300 dark:text-gray-700 opacity-0 group-hover:opacity-100 mt-1 w-9 text-center tabular-nums">
@@ -222,7 +293,6 @@ function MessageBubble({
           </div>
         )}
 
-        {/* Reply context */}
         {msg.replyToPreview && (
           <div className="mb-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border-l-[3px] border-blue-400 dark:border-blue-500">
             <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400 mb-0.5">{msg.replyToPreview.senderName}</p>
@@ -230,14 +300,12 @@ function MessageBubble({
           </div>
         )}
 
-        {/* Text */}
         {msg.content && (
           <p className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${isSending ? "text-gray-400 dark:text-gray-500" : "text-gray-800 dark:text-gray-200"}`}>
             {msg.content}
           </p>
         )}
 
-        {/* Sending / failed indicator */}
         {(isSending || isFailed) && (
           <div className={`flex items-center gap-1 mt-1 text-[10px] ${isFailed ? "text-rose-500" : "text-gray-400"}`}>
             {isSending && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
@@ -245,45 +313,33 @@ function MessageBubble({
           </div>
         )}
 
-        {/* Attachments */}
-        {msg.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {msg.attachments.map((att) => (
-              <a
-                key={att.id}
-                href={att.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-colors max-w-[220px]"
-              >
-                <Download className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{att.fileName}</p>
-                  <p className="text-[10px] text-gray-400">{(att.size / 1024).toFixed(0)} KB</p>
-                </div>
-              </a>
-            ))}
+        {/* Image grid */}
+        {imageAtts.length > 0 && (
+          <div className={`mt-2 ${imageAtts.length > 1 ? "grid grid-cols-2 gap-1.5" : "flex"} max-w-sm`}>
+            {imageAtts.map((att) => <AttachmentPreview key={att.id} att={att} />)}
           </div>
         )}
 
-        {/* Reactions */}
+        {/* Other attachments */}
+        {otherAtts.length > 0 && (
+          <div className="flex flex-col gap-2 mt-2">
+            {otherAtts.map((att) => <AttachmentPreview key={att.id} att={att} />)}
+          </div>
+        )}
+
+        {/* Reactions — optimistic, renders immediately from local state */}
         {msg.reactions.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {msg.reactions.map((r) => {
               const hasMe = r.userIds.includes(currentUserId);
               return (
-                <button
-                  key={r.reaction}
+                <motion.button key={r.reaction}
+                  initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                   onClick={() => onReact(msg.id, r.reaction)}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all ${
-                    hasMe
-                      ? "bg-blue-50 border-blue-300 dark:bg-blue-900/30 dark:border-blue-700"
-                      : "bg-gray-50 border-gray-200 dark:bg-white/[0.04] dark:border-white/[0.08]"
-                  }`}
-                >
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all ${hasMe ? "bg-blue-50 border-blue-300 dark:bg-blue-900/30 dark:border-blue-700" : "bg-gray-50 border-gray-200 dark:bg-white/[0.04] dark:border-white/[0.08]"}`}>
                   <span>{REACTION_EMOJI[r.reaction]}</span>
                   <span className="text-gray-600 dark:text-gray-400 font-semibold">{r.userIds.length}</span>
-                </button>
+                </motion.button>
               );
             })}
           </div>
@@ -293,43 +349,21 @@ function MessageBubble({
       {/* Action toolbar */}
       <AnimatePresence>
         {showActions && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.1 }}
-            className="absolute right-4 -top-4 flex items-center gap-0.5 px-2 py-1 rounded-xl bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] shadow-lg z-20"
-          >
-            <button
-              onClick={() => onReply(msg)}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
-              title="Reply"
-            >
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.1 }}
+            className="absolute right-4 -top-5 flex items-center gap-0.5 px-2 py-1.5 rounded-xl bg-white dark:bg-[#1a2235] border border-gray-100 dark:border-white/[0.08] shadow-lg z-20">
+            <button onClick={() => onReply(msg)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all" title="Reply">
               <Reply className="w-3.5 h-3.5" />
             </button>
             <div className="relative">
-              <button
-                onClick={() => setShowEmoji((p) => !p)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all"
-                title="React"
-              >
+              <button onClick={() => setShowEmoji((p) => !p)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all" title="React">
                 <Smile className="w-3.5 h-3.5" />
               </button>
               <AnimatePresence>
-                {showEmoji && (
-                  <EmojiPicker
-                    onPick={(r) => onReact(msg.id, r)}
-                    onClose={() => setShowEmoji(false)}
-                  />
-                )}
+                {showEmoji && <EmojiPicker onPick={(r) => onReact(msg.id, r)} onClose={() => setShowEmoji(false)} />}
               </AnimatePresence>
             </div>
             {isMe && (
-              <button
-                onClick={() => onDelete(msg.id)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all"
-                title="Delete"
-              >
+              <button onClick={() => onDelete(msg.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all" title="Delete">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -342,6 +376,14 @@ function MessageBubble({
 
 // ─── File upload helpers ──────────────────────────────────────────────────────
 
+interface PendingFile {
+  file: File;
+  preview?: string;
+  uploading: boolean;
+  error?: string;
+  result?: { key: string; url: string; fileName: string; mimeType: string; size: number };
+}
+
 function getFileIcon(mimeType: string) {
   if (mimeType.startsWith("image/")) return <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />;
   if (mimeType.startsWith("video/")) return <Film className="w-3.5 h-3.5 text-blue-500" />;
@@ -349,43 +391,19 @@ function getFileIcon(mimeType: string) {
   return <Paperclip className="w-3.5 h-3.5 text-gray-400" />;
 }
 
-interface PendingFile {
-  file: File;
-  preview?: string; // for images
-  uploading: boolean;
-  error?: string;
-  result?: { key: string; url: string; fileName: string; mimeType: string; size: number };
-}
-
 async function uploadChatFile(file: File): Promise<{ key: string; url: string; fileName: string; mimeType: string; size: number }> {
-  // Get presigned URL from backend
   const res = await APIConfig.fetch("/storage/presigned-upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      folder: "chat-attachments",
-      fileName: file.name,
-      contentType: file.type,
-      contentLength: file.size,
-    }),
+    body: JSON.stringify({ folder: "chat-attachments", fileName: file.name, contentType: file.type, contentLength: file.size }),
   });
   const { uploadUrl, key, publicUrl } = await res.json();
-
-  // PUT directly to R2
-  await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type },
-    body: file,
-  });
-
+  await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
   return { key, url: publicUrl, fileName: file.name, mimeType: file.type, size: file.size };
 }
 
 function MessageInput({
-  replyTo,
-  onCancelReply,
-  onSend,
-  disabled,
+  replyTo, onCancelReply, onSend, disabled,
 }: {
   replyTo: ChatMessage | null;
   onCancelReply: () => void;
@@ -403,27 +421,18 @@ function MessageInput({
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const newFiles: PendingFile[] = Array.from(files).map((f) => ({
-      file: f,
-      preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
-      uploading: true,
+      file: f, preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined, uploading: true,
     }));
     setPendingFiles((prev) => [...prev, ...newFiles]);
     setIsUploading(true);
-
-    const results = await Promise.allSettled(
-      newFiles.map((pf) => uploadChatFile(pf.file))
-    );
-
+    const results = await Promise.allSettled(newFiles.map((pf) => uploadChatFile(pf.file)));
     setPendingFiles((prev) => {
       const updated = [...prev];
       const startIdx = updated.length - newFiles.length;
       results.forEach((r, i) => {
         const idx = startIdx + i;
-        if (r.status === "fulfilled") {
-          updated[idx] = { ...updated[idx], uploading: false, result: r.value };
-        } else {
-          updated[idx] = { ...updated[idx], uploading: false, error: "Upload failed" };
-        }
+        if (r.status === "fulfilled") updated[idx] = { ...updated[idx], uploading: false, result: r.value };
+        else updated[idx] = { ...updated[idx], uploading: false, error: "Upload failed" };
       });
       return updated;
     });
@@ -442,25 +451,12 @@ function MessageInput({
     if (!canSend) return;
     const attachments = pendingFiles.filter((f) => f.result).map((f) => f.result!);
     onSend(text.trim(), attachments.length > 0 ? attachments : undefined);
-    setText("");
-    setPendingFiles([]);
+    setText(""); setPendingFiles([]);
     if (textareaRef.current) textareaRef.current.style.height = "42px";
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
-  };
-
-  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
-    const el = e.target;
-    el.style.height = "42px";
-    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
-  };
-
   return (
-    <div className="px-4 py-3 border-t border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
-      {/* Reply strip */}
+    <div className="px-4 py-3 border-t rounded-b-2xl border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
       {replyTo && (
         <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/30">
           <Reply className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
@@ -468,40 +464,39 @@ function MessageInput({
             <p className="text-xs font-semibold text-blue-600">{replyTo.senderName}</p>
             <p className="text-xs text-gray-500 truncate">{replyTo.content}</p>
           </div>
-          <button onClick={onCancelReply} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <button onClick={onCancelReply} className="text-gray-400 hover:text-gray-600 flex-shrink-0"><X className="w-3.5 h-3.5" /></button>
         </div>
       )}
 
-      {/* Pending file previews */}
       {pendingFiles.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex flex-wrap gap-2 mb-3">
           {pendingFiles.map((pf, i) => (
-            <div key={i} className="relative flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] max-w-[180px]">
+            <div key={i} className="relative">
               {pf.preview ? (
-                <img src={pf.preview} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-200 dark:border-white/[0.08]">
+                  <img src={pf.preview} alt="" className="w-full h-full object-cover" />
+                  {pf.uploading && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    </div>
+                  )}
+                </div>
               ) : (
-                <div className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-white/[0.08] flex items-center justify-center flex-shrink-0">
-                  {getFileIcon(pf.file.type)}
+                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] max-w-[160px]">
+                  <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-white/[0.08] flex items-center justify-center flex-shrink-0">
+                    {getFileIcon(pf.file.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{pf.file.name}</p>
+                    <p className="text-[10px] text-gray-400">
+                      {pf.uploading ? <span className="flex items-center gap-1"><Loader2 className="w-2 h-2 animate-spin" />Uploading…</span>
+                        : pf.error ? <span className="text-rose-500">{pf.error}</span>
+                        : `${(pf.file.size / 1024).toFixed(0)} KB`}
+                    </p>
+                  </div>
                 </div>
               )}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{pf.file.name}</p>
-                <p className="text-[10px] text-gray-400">
-                  {pf.uploading ? (
-                    <span className="flex items-center gap-1"><Loader2 className="w-2.5 h-2.5 animate-spin" />Uploading…</span>
-                  ) : pf.error ? (
-                    <span className="text-rose-500">{pf.error}</span>
-                  ) : (
-                    `${(pf.file.size / 1024).toFixed(0)} KB`
-                  )}
-                </p>
-              </div>
-              <button
-                onClick={() => removeFile(i)}
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-500 text-white flex items-center justify-center hover:bg-rose-500 transition-colors"
-              >
+              <button onClick={() => removeFile(i)} className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-600 dark:bg-gray-400 text-white flex items-center justify-center hover:bg-rose-500 transition-colors z-10">
                 <X className="w-2.5 h-2.5" />
               </button>
             </div>
@@ -509,39 +504,22 @@ function MessageInput({
         </div>
       )}
 
-      {/* Input row */}
       <div className="flex items-end gap-2">
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={disabled}
-          className="p-2.5 rounded-xl text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all flex-shrink-0 disabled:opacity-40"
-          title="Attach file"
-        >
+        <button onClick={() => fileRef.current?.click()} disabled={disabled}
+          className="p-2.5 rounded-xl text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all flex-shrink-0 disabled:opacity-40" title="Attach file">
           <Paperclip className="w-4 h-4" />
         </button>
-        <input
-          ref={fileRef}
-          type="file"
-          multiple
-          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
-          className="hidden"
-          onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
-        />
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
+        <input ref={fileRef} type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
+          className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+        <textarea ref={textareaRef} value={text}
+          onChange={(e) => { setText(e.target.value); const el = e.target; el.style.height = "42px"; el.style.height = `${Math.min(el.scrollHeight, 128)}px`; }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
           placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
           disabled={disabled}
           className="flex-1 px-4 py-2.5 rounded-2xl text-sm border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none transition-all disabled:opacity-50"
-          style={{ minHeight: "42px", maxHeight: "128px" }}
-        />
-        <button
-          onClick={submit}
-          disabled={!canSend}
-          className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0 shadow-md"
-        >
+          style={{ minHeight: "42px", maxHeight: "128px" }} />
+        <button onClick={submit} disabled={!canSend}
+          className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0 shadow-md">
           {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>
       </div>
@@ -551,15 +529,7 @@ function MessageInput({
 
 // ─── Room Detail Panel ────────────────────────────────────────────────────────
 
-function RoomDetailPanel({
-  detail,
-  gradient,
-  onClose,
-}: {
-  detail: RoomDetail;
-  gradient: string;
-  onClose: () => void;
-}) {
+function RoomDetailPanel({ detail, gradient, onClose }: { detail: RoomDetail; gradient: string; onClose: () => void }) {
   const [tab, setTab] = useState<"info" | "members" | "pinned" | "grade">("info");
   const tabs = [
     { id: "info",    label: "Info" },
@@ -569,27 +539,16 @@ function RoomDetailPanel({
   ] as const;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        transition={{ duration: 0.22 }}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.22 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg bg-white dark:bg-[#0f1623] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/[0.08] overflow-hidden max-h-[85vh] flex flex-col"
-      >
-        {/* Header */}
+        className="w-full max-w-lg bg-white dark:bg-[#0f1623] rounded-3xl shadow-2xl border border-gray-100 dark:border-white/[0.08] overflow-hidden max-h-[85vh] flex flex-col">
+
         <div className={`px-6 py-5 bg-gradient-to-br ${gradient} relative`}>
           <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle,white 1px,transparent 1px)", backgroundSize: "18px 18px" }} />
-          <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-xl bg-white/20 text-white hover:bg-white/30 transition-all">
-            <X className="w-4 h-4" />
-          </button>
+          <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-xl bg-white/20 text-white hover:bg-white/30 transition-all"><X className="w-4 h-4" /></button>
           <div className="flex items-center gap-3 relative">
             <span className="text-4xl">{detail.type === "CLASSROOM" ? "🏫" : "👥"}</span>
             <div>
@@ -600,46 +559,30 @@ function RoomDetailPanel({
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 p-2 border-b border-gray-100 dark:border-white/[0.07] bg-gray-50/60 dark:bg-white/[0.02]">
           {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id as typeof tab)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                tab === t.id
-                  ? "bg-white dark:bg-[#0f1623] shadow-sm text-gray-900 dark:text-white"
-                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              }`}
-            >
+            <button key={t.id} onClick={() => setTab(t.id as typeof tab)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${tab === t.id ? "bg-white dark:bg-[#0f1623] shadow-sm text-gray-900 dark:text-white" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
               {t.label}
             </button>
           ))}
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {tab === "info" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3 text-center">
-                {[
-                  { label: "Messages", value: detail.totalMessages },
-                  { label: "Members",  value: detail.memberCount },
-                  { label: "Pinned",   value: detail.pinnedMessages.length },
-                ].map(({ label, value }) => (
-                  <div key={label} className="rounded-xl p-3 bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
-                    <p className="font-black text-gray-900 dark:text-white text-lg">{value}</p>
-                    <p className="text-[11px] text-gray-400">{label}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              {[{ label: "Messages", value: detail.totalMessages }, { label: "Members", value: detail.memberCount }, { label: "Pinned", value: detail.pinnedMessages.length }].map(({ label, value }) => (
+                <div key={label} className="rounded-xl p-3 bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
+                  <p className="font-black text-gray-900 dark:text-white text-lg">{value}</p>
+                  <p className="text-[11px] text-gray-400">{label}</p>
+                </div>
+              ))}
             </div>
           )}
-
           {tab === "members" && (
             <div className="space-y-2">
               {detail.members.map((m) => {
-                const initials = m.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+                const initials = m.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
                 return (
                   <div key={m.userId} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black overflow-hidden flex-shrink-0">
@@ -649,21 +592,17 @@ function RoomDetailPanel({
                       <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{m.name}</p>
                       <p className="text-xs text-gray-400 truncate">{m.email}</p>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400">
-                      {m.role}
-                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400">{m.role}</span>
                   </div>
                 );
               })}
             </div>
           )}
-
           {tab === "pinned" && (
             <div className="space-y-3">
-              {detail.pinnedMessages.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">No pinned messages</p>
-              ) : (
-                detail.pinnedMessages.map((msg) => (
+              {detail.pinnedMessages.length === 0
+                ? <p className="text-sm text-gray-400 text-center py-8">No pinned messages</p>
+                : detail.pinnedMessages.map((msg) => (
                   <div key={msg.id} className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30">
                     <div className="flex items-center gap-2 mb-1">
                       <Pin className="w-3 h-3 text-amber-500" />
@@ -673,10 +612,9 @@ function RoomDetailPanel({
                     <p className="text-sm text-gray-700 dark:text-gray-300">{msg.content}</p>
                   </div>
                 ))
-              )}
+              }
             </div>
           )}
-
           {tab === "grade" && detail.grade && (
             <div className="space-y-4">
               <div className="flex items-center gap-4 p-5 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
@@ -692,11 +630,11 @@ function RoomDetailPanel({
                   <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{detail.grade.feedback}</p>
                 </div>
               )}
-              {detail.grade.rubricItems.length > 0 && (
+              {detail.grade.rubricItems?.length > 0 && (
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Rubric</p>
                   <div className="space-y-3">
-                    {detail.grade.rubricItems.map((r) => {
+                    {detail.grade.rubricItems.map((r: any) => {
                       const pct = Math.round((r.score / r.maxScore) * 100);
                       return (
                         <div key={r.id}>
@@ -705,10 +643,7 @@ function RoomDetailPanel({
                             <span className="font-bold text-gray-900 dark:text-white">{r.score}/{r.maxScore}</span>
                           </div>
                           <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
+                            <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all" style={{ width: `${pct}%` }} />
                           </div>
                         </div>
                       );
@@ -724,18 +659,12 @@ function RoomDetailPanel({
   );
 }
 
-// ─── Chat View (active room) ──────────────────────────────────────────────────
+// ─── Chat View ────────────────────────────────────────────────────────────────
 
 function ChatView({
-  room,
-  roomIndex,
-  currentUserId,
-  onBack,
+  room, roomIndex, currentUserId, onBack,
 }: {
-  room: RoomSummaryItem;
-  roomIndex: number;
-  currentUserId: string;
-  onBack: () => void;
+  room: RoomSummaryItem; roomIndex: number; currentUserId: string; onBack: () => void;
 }) {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -745,19 +674,14 @@ function ChatView({
   const bottomRef = useRef<HTMLDivElement>(null);
   const gradient = roomGradient(room.type, roomIndex);
 
-  // ── Fetch initial messages ────────────────────────────────────────────────
-
   const { isLoading: loadingMsgs } = useQuery({
     queryKey: ["chat-messages", room.id],
     queryFn: async () => {
       const res = await ChatService.getMessages(room.id, { limit: 50 });
-      // API returns newest-first; reverse for display
       setMessages([...res.data].reverse());
       return res;
     },
   });
-
-  // ── Fetch room detail (for info panel) ───────────────────────────────────
 
   const { data: roomDetail } = useQuery({
     queryKey: ["chat-room-detail", room.id],
@@ -765,144 +689,79 @@ function ChatView({
     enabled: showDetail,
   });
 
-  // ── Socket ────────────────────────────────────────────────────────────────
-
   const { joinRoom, leaveRoom } = useChatSocket({
     onMessageNew: useCallback((msg: ChatMessage) => {
       if (msg.roomId !== room.id) return;
-      setMessages((prev) => {
-        // Deduplicate — socket fires for sender too
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
+      setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
     }, [room.id]),
-
     onMessageDeleted: useCallback((payload: import("@/hooks/useChatSocket").MessageDeletedPayload) => {
       const { messageId, deletedLabel } = payload;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId ? { ...m, isDeleted: true, content: null, deletedLabel } : m
-        )
-      );
+      setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, isDeleted: true, content: null, deletedLabel } : m));
     }, []),
-
     onMessageReacted: useCallback((payload: import("@/hooks/useChatSocket").MessageReactedPayload) => {
       const { messageId, reaction, userId, toggled } = payload;
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId) return m;
-          const existing = m.reactions.find((r) => r.reaction === reaction);
-          let reactions = m.reactions;
-          if (toggled === "added") {
-            if (existing) {
-              reactions = reactions.map((r) =>
-                r.reaction === reaction ? { ...r, userIds: [...r.userIds, userId] } : r
-              );
-            } else {
-              reactions = [...reactions, { reaction, userIds: [userId] }];
-            }
-          } else {
-            reactions = reactions
-              .map((r) =>
-                r.reaction === reaction
-                  ? { ...r, userIds: r.userIds.filter((id) => id !== userId) }
-                  : r
-              )
-              .filter((r) => r.userIds.length > 0);
-          }
-          return { ...m, reactions };
-        })
-      );
+      setMessages((prev) => prev.map((m) => {
+        if (m.id !== messageId) return m;
+        const existing = m.reactions.find((r) => r.reaction === reaction);
+        let reactions = m.reactions;
+        if (toggled === "added") {
+          if (existing) reactions = reactions.map((r) => r.reaction === reaction ? { ...r, userIds: [...r.userIds, userId] } : r);
+          else reactions = [...reactions, { reaction, userIds: [userId] }];
+        } else {
+          reactions = reactions.map((r) => r.reaction === reaction ? { ...r, userIds: r.userIds.filter((id) => id !== userId) } : r).filter((r) => r.userIds.length > 0);
+        }
+        return { ...m, reactions };
+      }));
     }, []),
-
     onMessagePinned: useCallback(() => {
       queryClient.invalidateQueries({ queryKey: ["chat-room-detail", room.id] });
     }, [room.id, queryClient]),
   });
 
-  useEffect(() => {
-    joinRoom(room.id);
-    return () => leaveRoom(room.id);
-  }, [room.id, joinRoom, leaveRoom]);
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
-
-  // ── Mutations ─────────────────────────────────────────────────────────────
+  useEffect(() => { joinRoom(room.id); return () => leaveRoom(room.id); }, [room.id, joinRoom, leaveRoom]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
 
   const sendMutation = useMutation({
     mutationFn: ({ content, attachments }: { content: string; attachments?: { key: string; url: string; fileName: string; mimeType: string; size: number }[] }) =>
-      ChatService.sendMessage(room.id, {
-        content,
-        replyToId: replyTo?.id,
-        attachments,
-      }),
-    // Optimistic: show message immediately before server responds
+      ChatService.sendMessage(room.id, { content, replyToId: replyTo?.id, attachments }),
     onMutate: ({ content, attachments }) => {
       setIsSending(true);
       const tempId = `temp-${Date.now()}`;
       const optimistic: ChatMessage & { _tempId: string; _sending: boolean } = {
-        _tempId: tempId,
-        _sending: true,
-        id: tempId,
-        roomId: room.id,
-        senderId: currentUserId,
-        senderName: "You",
-        senderImage: null,
-        senderIsElevated: false,
-        senderPlatformRole: "STUDENT",
-        content,
-        replyToId: replyTo?.id ?? null,
+        _tempId: tempId, _sending: true,
+        id: tempId, roomId: room.id,
+        senderId: currentUserId, senderName: "You",
+        senderImage: null, senderIsElevated: false, senderPlatformRole: "STUDENT",
+        content, replyToId: replyTo?.id ?? null,
         replyToPreview: replyTo ? { id: replyTo.id, senderName: replyTo.senderName, content: replyTo.content } : null,
         attachments: (attachments ?? []).map((a, i) => ({ id: `temp-att-${i}`, fileName: a.fileName, url: a.url, mimeType: a.mimeType, size: a.size })),
-        reactions: [],
-        mentionedUserIds: [],
-        isDeleted: false,
-        deletedLabel: null,
-        isPinned: false,
+        reactions: [], mentionedUserIds: [],
+        isDeleted: false, deletedLabel: null, isPinned: false,
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, optimistic]);
       return { tempId };
     },
-    // Replace temp message with real one from server
     onSuccess: (msg, _vars, ctx) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === (ctx as any)?.tempId ? msg : m))
-      );
+      setMessages((prev) => prev.map((m) => m.id === (ctx as any)?.tempId ? msg : m));
     },
-    // Mark temp message as failed
     onError: (_err, _vars, ctx) => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === (ctx as any)?.tempId
-            ? { ...m, _failed: true, _sending: false } as any
-            : m
-        )
-      );
+      setMessages((prev) => prev.map((m) => m.id === (ctx as any)?.tempId ? { ...m, _failed: true, _sending: false } as any : m));
     },
     onSettled: () => setIsSending(false),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (messageId: string) => ChatService.deleteMessage(room.id, messageId),
-    // Optimistic: socket will confirm via message:deleted
-    onMutate: (messageId) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, isDeleted: true, content: null } : m))
-      );
-    },
+    onMutate: (messageId) => setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, isDeleted: true, content: null } : m)),
   });
 
   const reactMutation = useMutation({
     mutationFn: ({ messageId, reaction }: { messageId: string; reaction: MessageReaction }) =>
       ChatService.reactToMessage(room.id, messageId, reaction),
-    // No onSuccess needed — socket delivers the confirmed state
   });
 
-  // Optimistic reaction toggle — updates UI immediately before server responds
+  // Optimistic: update local state FIRST, then fire mutation
   const handleReact = (msgId: string, reaction: MessageReaction) => {
     setMessages((prev) =>
       prev.map((m) => {
@@ -911,7 +770,6 @@ function ChatView({
         const alreadyReacted = existing?.userIds.includes(currentUserId);
         let reactions = m.reactions;
         if (alreadyReacted) {
-          // Remove my reaction optimistically
           reactions = reactions
             .map((r) => r.reaction === reaction ? { ...r, userIds: r.userIds.filter((id) => id !== currentUserId) } : r)
             .filter((r) => r.userIds.length > 0);
@@ -926,19 +784,11 @@ function ChatView({
     reactMutation.mutate({ messageId: msgId, reaction });
   };
 
-  const handleSend = (content: string, attachments?: { key: string; url: string; fileName: string; mimeType: string; size: number }[]) => {
-    sendMutation.mutate({ content, attachments });
-    setReplyTo(null);
-  };
-
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
-        <button
-          onClick={onBack}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all"
-        >
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 rounded-b-2xl rounded-t-2xl dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
+        <button onClick={onBack} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
           <ChevronDown className="w-4 h-4 rotate-90" />
         </button>
         <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-xl flex-shrink-0`}>
@@ -946,30 +796,22 @@ function ChatView({
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="font-black text-gray-900 dark:text-white text-sm truncate">{room.name}</h2>
-          <p className="text-xs text-gray-400">
-            {room.memberCount} members · {room.type === "CLASSROOM" ? "Classroom" : "Group"}
-          </p>
+          <p className="text-xs text-gray-400">{room.memberCount} members · {room.type === "CLASSROOM" ? "Classroom" : "Group"}</p>
         </div>
         {room.grade && (
-          <span className="px-2.5 py-1 rounded-xl text-sm font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30">
+          <span className="px-2.5 py-1 rounded-xl text-sm font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30 flex-shrink-0">
             {room.grade.resolvedGrade}%
           </span>
         )}
-        <button
-          onClick={() => setShowDetail(true)}
-          className="p-2 rounded-xl text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
-          title="Room info"
-        >
+        <button onClick={() => setShowDetail(true)} className="p-2 rounded-xl text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all flex-shrink-0" title="Room info">
           <Info className="w-4 h-4" />
         </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-y-auto rounded-b-2xl py-2">
         {loadingMsgs ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-          </div>
+          <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-8">
             <MessageSquare className="w-10 h-10 text-gray-300 dark:text-gray-700 mb-3" />
@@ -978,14 +820,11 @@ function ChatView({
           </div>
         ) : (
           messages.map((msg, i) => (
-            <MessageBubble
-              key={msg.id}
-              msg={msg}
-              isMe={msg.senderId === currentUserId}
+            <MessageBubble key={msg.id} msg={msg} isMe={msg.senderId === currentUserId}
               prevSenderId={i > 0 ? messages[i - 1].senderId : undefined}
               currentUserId={currentUserId}
               onReply={setReplyTo}
-              onReact={(msgId, reaction) => handleReact(msgId, reaction)}
+              onReact={handleReact}
               onDelete={(msgId) => deleteMutation.mutate(msgId)}
             />
           ))
@@ -993,22 +832,13 @@ function ChatView({
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <MessageInput
-        replyTo={replyTo}
-        onCancelReply={() => setReplyTo(null)}
-        onSend={handleSend}
-        disabled={isSending}
-      />
+      <MessageInput replyTo={replyTo} onCancelReply={() => setReplyTo(null)}
+        onSend={(content, attachments) => { sendMutation.mutate({ content, attachments }); setReplyTo(null); }}
+        disabled={isSending} />
 
-      {/* Detail panel */}
       <AnimatePresence>
         {showDetail && roomDetail && (
-          <RoomDetailPanel
-            detail={roomDetail}
-            gradient={gradient}
-            onClose={() => setShowDetail(false)}
-          />
+          <RoomDetailPanel detail={roomDetail} gradient={gradient} onClose={() => setShowDetail(false)} />
         )}
       </AnimatePresence>
     </div>
@@ -1024,8 +854,6 @@ export default function StudentChat() {
   const [tab, setTab] = useState<"CLASSROOM" | "GROUP">("CLASSROOM");
   const [activeRoom, setActiveRoom] = useState<{ room: RoomSummaryItem; index: number } | null>(null);
 
-  // ── Fetch all rooms ───────────────────────────────────────────────────────
-
   const { data: roomsData, isLoading, isError } = useQuery({
     queryKey: ["chat-rooms"],
     queryFn: () => ChatService.getRooms({ limit: 100 }),
@@ -1036,106 +864,78 @@ export default function StudentChat() {
   const groups     = allRooms.filter((r) => r.type === "GROUP");
   const displayed  = tab === "CLASSROOM" ? classrooms : groups;
 
-  // ── Background socket subscriptions (for notifications) ──────────────────
-
   const { joinRooms } = useChatSocket({});
-
   useEffect(() => {
-    if (allRooms.length > 0) {
-      joinRooms(allRooms.map((r) => r.id));
-    }
+    if (allRooms.length > 0) joinRooms(allRooms.map((r) => r.id));
   }, [allRooms.length, joinRooms]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
-    <div className="-mx-4 lg:-mx-6 -my-6 -mb-16 flex flex-col" style={{ height: "calc(100vh - 82px)" }}>
+    <div className="flex flex-col" style={{ height: "calc(100vh - 82px)", margin: "-1.5rem -1rem -4rem", overflow: "hidden" }}>
       {!activeRoom ? (
         /* ── Room list ── */
-        <div className="flex-1 overflow-y-auto space-y-6 pb-10 px-4 lg:px-6 pt-6">
-          <Fade>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-md">
-                <Hash className="w-5 h-5 text-white" />
+        <div className="flex-1 overflow-y-auto">
+          <div className="space-y-5 p-6 pb-10">
+            <Fade>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-md">
+                  <Hash className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-black text-gray-900 dark:text-white">Chat</h1>
+                  <p className="text-xs text-gray-400">Your classrooms and groups</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-2xl font-black text-gray-900 dark:text-white">Chat</h1>
-                <p className="text-xs text-gray-400">Your classrooms and groups</p>
+            </Fade>
+
+            <Fade delay={0.04}>
+              <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
+                {[
+                  { id: "CLASSROOM" as const, label: `Classrooms (${classrooms.length})` },
+                  { id: "GROUP"     as const, label: `Groups (${groups.length})` },
+                ].map((t) => (
+                  <button key={t.id} onClick={() => setTab(t.id)}
+                    className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab === t.id ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+                    {t.label}
+                  </button>
+                ))}
               </div>
-            </div>
-          </Fade>
+            </Fade>
 
-          <Fade delay={0.04}>
-            <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
-              {[
-                { id: "CLASSROOM" as const, label: `Classrooms (${classrooms.length})` },
-                { id: "GROUP"     as const, label: `Groups (${groups.length})` },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
-                    tab === t.id
-                      ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm"
-                      : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </Fade>
+            {isLoading && <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>}
 
-          {isLoading && (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-            </div>
-          )}
+            {isError && (
+              <Card className="p-10 text-center">
+                <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
+                <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Couldn't load rooms</p>
+                <p className="text-xs text-gray-400 mt-1">Check your connection and refresh.</p>
+              </Card>
+            )}
 
-          {isError && (
-            <Card className="p-10 text-center">
-              <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
-              <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Couldn't load rooms</p>
-              <p className="text-xs text-gray-400 mt-1">Check your connection and refresh.</p>
-            </Card>
-          )}
-
-          {!isLoading && !isError && (
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={tab}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="space-y-3"
-              >
-                {displayed.length === 0 ? (
-                  <Card className="p-10 text-center">
-                    <Users className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
-                    <p className="text-gray-400 text-sm">
-                      {tab === "CLASSROOM"
-                        ? "You haven't been added to any classroom yet."
-                        : "You haven't been added to any group yet."}
-                    </p>
-                  </Card>
-                ) : (
-                  displayed.map((room, i) => (
-                    <Fade key={room.id} delay={i * 0.04}>
-                      <RoomCard
-                        room={room}
-                        index={i}
-                        onClick={() => setActiveRoom({ room, index: i })}
-                      />
-                    </Fade>
-                  ))
-                )}
-              </motion.div>
-            </AnimatePresence>
-          )}
+            {!isLoading && !isError && (
+              <AnimatePresence mode="wait">
+                <motion.div key={tab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+                  {displayed.length === 0 ? (
+                    <Card className="p-10 text-center">
+                      <Users className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
+                      <p className="text-gray-400 text-sm">
+                        {tab === "CLASSROOM" ? "You haven't been added to any classroom yet." : "You haven't been added to any group yet."}
+                      </p>
+                    </Card>
+                  ) : (
+                    displayed.map((room, i) => (
+                      <Fade key={room.id} delay={i * 0.04}>
+                        <RoomCard room={room} index={i} onClick={() => setActiveRoom({ room, index: i })} />
+                      </Fade>
+                    ))
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            )}
+          </div>
         </div>
       ) : (
         /* ── Active chat ── */
-        <div className="flex-1 flex overflow-hidden rounded-2xl border border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623]">
+        <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl mx-2 my-2 dark:bg-[#0f1623]">
           <ChatView
             room={activeRoom.room}
             roomIndex={activeRoom.index}

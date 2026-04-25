@@ -6,7 +6,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForward,
   Settings, Download, FileText, CheckCircle2, Clock,
   ArrowLeft, Home, List, ChevronDown, Lock,
-  PlayCircle, Eye, AlertCircle, Loader2, Star
+  PlayCircle, Eye, AlertCircle, Loader2, Star, HelpCircle, Award, XCircle
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, {
@@ -17,6 +17,7 @@ import CoursesService, {
 } from "@/services/course.service";
 import ProgressService from "@/services/progress.service";
 import ReviewService, { type ReviewResponse } from "@/services/review.service";
+import QuizService, { type QuizResponse } from "@/services/quiz.service";
 
 // ==================== TYPES ====================
 
@@ -529,16 +530,226 @@ function LessonItem({
   );
 }
 
+// ==================== QUIZ PANEL ====================
+
+interface QuizAttemptResult {
+  id: string;
+  quizId: string;
+  studentId: string;
+  score: number;
+  totalQuestions: number;
+  resolvedGrade: number;
+  passed: boolean;
+  submittedAt: string;
+  answers: {
+    questionId: string;
+    questionText: string;
+    selectedOptionId: string;
+    isCorrect: boolean;
+    correctOptionId: string;
+  }[];
+}
+
+function QuizPanel({ sectionId }: { sectionId: string }) {
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<QuizAttemptResult | null>(null);
+  const [showReview, setShowReview] = useState(false);
+
+  const { data: quizList, isLoading } = useQuery<{ data: QuizResponse[] }>({
+    queryKey: ["section-quizzes", sectionId],
+    queryFn: () => QuizService.getQuizzes({ sectionId }),
+    enabled: !!sectionId,
+  });
+
+  const quiz = quizList?.data?.[0];
+
+  const { data: existingAttempt } = useQuery<QuizAttemptResult>({
+    queryKey: ["quiz-attempt", quiz?.id],
+    queryFn: () => QuizService.getMyAttempt(quiz!.id),
+    enabled: !!quiz?.id,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (existingAttempt) setResult(existingAttempt);
+  }, [existingAttempt]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-6 px-4 text-gray-400 text-sm">
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading quiz…
+      </div>
+    );
+  }
+
+  if (!quiz) return null;
+
+  const handleSubmit = async () => {
+    const answers = quiz.questions.map((q) => ({
+      questionId: q.id,
+      optionId: selectedAnswers[q.id] ?? "",
+    }));
+    if (answers.some((a) => !a.optionId)) return;
+    setSubmitting(true);
+    try {
+      const res = await QuizService.submitQuiz(quiz.id, answers);
+      setResult(res);
+    } catch (e) {
+      console.error("Quiz submission failed:", e);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (result) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white dark:bg-[#131c2e] rounded-2xl border border-gray-200 dark:border-white/[0.07] p-6 space-y-4"
+      >
+        <div className="flex items-center gap-3">
+          <div className={cn(
+            "w-10 h-10 rounded-full flex items-center justify-center",
+            result.passed
+              ? "bg-emerald-100 dark:bg-emerald-950/40"
+              : "bg-red-100 dark:bg-red-950/40"
+          )}>
+            {result.passed
+              ? <Award className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              : <XCircle className="w-5 h-5 text-red-500" />
+            }
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 dark:text-white">{quiz.title}</h3>
+            <p className={cn(
+              "text-sm font-semibold",
+              result.passed ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"
+            )}>
+              {result.passed ? "Passed" : "Failed"} — {result.score}/{result.totalQuestions} correct ({result.resolvedGrade}%)
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowReview(!showReview)}
+          className="text-xs font-bold text-blue-500 hover:text-blue-400 transition-colors"
+        >
+          {showReview ? "Hide review" : "Review answers"}
+        </button>
+
+        <AnimatePresence>
+          {showReview && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden space-y-4"
+            >
+              {result.answers.map((ans, i) => (
+                <div key={ans.questionId} className="space-y-2">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                    {i + 1}. {ans.questionText}
+                  </p>
+                  {quiz.questions.find(q => q.id === ans.questionId)?.options.map(opt => {
+                    const isSelected = opt.id === ans.selectedOptionId;
+                    const isCorrect  = opt.id === ans.correctOptionId;
+                    return (
+                      <div
+                        key={opt.id}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg text-sm border",
+                          isCorrect
+                            ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300"
+                            : isSelected
+                            ? "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/40 text-red-700 dark:text-red-300"
+                            : "border-transparent text-gray-500 dark:text-gray-400"
+                        )}
+                      >
+                        {isCorrect ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : isSelected ? <XCircle className="w-3.5 h-3.5 shrink-0" /> : <span className="w-3.5 h-3.5" />}
+                        {opt.text}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white dark:bg-[#131c2e] rounded-2xl border border-gray-200 dark:border-white/[0.07] p-6 space-y-6"
+    >
+      <div className="flex items-center gap-2">
+        <HelpCircle className="w-5 h-5 text-blue-500" />
+        <h3 className="font-bold text-gray-900 dark:text-white">{quiz.title}</h3>
+        <span className="ml-auto text-xs text-gray-400">Pass mark: {quiz.passMark}%</span>
+      </div>
+
+      <div className="space-y-6">
+        {quiz.questions.map((q, i) => (
+          <div key={q.id} className="space-y-3">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+              {i + 1}. {q.text}
+            </p>
+            <div className="space-y-2">
+              {q.options.map((opt) => {
+                const chosen = selectedAnswers[q.id] === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => setSelectedAnswers(prev => ({ ...prev, [q.id]: opt.id }))}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm text-left transition-all",
+                      chosen
+                        ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 font-semibold"
+                        : "border-gray-200 dark:border-white/[0.07] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                    )}
+                  >
+                    <span className={cn(
+                      "w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center",
+                      chosen ? "border-blue-500 bg-blue-500" : "border-gray-300 dark:border-gray-600"
+                    )}>
+                      {chosen && <span className="w-2 h-2 rounded-full bg-white" />}
+                    </span>
+                    {opt.text}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={submitting || quiz.questions.some(q => !selectedAnswers[q.id])}
+        className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
+      >
+        {submitting ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting…</> : "Submit Quiz"}
+      </button>
+    </motion.div>
+  );
+}
+
 // ==================== MAIN COMPONENT ====================
 
 export default function StudentWatchCourse() {
-  const { courseId } = useParams<{ courseId: string }>();
+  const { id: courseId } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
 
   const [selectedLesson, setSelectedLesson] = useState<CourseLesson | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<CourseMaterial | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [showSidebar, setShowSidebar] = useState(true);
+  const [quizSectionId, setQuizSectionId] = useState<string | null>(null);
 
   const [rating, setRating] = useState(0);
   const [hovered, setHovered] = useState(0);
@@ -557,12 +768,12 @@ export default function StudentWatchCourse() {
     enabled: !!courseId,
   });
 
-  // FIX: type the progress response properly so we can read real data
+  // FIX: type cast progress response properly so we can read real data
   const { data: progress } = useQuery<CourseProgressDetail>({
     queryKey: ["course-progress", courseId],
     queryFn: () =>
       ProgressService.getCourseProgress(courseId!) as Promise<CourseProgressDetail>,
-    enabled: !!courseId && !!course?.isEnrolled,
+    enabled: !!courseId,
   });
 
   const { data: existingReview } = useQuery<ReviewResponse | null>({
@@ -644,10 +855,17 @@ export default function StudentWatchCourse() {
 
   const selectLesson = (lesson: CourseLesson) => {
     setSelectedLesson(lesson);
+    setQuizSectionId(null);
     const videoMaterial = lesson.materials?.find(
       (m: CourseMaterial) => m.type === "VIDEO"
     );
     setSelectedMaterial(videoMaterial ?? null);
+  };
+
+  const openQuiz = (sectionId: string) => {
+    setSelectedLesson(null);
+    setSelectedMaterial(null);
+    setQuizSectionId(sectionId);
   };
 
   const handleVideoProgress = (vp: VideoProgress) => {
@@ -835,7 +1053,6 @@ export default function StudentWatchCourse() {
                               className="overflow-hidden"
                             >
                               {section.lessons.map((lesson: CourseLesson) => {
-                                // FIX: use real completedLessonIds derived from API
                                 const isCompleted = completedLessonIds.has(lesson.id);
                                 const isCurrent = selectedLesson?.id === lesson.id;
                                 return (
@@ -848,6 +1065,27 @@ export default function StudentWatchCourse() {
                                   />
                                 );
                               })}
+                              {/* Quiz entry for this section */}
+                              <button
+                                onClick={() => openQuiz(section.id)}
+                                className={cn(
+                                  "w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left",
+                                  quizSectionId === section.id
+                                    ? "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/40"
+                                    : "hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                                )}
+                              >
+                                <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-950/30 flex items-center justify-center flex-shrink-0">
+                                  <HelpCircle className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Section Quiz</p>
+                                  <p className="text-xs text-gray-400">Test your knowledge</p>
+                                </div>
+                                {quizSectionId === section.id && (
+                                  <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse flex-shrink-0" />
+                                )}
+                              </button>
                             </motion.div>
                           )}
                         </AnimatePresence>
@@ -902,7 +1140,7 @@ export default function StudentWatchCourse() {
                               className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-white/[0.07] hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors"
                             >
                               <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center">
-                                {material.type === "DOCUMENT" ? (
+                                {material.type === "PDF" ? (
                                   <FileText className="w-4 h-4 text-gray-500" />
                                 ) : material.type === "LINK" ? (
                                   <Eye className="w-4 h-4 text-gray-500" />
@@ -931,6 +1169,8 @@ export default function StudentWatchCourse() {
                 </motion.div>
               )}
             </div>
+          ) : quizSectionId ? (
+            <QuizPanel sectionId={quizSectionId} />
           ) : (
             <div className="flex items-center justify-center h-96">
               <div className="text-center">
