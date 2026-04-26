@@ -36,12 +36,18 @@ export class APIError extends Error {
   
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('API Error response:', { status: response.status, url, errorData });
   
         // NestJS default error shape:
         // { statusCode: number, message: string, error: string }
+        // message can be a string or an array of validation errors
+        const message = Array.isArray(errorData.message)
+          ? errorData.message.join('; ')
+          : errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+
         throw new APIError(
           errorData.error || "APIError",
-          errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+          message,
           `HTTP_${response.status}`
         );
       }

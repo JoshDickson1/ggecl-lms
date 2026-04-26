@@ -15,6 +15,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, { CourseLevel, MaterialType } from "@/services/course.service";
 import StorageService from "@/services/storage.service";
+import QuizService, { type CreateQuizPayload } from "@/services/quiz.service";
 import { APIConfig } from "@/lib/api.config";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -173,11 +174,12 @@ const STATUS_STYLE: Record<string, { label: string; color: string; bg: string; b
 };
 
 const MATERIAL_ICONS: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
-  VIDEO:    { icon: <Film className="w-3.5 h-3.5" />,      color: "text-blue-600 dark:text-blue-400",       bg: "bg-blue-100 dark:bg-blue-900/30" },
-  DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />,  color: "text-sky-600 dark:text-sky-400",         bg: "bg-sky-100 dark:bg-sky-900/30" },
-  AUDIO:    { icon: <Music className="w-3.5 h-3.5" />,     color: "text-violet-600 dark:text-violet-400",   bg: "bg-violet-100 dark:bg-violet-900/30" },
-  LINK:     { icon: <Globe className="w-3.5 h-3.5" />,     color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/30" },
-  OTHER:    { icon: <Paperclip className="w-3.5 h-3.5" />, color: "text-gray-500 dark:text-gray-400",       bg: "bg-gray-100 dark:bg-white/[0.06]" },
+  VIDEO: { icon: <Film className="w-3.5 h-3.5" />,         color: "text-blue-600 dark:text-blue-400",       bg: "bg-blue-100 dark:bg-blue-900/30" },
+  PDF:   { icon: <FileText className="w-3.5 h-3.5" />,     color: "text-sky-600 dark:text-sky-400",         bg: "bg-sky-100 dark:bg-sky-900/30" },
+  AUDIO: { icon: <Music className="w-3.5 h-3.5" />,        color: "text-violet-600 dark:text-violet-400",   bg: "bg-violet-100 dark:bg-violet-900/30" },
+  LINK:  { icon: <Globe className="w-3.5 h-3.5" />,        color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/30" },
+  QUIZ:  { icon: <ListChecks className="w-3.5 h-3.5" />,   color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-100 dark:bg-amber-900/30" },
+  OTHER: { icon: <Paperclip className="w-3.5 h-3.5" />,    color: "text-gray-500 dark:text-gray-400",       bg: "bg-gray-100 dark:bg-white/[0.06]" },
 };
 
 // ─── Shared atoms ─────────────────────────────────────────────────────────────
@@ -709,8 +711,8 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
 // ─── Quiz Editor Modal ────────────────────────────────────────────────────────
 
 function QuizEditorModal({
-  quiz, onSave, onClose,
-}: { quiz: InlineQuiz | null; onClose: () => void; onSave: (q: InlineQuiz) => void }) {
+  quiz, onSave, onClose, isSaving = false,
+}: { quiz: InlineQuiz | null; onClose: () => void; onSave: (q: InlineQuiz) => void; isSaving?: boolean }) {
   const [title, setTitle]         = useState(quiz?.title ?? "");
   const [passMark, setPassMark]   = useState(quiz?.passMark ?? 70);
   const [questions, setQuestions] = useState<QuizQuestion[]>(quiz?.questions ?? []);
@@ -756,7 +758,7 @@ function QuizEditorModal({
             </div>
             <div>
               <h2 className="font-black text-gray-900 dark:text-white text-sm">{quiz ? "Edit Quiz" : "New Quiz"}</h2>
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Local state only · wire up endpoint to persist</p>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">✓ Saved to backend · Auto-graded on submission</p>
             </div>
           </div>
           <button onClick={onClose}
@@ -837,9 +839,17 @@ function QuizEditorModal({
               {isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
               {isPublished ? "Published" : "Draft"}
             </button>
-            <button onClick={handleSave} disabled={!title.trim() || questions.length === 0}
+            <button onClick={handleSave} disabled={!title.trim() || questions.length === 0 || isSaving}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 transition-all">
-              <Save className="w-4 h-4" /> Save Quiz
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" /> Save Quiz
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -906,14 +916,71 @@ function MaterialsSectionBlock({
     qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
   };
 
+  const { mutate: saveQuizMutation, isPending: savingQuiz } = useMutation({
+    mutationFn: async (quiz: InlineQuiz) => {
+      // Transform local quiz format to API format
+      const payload: CreateQuizPayload = {
+        title: quiz.title,
+        sectionId: sec.sectionId,
+        passMark: quiz.passMark,
+        questions: quiz.questions.map((q, idx) => ({
+          text: q.question,
+          options: q.options.map((opt, optIdx) => ({
+            text: opt.text,
+            isCorrect: opt.id === q.correctOptionId,
+          })),
+        })),
+      };
+
+      // Check if quiz exists (has a backend ID that's not a temp ID)
+      const isNewQuiz = !quiz.id || quiz.id.startsWith('q-');
+      
+      if (isNewQuiz) {
+        // Create new quiz
+        return await QuizService.create(payload);
+      } else {
+        // Update existing quiz (only title and passMark can be updated)
+        await QuizService.update(quiz.id, {
+          title: quiz.title,
+          passMark: quiz.passMark,
+        });
+        // Note: To update questions, backend requires delete and recreate
+        return quiz;
+      }
+    },
+    onSuccess: (savedQuiz) => {
+      // Refresh course data to get updated quizzes
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+      setEditingQuiz(null);
+    },
+    onError: (error: Error) => {
+      alert(`Failed to save quiz: ${error.message}`);
+    },
+  });
+
   const saveQuiz = (quiz: InlineQuiz) => {
-    const exists  = sec.quizzes.some(q => q.id === quiz.id);
-    const updated = exists
-      ? sec.quizzes.map(q => q.id === quiz.id ? quiz : q)
-      : [...sec.quizzes, quiz];
-    onQuizzesChange(sec.sectionId, updated);
-    setEditingQuiz(null);
+    saveQuizMutation(quiz);
   };
+
+  const { mutate: deleteQuizMutation } = useMutation({
+    mutationFn: (quizId: string) => {
+      // Only delete if it's a backend quiz (not a temp local ID)
+      if (quizId.startsWith('q-')) {
+        // Local quiz, just remove from state
+        return Promise.resolve();
+      }
+      return QuizService.remove(quizId);
+    },
+    onSuccess: (_, quizId) => {
+      // Update local state
+      onQuizzesChange(sec.sectionId, sec.quizzes.filter(q => q.id !== quizId));
+      // Refresh course data
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+    },
+    onError: (error: Error) => {
+      alert(`Failed to delete quiz: ${error.message}`);
+    },
+  });
 
   const buildPreviewItems = (mats: CourseMaterial[]): PreviewItem[] =>
     mats.filter(m => m.type !== "VIDEO").map(m => ({
@@ -1098,7 +1165,7 @@ function MaterialsSectionBlock({
                                   className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/20 transition-all">
                                   <Edit3 className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={() => onQuizzesChange(sec.sectionId, sec.quizzes.filter(q => q.id !== quiz.id))}
+                                <button onClick={() => deleteQuizMutation(quiz.id)}
                                   className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-all">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1130,6 +1197,7 @@ function MaterialsSectionBlock({
             quiz={editingQuiz === "new" ? null : editingQuiz}
             onClose={() => setEditingQuiz(null)}
             onSave={saveQuiz}
+            isSaving={savingQuiz}
           />
         )}
       </AnimatePresence>

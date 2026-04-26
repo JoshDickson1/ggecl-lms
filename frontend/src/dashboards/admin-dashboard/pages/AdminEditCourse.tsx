@@ -25,7 +25,10 @@ interface InstructorUser {
   name: string;
   image: string | null;
   email: string;
-  instructorProfile?: { specialization?: string };
+  instructorProfile?: { 
+    id?: string; // Instructor profile ID (different from user ID)
+    specialization?: string;
+  };
 }
 
 interface CourseDetail {
@@ -520,6 +523,19 @@ export default function AdminEditCourse() {
     if (!instructorId)                          e.instructor  = "Please assign an instructor";
     if (!description.trim())                    e.description = "Short description is required";
     if (!price || isNaN(+price) || +price < 0)  e.price       = "Valid price is required";
+    
+    // Check if selected instructor has a profile
+    if (instructorId) {
+      const selectedInstr = instructors.find(i => {
+        const profileId = i.instructorProfile?.id || i.id;
+        return profileId === instructorId;
+      });
+      
+      if (selectedInstr && !selectedInstr.instructorProfile?.id) {
+        e.instructor = "The selected instructor does not have a complete profile. Please ask them to complete their instructor profile first.";
+      }
+    }
+    
     setErrors(e);
     return !Object.keys(e).length;
   };
@@ -544,7 +560,10 @@ export default function AdminEditCourse() {
     saveUpdate(payload);
   };
 
-  const selectedInstructor = instructors.find(i => i.id === instructorId);
+  const selectedInstructor = instructors.find(i => {
+    const instructorProfileId = i.instructorProfile?.id || i.id;
+    return instructorProfileId === instructorId;
+  });
 
   if (loadingCourse) {
     return (
@@ -601,14 +620,26 @@ export default function AdminEditCourse() {
                 <option value="">Select instructor…</option>
                 {[
                   // Put currently selected instructor first
-                  ...(instructorId ? instructors.filter(i => i.id === instructorId) : []),
+                  ...(instructorId ? instructors.filter(i => {
+                    const profileId = i.instructorProfile?.id || i.id;
+                    return profileId === instructorId;
+                  }) : []),
                   // Then the rest of instructors
-                  ...instructors.filter(i => i.id !== instructorId)
-                ].map(i => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}{i.instructorProfile?.specialization ? ` — ${i.instructorProfile.specialization}` : ""}
-                  </option>
-                ))}
+                  ...instructors.filter(i => {
+                    const profileId = i.instructorProfile?.id || i.id;
+                    return profileId !== instructorId;
+                  })
+                ].map(i => {
+                  // Use instructor profile ID if available, otherwise fall back to user ID
+                  const instructorProfileId = i.instructorProfile?.id || i.id;
+                  const hasProfile = !!i.instructorProfile?.id;
+                  
+                  return (
+                    <option key={i.id} value={instructorProfileId} disabled={!hasProfile}>
+                      {i.name}{i.instructorProfile?.specialization ? ` — ${i.instructorProfile.specialization}` : ""}{!hasProfile ? " (No profile)" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </Field>
 

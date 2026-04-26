@@ -1,15 +1,18 @@
 // src/landing/pages/SingleCourse.tsx
 import { useState, useRef } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
-import { useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Star, Clock, BookOpen, Users, ShoppingCart,
   Heart, Share2, CheckCircle2, PlayCircle, ChevronDown,
-  Globe, Award, Zap, BarChart3, TrendingUp, Lock, Play, Loader2,
+  Globe, Award, Zap, BarChart3, TrendingUp, Lock, Play, Loader2, AlertCircle,
 } from "lucide-react";
 import CoursesService from "@/services/course.service";
 import ReviewService from "@/services/review.service";
+import CartService from "@/services/cart.service";
+import WishlistService from "@/services/wishlist.service";
+import { useAuth } from "@/context/AuthProvider";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -181,8 +184,58 @@ function CurriculumSection({ section, index, open, onToggle }: {
 // ─── Purchase Card ────────────────────────────────────────────────────────────
 
 function PurchaseCard({ course }: { course: PublicCourse }) {
-  const [wishlisted, setWishlisted] = useState(false);
-  const [added,      setAdded]      = useState(false);
+  const { isStudent, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [added, setAdded] = useState(false);
+
+  const { data: wishlist } = useQuery({
+    queryKey: ["wishlist"],
+    queryFn: WishlistService.getWishlist,
+    enabled: isAuthenticated && isStudent,
+  });
+  const wishlisted = wishlist?.items.some((i) => i.course.id === course.id) ?? false;
+
+  const [cartError, setCartError] = useState<string | null>(null);
+  const [wishlistError, setWishlistError] = useState<string | null>(null);
+
+  const cartMutation = useMutation({
+    mutationFn: () => CartService.addToCart(course.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      setCartError(null);
+      setAdded(true);
+      setTimeout(() => setAdded(false), 2000);
+    },
+    onError: (err: Error) => {
+      setCartError(err.message);
+      setTimeout(() => setCartError(null), 4000);
+    },
+  });
+
+  const wishlistMutation = useMutation<void, Error, void>({
+    mutationFn: async () => {
+      if (wishlisted) {
+        await WishlistService.removeFromWishlist(course.id);
+      } else {
+        await WishlistService.addToWishlist(course.id);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["wishlist"] });
+      setWishlistError(null);
+    },
+    onError: (err: Error) => {
+      setWishlistError(err.message);
+      setTimeout(() => setWishlistError(null), 4000);
+    },
+  });
+
+  const guard = (fn: () => void) => {
+    if (!isAuthenticated || !isStudent) { navigate("/login"); return; }
+    fn();
+  };
+
   const origPrice = Math.round(course.price * 1.4 * 100) / 100;
   const discount  = Math.round(((origPrice - course.price) / origPrice) * 100);
   const gradient  = GRADIENTS[0];
@@ -203,14 +256,20 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
         <div className="flex flex-col gap-3">
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-            onClick={() => { setAdded(true); setTimeout(() => setAdded(false), 2000); }}
+            onClick={() => guard(() => cartMutation.mutate())}
+            disabled={cartMutation.isPending}
             className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl
               bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm
-              shadow-[0_6px_24px_rgba(59,130,246,0.45)] transition-colors duration-200">
+              shadow-[0_6px_24px_rgba(59,130,246,0.45)] transition-colors duration-200
+              disabled:opacity-70">
             <AnimatePresence mode="wait">
               {added ? (
                 <motion.span key="added" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" /> Added to cart!
+                </motion.span>
+              ) : cartMutation.isPending ? (
+                <motion.span key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Adding…
                 </motion.span>
               ) : (
                 <motion.span key="add" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex items-center gap-2">
@@ -222,12 +281,16 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
 
           <div className="flex gap-2">
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
-              onClick={() => setWishlisted(p => !p)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold border transition-all duration-200 ${
+              onClick={() => guard(() => wishlistMutation.mutate())}
+              disabled={wishlistMutation.isPending}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold border transition-all duration-200 disabled:opacity-70 ${
                 wishlisted ? "border-rose-300 dark:border-rose-700 text-rose-500 bg-rose-50 dark:bg-rose-950/30"
                 : "border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-700"
               }`}>
-              <Heart className={`w-4 h-4 ${wishlisted ? "fill-rose-500 text-rose-500" : ""}`} />
+              {wishlistMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Heart className={`w-4 h-4 ${wishlisted ? "fill-rose-500 text-rose-500" : ""}`} />
+              }
               {wishlisted ? "Wishlisted" : "Wishlist"}
             </motion.button>
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
@@ -237,6 +300,21 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
               <Share2 className="w-4 h-4" /> Share
             </motion.button>
           </div>
+
+          <AnimatePresence>
+            {cartError && (
+              <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="text-xs text-red-500 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />{cartError}
+              </motion.p>
+            )}
+            {wishlistError && (
+              <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="text-xs text-red-500 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />{wishlistError}
+              </motion.p>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="h-px bg-gray-100 dark:bg-white/[0.06]" />
@@ -250,9 +328,11 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
               { icon: Globe,      text: "Full lifetime access" },
               { icon: Award,      text: "Certificate of completion" },
               { icon: Zap,        text: "Access on mobile & desktop" },
-              ...(course.includes ?? []).map(inc => ({ icon: CheckCircle2, text: inc })),
-            ].map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-2.5 text-sm text-gray-600 dark:text-gray-400">
+              ...(course.includes ?? [])
+                .filter(inc => inc !== "Certificate of completion")
+                .map(inc => ({ icon: CheckCircle2, text: inc })),
+            ].map(({ icon: Icon, text }, i) => (
+              <li key={i} className="flex items-center gap-2.5 text-sm text-gray-600 dark:text-gray-400">
                 <Icon className="w-4 h-4 text-blue-500 flex-shrink-0" />{text}
               </li>
             ))}

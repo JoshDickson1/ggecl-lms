@@ -16,7 +16,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, { getMaterialTypeFromFile, CreateMaterialPayload } from "@/services/course.service";
 import StorageService from "@/services/storage.service";
-import QuizService, { type QuizResponse, type CreateQuizDto } from "@/services/quiz.service";
+import QuizService, { type Quiz, type CreateQuizPayload } from "@/services/quiz.service";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ interface SectionExt {
   isPublished: boolean;
   videos: CourseFileExt[];
   files:  CourseFileExt[];
-  quizzes: QuizResponse[];
+  quizzes: Quiz[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -213,22 +213,22 @@ interface LocalQuizQuestion {
 function QuizEditor({
   quiz, onSave, onClose, sectionId,
 }: { 
-  quiz: QuizResponse | null; 
+  quiz: Quiz | null; 
   onClose: () => void; 
-  onSave: (q: CreateQuizDto) => void;
+  onSave: (q: CreateQuizPayload) => void;
   sectionId: string;
 }) {
   const [title, setTitle]         = useState(quiz?.title ?? "");
   const [passMark, setPassMark]   = useState(quiz?.passMark ?? 70);
   const [questions, setQuestions] = useState<LocalQuizQuestion[]>(() => {
     if (quiz?.questions) {
-      return quiz.questions.map(q => ({
-        id: q.id,
+      return quiz.questions.map((q, qIdx) => ({
+        id: q.id || `qq-${Date.now()}-${qIdx}`,
         text: q.text,
         options: q.options.map((opt, idx) => ({
-          id: opt.id,
+          id: opt.id || `opt-${Date.now()}-${idx}`,
           text: opt.text,
-          isCorrect: idx === 0 // Default to first option as correct (backend will validate)
+          isCorrect: opt.isCorrect ?? idx === 0 // Use backend value or default to first option
         }))
       }));
     }
@@ -273,7 +273,7 @@ function QuizEditor({
       return;
     }
     
-    const createQuizDto: CreateQuizDto = {
+    const createQuizDto: CreateQuizPayload = {
       title: title.trim(),
       sectionId,
       passMark,
@@ -423,7 +423,7 @@ function SectionBlock({
   const [tab, setTab]                   = useState<"videos" | "files" | "quizzes">("videos");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft]     = useState(section.title);
-  const [editingQuiz, setEditingQuiz]   = useState<QuizResponse | null | "new">(null);
+  const [editingQuiz, setEditingQuiz]   = useState<Quiz | null | "new">(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingFile, setUploadingFile]   = useState(false);
 
@@ -510,7 +510,10 @@ function SectionBlock({
       
       if (failed.length > 0) {
         console.error(`${failed.length} files failed to upload`);
-        // You could show a toast notification here
+        alert(`${failed.length} file(s) failed to upload. Please try again.`);
+      } else {
+        // Refresh course data from backend after successful uploads
+        queryClient.invalidateQueries({ queryKey: ["course-detail", courseId] });
       }
     } finally {
       setUploadingVideo(false);
@@ -526,9 +529,9 @@ function SectionBlock({
     else onUpdate(section.id, { files: section.files.filter(f => f.id !== fileId) });
   };
 
-  const saveQuiz = async (quizDto: CreateQuizDto) => {
+  const saveQuiz = async (quizDto: CreateQuizPayload) => {
     try {
-      const createdQuiz = await QuizService.createQuiz(quizDto);
+      const createdQuiz = await QuizService.create(quizDto);
       const updated = [...section.quizzes, createdQuiz];
       onUpdate(section.id, { quizzes: updated });
       setEditingQuiz(null);
@@ -540,7 +543,7 @@ function SectionBlock({
 
   const removeQuiz = async (quizId: string) => {
     try {
-      await QuizService.deleteQuiz(quizId);
+      await QuizService.remove(quizId);
       onUpdate(section.id, { quizzes: section.quizzes.filter(q => q.id !== quizId) });
     } catch (error) {
       console.error('Failed to delete quiz:', error);
@@ -883,7 +886,7 @@ export default function InstructorCourseMaterials() {
       // Load quizzes for each section
       sectionsWithoutQuizzes.forEach(async (section) => {
         try {
-          const quizData = await QuizService.getQuizzes({ sectionId: section.id });
+          const quizData = await QuizService.findAll({ sectionId: section.id });
           const updatedSection = {
             ...section,
             quizzes: quizData.data

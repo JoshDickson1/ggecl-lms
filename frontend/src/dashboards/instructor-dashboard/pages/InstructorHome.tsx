@@ -15,6 +15,7 @@ import UserService from "@/services/user.service";
 import InstructorDashboardService from "@/services/instructor-dashboard.service";
 import { APIConfig } from "@/lib/api.config";
 import { ApiErrorPage } from "@/components/ui/ApiError";
+import { isValidImageUrl } from "@/lib/utils";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -190,8 +191,16 @@ function StudentAvatarRow({ student }: { student: StudentDetail }) {
     >
       {/* Avatar */}
       <div className={`w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center text-xs font-black text-white bg-gradient-to-br ${avatarGradient(student.studentId)} overflow-hidden`}>
-        {student.studentAvatar
-          ? <img src={student.studentAvatar} alt={student.studentName} className="w-full h-full object-cover object-top" />
+        {isValidImageUrl(student.studentAvatar)
+          ? <img 
+              src={student.studentAvatar!} 
+              alt={student.studentName} 
+              className="w-full h-full object-cover object-top"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.parentElement!.textContent = initials(student.studentName);
+              }}
+            />
           : initials(student.studentName)
         }
       </div>
@@ -308,8 +317,17 @@ export default function InstructorHome() {
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-blue-200 dark:shadow-blue-900/40 flex-shrink-0">
-                  {image ? (
-                    <img src={image} alt={name} className="w-full h-full object-cover object-top" />
+                  {isValidImageUrl(image) ? (
+                    <img 
+                      src={image!} 
+                      alt={name} 
+                      className="w-full h-full object-cover object-top"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const parent = e.currentTarget.parentElement!;
+                        parent.innerHTML = `<div class="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-2xl font-black text-white">${initials(name)}</div>`;
+                      }}
+                    />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-2xl font-black text-white">
                       {initials(name)}
@@ -542,8 +560,16 @@ export default function InstructorHome() {
                         <Link to={`/instructor/courses/${c.courseId}`}
                           className="flex items-center gap-4 p-3.5 rounded-2xl hover:bg-gray-50 dark:hover:bg-white/[0.03] border border-transparent hover:border-gray-100 dark:hover:border-white/[0.05] transition-all group">
                           <div className={`w-14 h-12 rounded-xl overflow-hidden bg-gradient-to-br ${COURSE_GRADIENTS[i % COURSE_GRADIENTS.length]} flex items-center justify-center flex-shrink-0`}>
-                            {c.img ? (
-                              <img src={c.img} alt={c.title} className="w-full h-full object-cover" />
+                            {isValidImageUrl(c.img) ? (
+                              <img 
+                                src={c.img!} 
+                                alt={c.title} 
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  e.currentTarget.parentElement!.innerHTML = '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+                                }}
+                              />
                             ) : (
                               <Play className="w-4 h-4 text-white" />
                             )}
@@ -566,9 +592,7 @@ export default function InstructorHome() {
                           </div>
 
                           <div className="flex-shrink-0 text-right">
-                            <Link to={`/instructor/courses/${c.courseId}`}>
-                               <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 transition-colors" />
-                            </Link>
+                            <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 transition-colors" />
                           </div>
                         </Link>
                       </motion.div>

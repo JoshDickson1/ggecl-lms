@@ -1,15 +1,16 @@
 // src/dashboards/student/pages/StudentExploreCourses.tsx
-import { useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useMemo } from "react";import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   Search, SlidersHorizontal, X, Star, Clock, BookOpen,
   Users, Tag, ShoppingCartIcon, CheckCircle2, Heart,
 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import CoursesService, { CourseLevel } from "@/services/course.service";
 import ProgressService from "@/services/progress.service";
-import CartService from "@/services/cart.service";
+import { useCart } from "@/services/cart.service";
+import { useWishlist } from "@/services/wishlist.service";
+import { SafeImage } from "@/components/SafeImage";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number) {
@@ -43,10 +44,12 @@ interface Course {
   totalDuration?: number;
   instructor?: {
     id: string;
+    department?: string | null;
+    specialization?: string | null;
     user: {
       id: string;
       name: string;
-      image?: string;
+      image?: string | null;
     };
   };
 }
@@ -82,15 +85,17 @@ function CourseBadge({ badge }: { badge: Course["badge"] }) {
 }
 
 // ─── Course Card ──────────────────────────────────────────────────────────────
-function CourseCard({ course, index, cartCourseIds, addToCartMutation }: { 
-  course: Course; 
-  index: number; 
+function CourseCard({ course, index, cartCourseIds, wishlistCourseIds, addToCartMutation, toggleWishlistMutation }: {
+  course: Course;
+  index: number;
   cartCourseIds: Set<string>;
-  addToCartMutation: any;
+  wishlistCourseIds: Set<string>;
+  addToCartMutation: ReturnType<typeof useMutation<unknown, Error, string>>;
+  toggleWishlistMutation: ReturnType<typeof useMutation<unknown, Error, { courseId: string; isWishlisted: boolean }>>;
 }) {
   const [hovered, setHovered] = useState(false);
-  const [wishlisted, setWishlisted] = useState(false);
   const carted = cartCourseIds.has(course.id);
+  const wishlisted = wishlistCourseIds.has(course.id);
   const [enrollAnim, setCartAnim] = useState(false);
   
   // Generate deterministic gradient based on course id
@@ -133,7 +138,7 @@ function CourseCard({ course, index, cartCourseIds, addToCartMutation }: {
 
         {/* Thumbnail */}
         <div className={`relative w-full h-40 bg-gradient-to-br ${gradient} flex items-center justify-center overflow-hidden flex-shrink-0`}>
-          {course.img ? (
+          {course.img && !course.img.includes('example.com') ? (
             <img src={course.img} alt={course.title} className="w-full h-full object-cover" />
           ) : (
             <motion.div animate={hovered ? { scale: 1.1, rotate: 5 } : { scale: 1, rotate: 0 }} transition={{ duration: 0.4 }}
@@ -156,9 +161,17 @@ function CourseCard({ course, index, cartCourseIds, addToCartMutation }: {
         <div className="relative z-10 flex flex-col gap-2.5 p-5">
           {/* Instructor */}
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0 bg-blue-600">
-              {getInstructorInitials(course)}
-            </span>
+            {course.instructor?.user.image ? (
+              <img
+                src={course.instructor.user.image}
+                alt={course.instructor.user.name}
+                className="w-6 h-6 rounded-full object-cover flex-shrink-0 ring-1 ring-white/20"
+              />
+            ) : (
+              <span className="w-6 h-6 rounded-full text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0 bg-blue-600 ring-1 ring-white/20">
+                {getInstructorInitials(course)}
+              </span>
+            )}
             <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{getInstructorName(course)}</span>
           </div>
 
@@ -196,8 +209,10 @@ function CourseCard({ course, index, cartCourseIds, addToCartMutation }: {
           {discount > 0 && <span className="text-sm text-gray-400 line-through">${(course.price * (1 + discount / 100)).toFixed(2)}</span>}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setWishlisted(p => !p)}
-            className={`p-2 rounded-xl border transition-all ${wishlisted ? "border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/30 text-rose-500" : "border-gray-200 dark:border-white/[0.07] text-gray-400 hover:border-rose-300 hover:text-rose-400"}`}>
+          <button
+            onClick={() => toggleWishlistMutation.mutate({ courseId: course.id, isWishlisted: wishlisted })}
+            disabled={toggleWishlistMutation.isPending && toggleWishlistMutation.variables?.courseId === course.id}
+            className={`p-2 rounded-xl border transition-all disabled:opacity-60 ${wishlisted ? "border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/30 text-rose-500" : "border-gray-200 dark:border-white/[0.07] text-gray-400 hover:border-rose-300 hover:text-rose-400"}`}>
             <Heart className={`w-4 h-4 ${wishlisted ? "fill-rose-500" : ""}`} />
           </button>
           <motion.button
@@ -344,12 +359,14 @@ export default function StudentExploreCourses() {
   const [activeBadge, setActiveBadge] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState("rating");
   const [showCarted, setShowCarted] = useState(false);
+  const [cartError, setCartError] = useState<string | null>(null);
+  const [wishlistError, setWishlistError] = useState<string | null>(null);
 
-  // Fetch all courses
+  // Fetch all courses — use authenticated endpoint so enrolled/cart state is accurate
   const { data: allCoursesData = [], isLoading: coursesLoading } = useQuery({
-    queryKey: ["all-public-courses-explore"],
+    queryKey: ["all-courses-explore"],
     queryFn: async () => {
-      const response = await CoursesService.findAllPublic() as { items: Course[] };
+      const response = await CoursesService.findAll() as { items: Course[] };
       return response.items || [];
     },
   });
@@ -360,31 +377,73 @@ export default function StudentExploreCourses() {
     queryFn: () => ProgressService.getTopCourses(),
   });
 
-  // Fetch cart data
-  const { data: cartData } = useQuery({
-    queryKey: ["cart"],
-    queryFn: () => CartService.getCart(),
-  });
+  // Single instance of each hook — use their built-in mutations
+  const {
+    data: cartData,
+    addToCart,
+  } = useCart();
 
-  const queryClient = useQueryClient();
+  const {
+    data: wishlistData,
+    addToWishlist,
+    removeFromWishlist,
+  } = useWishlist();
 
-  // Add to cart mutation
-  const addToCartMutation = useMutation({
-    mutationFn: (courseId: string) => CartService.addToCart(courseId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
-    },
-  });
-
-  // Get enrolled course IDs
+  // Derive sets before mutations so they're always up to date when passed to cards
   const enrolledCourseIds = useMemo(() => {
     return new Set(progressData.map((p: any) => p.id));
   }, [progressData]);
 
-  // Get cart course IDs
   const cartCourseIds = useMemo(() => {
     return new Set(cartData?.items?.map((item: any) => item.course.id) || []);
   }, [cartData]);
+
+  const wishlistCourseIds = useMemo(() => {
+    return new Set(wishlistData?.items?.map((item: any) => item.course.id) || []);
+  }, [wishlistData]);
+
+  // Add to cart — wraps the hook's mutateAsync for error capture
+  const addToCartMutation = useMutation({
+    mutationFn: (courseId: string) => {
+      return new Promise<void>((resolve, reject) => {
+        addToCart(courseId, {
+          onSuccess: () => { setCartError(null); resolve(); },
+          onError: (err: Error) => {
+            setCartError(err.message);
+            setTimeout(() => setCartError(null), 5000);
+            reject(err);
+          },
+        });
+      });
+    },
+  });
+
+  // Toggle wishlist — wraps the hook's mutate for error capture
+  const toggleWishlistMutation = useMutation<void, Error, { courseId: string; isWishlisted: boolean }>({
+    mutationFn: ({ courseId, isWishlisted }) => {
+      return new Promise<void>((resolve, reject) => {
+        if (isWishlisted) {
+          removeFromWishlist(courseId, {
+            onSuccess: () => { setWishlistError(null); resolve(); },
+            onError: (err: Error) => {
+              setWishlistError(err.message);
+              setTimeout(() => setWishlistError(null), 5000);
+              reject(err);
+            },
+          });
+        } else {
+          addToWishlist(courseId, {
+            onSuccess: () => { setWishlistError(null); resolve(); },
+            onError: (err: Error) => {
+              setWishlistError(err.message);
+              setTimeout(() => setWishlistError(null), 5000);
+              reject(err);
+            },
+          });
+        }
+      });
+    },
+  });
 
   // Filter out enrolled courses
   const availableCourses = useMemo(() => {
@@ -408,6 +467,7 @@ export default function StudentExploreCourses() {
     if (activeLevel) list = list.filter(c => c.level === activeLevel);
     if (activeCategory) list = list.filter(c => c.tags.includes(activeCategory));
     if (activeBadge) list = list.filter(c => c.badge === activeBadge);
+    if (showCarted) list = list.filter(c => !cartCourseIds.has(c.id));
     switch (sortBy) {
       case "rating": list.sort((a, b) => b.averageRating - a.averageRating); break;
       case "popular": list.sort((a, b) => b._count.enrollments - a._count.enrollments); break;
@@ -416,7 +476,7 @@ export default function StudentExploreCourses() {
       case "az": list.sort((a, b) => a.title.localeCompare(b.title)); break;
     }
     return list;
-  }, [availableCourses, search, activeLevel, activeCategory, activeBadge, sortBy]);
+  }, [availableCourses, search, activeLevel, activeCategory, activeBadge, sortBy, showCarted, cartCourseIds]);
 
   const clearAll = () => { setSearch(""); setActiveLevel(null); setActiveCategory(null); setActiveBadge(null); setSortBy("rating"); setShowCarted(false); };
 
@@ -437,6 +497,22 @@ export default function StudentExploreCourses() {
           {filtered.length} {filtered.length === 1 ? "course" : "courses"} available
         </p>
       </div>
+
+      {/* Error banners */}
+      {(cartError || wishlistError) && (
+        <div className="max-w-[1380px] mx-auto px-6 pb-2">
+          {cartError && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 text-sm">
+              <span className="font-bold">Cart error:</span> {cartError}
+            </div>
+          )}
+          {wishlistError && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 text-sm mt-2">
+              <span className="font-bold">Wishlist error:</span> {wishlistError}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Layout */}
       <div className="max-w-[1380px] mx-auto px-6 pb-20 flex flex-col lg:flex-row gap-8 items-start">
@@ -467,7 +543,17 @@ export default function StudentExploreCourses() {
             ) : filtered.length > 0 ? (
               <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-x-5 gap-y-2">
                 <AnimatePresence mode="popLayout">
-                  {filtered.map((course, i) => <CourseCard key={course.id} course={course} index={i} cartCourseIds={cartCourseIds} addToCartMutation={addToCartMutation} />)}
+                  {filtered.map((course, i) => (
+                    <CourseCard
+                      key={course.id}
+                      course={course}
+                      index={i}
+                      cartCourseIds={cartCourseIds}
+                      wishlistCourseIds={wishlistCourseIds}
+                      addToCartMutation={addToCartMutation}
+                      toggleWishlistMutation={toggleWishlistMutation}
+                    />
+                  ))}
                 </AnimatePresence>
               </motion.div>
             ) : (

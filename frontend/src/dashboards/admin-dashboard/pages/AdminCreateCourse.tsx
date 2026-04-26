@@ -26,6 +26,7 @@ interface InstructorUser {
   image: string | null;
   email: string;
   instructorProfile?: { 
+    id?: string; // Instructor profile ID (different from user ID)
     bio?: string;
     description?: string;
     tags?: string[];
@@ -474,7 +475,15 @@ export default function AdminCreateCourse() {
     queryKey: ["instructors-list"],
     queryFn: async () => {
       const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 }) as { data?: InstructorUser[] } | InstructorUser[];
-      return Array.isArray(res) ? res : ((res as { data?: InstructorUser[] }).data ?? []);
+      const instructorsList = Array.isArray(res) ? res : ((res as { data?: InstructorUser[] }).data ?? []);
+      
+      // Log to help debug if instructorProfile.id is missing
+      if (instructorsList.length > 0) {
+        console.log('Sample instructor data:', instructorsList[0]);
+        console.log('Has instructorProfile.id?', !!instructorsList[0]?.instructorProfile?.id);
+      }
+      
+      return instructorsList;
     },
     staleTime: 1000 * 60 * 10,
     retry: 2,
@@ -547,6 +556,18 @@ export default function AdminCreateCourse() {
     if (!price || isNaN(+price) || +price < 0)  e.price       = "Valid price is required";
     if (instructors.length === 0)               e.instructor  = "No instructors available. Please contact support.";
 
+    // Check if selected instructor has a profile
+    if (instructorId) {
+      const selectedInstr = instructors.find(i => {
+        const profileId = i.instructorProfile?.id || i.id;
+        return profileId === instructorId;
+      });
+      
+      if (selectedInstr && !selectedInstr.instructorProfile?.id) {
+        e.instructor = "The selected instructor does not have a complete profile. Please ask them to complete their instructor profile first.";
+      }
+    }
+
     if (videoUrl.trim()) {
       try { 
         const url = new URL(videoUrl.trim());
@@ -595,7 +616,10 @@ export default function AdminCreateCourse() {
     saveCreate(payload);
   };
 
-  const selectedInstructor = instructors.find(i => i.id === instructorId);
+  const selectedInstructor = instructors.find(i => {
+    const instructorProfileId = i.instructorProfile?.id || i.id;
+    return instructorProfileId === instructorId;
+  });
 
   return (
     <>
@@ -642,11 +666,17 @@ export default function AdminCreateCourse() {
                   className={cn("w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border text-gray-800 dark:text-white outline-none cursor-pointer",
                     errors.instructor ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]")}>
                   <option value="">Select instructor...</option>
-                  {instructors.map(i => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}{i.instructorProfile?.specialization ? ` — ${i.instructorProfile.specialization}` : ""}
-                    </option>
-                  ))}
+                  {instructors.map(i => {
+                    // Use instructor profile ID if available, otherwise fall back to user ID
+                    const instructorProfileId = i.instructorProfile?.id || i.id;
+                    const hasProfile = !!i.instructorProfile?.id;
+                    
+                    return (
+                      <option key={i.id} value={instructorProfileId} disabled={!hasProfile}>
+                        {i.name}{i.instructorProfile?.specialization ? ` — ${i.instructorProfile.specialization}` : ""}{!hasProfile ? " (No profile)" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               )}
             </Field>

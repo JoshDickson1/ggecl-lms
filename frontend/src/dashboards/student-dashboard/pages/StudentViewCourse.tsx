@@ -25,7 +25,7 @@ import {
 // ─── Demo video chunks ────────────────────────────────────────────────────────
 // Replace these URLs with your own hosted videos; these are public domain
 // Big Buck Bunny segments available via Wikimedia / Blender Foundation.
-
+ 
 export interface VideoChunk {
   id: string;
   title: string;
