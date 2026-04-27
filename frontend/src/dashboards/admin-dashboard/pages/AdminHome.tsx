@@ -21,11 +21,11 @@ function buildSignupSeries(
   totalInstructors: number,
 ) {
   const total = totalStudents + totalInstructors || 1;
-  const sRatio = totalStudents / total;
+  const sRatio = (totalStudents || 0) / total;
   return series.map(({ date, count }) => ({
     date: new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    students:    Math.round(count * sRatio),
-    instructors: count - Math.round(count * sRatio),
+    students:    Math.round((count || 0) * sRatio) || 0,
+    instructors: (count || 0) - Math.round((count || 0) * sRatio) || 0,
   }));
 }
 
@@ -115,13 +115,13 @@ export default function AdminHome() {
   const totalCourses    = summary?.courses?.total        ?? 0;
   const draftCourses    = summary?.courses?.draft        ?? 0;
   const totalRevenue    = summary?.revenue?.total        ?? 0;
-  const completionRate  = summary?.completionRate?.rate  ?? 0;
+  const completionRate  = Number(summary?.completionRate?.rate) || 0;
 
   const platformStats = [
     { label: "Total Students",    value: totalStudents.toLocaleString(),                                icon: GraduationCap, color: "from-blue-500 to-blue-600"    },
     { label: "Active Instructors",value: activeInstr.toString(),                                        icon: Users,         color: "from-violet-500 to-purple-600" },
     { label: "Total Courses",     value: totalCourses.toString(),        sub: `${draftCourses} in draft`, icon: BookOpen,      color: "from-emerald-500 to-teal-600"  },
-    { label: "Total Revenue",     value: `$${(totalRevenue / 1000).toFixed(1)}k`,                       icon: DollarSign,    color: "from-amber-400 to-orange-500"  },
+    { label: "Total Revenue",     value: `$${((totalRevenue || 0) / 1000).toFixed(1)}k`,                       icon: DollarSign,    color: "from-amber-400 to-orange-500"  },
     { label: "New Signups",       value: (summary?.signups?.total ?? 0).toString(), sub: "all time",    icon: Users,         color: "from-rose-500 to-pink-600"     },
     { label: "Completion Rate",   value: `${Number(completionRate || 0).toFixed(1)}%`, sub: "platform avg", icon: TrendingUp, color: "from-cyan-500 to-sky-600"  },
   ];

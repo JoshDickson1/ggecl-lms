@@ -10,6 +10,7 @@ import InstructorDashboardService, {
   type RecentReviewItem,
 } from "@/services/instructor-dashboard.service";
 import ReviewService from "@/services/review.service";
+import { useDashboardUser } from "@/hooks/useDashboardUser";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -181,11 +182,18 @@ function ReplyModal({ review, onClose }: { review: RecentReviewItem; onClose: ()
 
 // ─── Review Card ──────────────────────────────────────────────────────────────
 
-function ReviewCard({ review, index, onReply }: { review: RecentReviewItem; index: number; onReply: (r: RecentReviewItem) => void }) {
+function ReviewCard({ review, index, onReply, instructorName, instructorAvatar }: { 
+  review: RecentReviewItem; 
+  index: number; 
+  onReply: (r: RecentReviewItem) => void;
+  instructorName: string;
+  instructorAvatar?: string | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const isLong = review.comment.length > 200;
   const color = avatarColor(review.student.name);
   const initials = review.student.avatar ? undefined : avatar(review.student.name);
+  const instructorInitials = avatar(instructorName);
 
   return (
     <motion.div
@@ -236,11 +244,15 @@ function ReviewCard({ review, index, onReply }: { review: RecentReviewItem; inde
             className="mt-4 ml-4 pl-4 border-l-2 border-blue-200 dark:border-blue-800/50"
           >
             <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0">
-                <span className="text-white text-[9px] font-black">ME</span>
-              </div>
+              {instructorAvatar ? (
+                <img src={instructorAvatar} alt={instructorName} className="w-6 h-6 rounded-lg object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-[9px] font-black">{instructorInitials}</span>
+                </div>
+              )}
               <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                Instructor · {fmtDate(review.reply.createdAt)}
+                {instructorName} · {fmtDate(review.reply.createdAt)}
                 {review.reply.isEdited && <span className="ml-1 font-normal text-gray-400">(edited)</span>}
               </p>
             </div>
@@ -270,10 +282,14 @@ function ReviewCard({ review, index, onReply }: { review: RecentReviewItem; inde
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function InstructorReviews() {
+  const { user } = useDashboardUser();
   const [search, setSearch]             = useState("");
   const [selectedCourse, setSelectedCourse] = useState("all");
   const [selectedRating, setSelectedRating] = useState(0);
   const [replyTarget, setReplyTarget]   = useState<RecentReviewItem | null>(null);
+
+  const instructorName = user ? `${user.firstName} ${user.lastName}` : "Instructor";
+  const instructorAvatar = user?.avatarUrl;
 
   const { data: reviews = [], isLoading } = useQuery({
     queryKey: ["instructor-reviews"],
@@ -288,13 +304,13 @@ export default function InstructorReviews() {
   });
 
   const avgReviews = summary?.avgReviews;
-  const overallAvg = (avgReviews?.overallAverage ?? 0).toFixed(1);
+  const overallAvg = ((Number(avgReviews?.overallAverage) || 0)).toFixed(1);
   const totalReviews = avgReviews?.totalReviews ?? reviews.length;
 
   const ratingBreakdown = useMemo(() => {
     return [5, 4, 3, 2, 1].map((star) => {
       const count = reviews.filter((r) => r.rating === star).length;
-      const pct = reviews.length > 0 ? Math.round((count / reviews.length) * 100) : 0;
+      const pct = reviews.length > 0 ? Math.round(((count || 0) / reviews.length) * 100) || 0 : 0;
       return { star, count, pct };
     });
   }, [reviews]);
@@ -302,7 +318,7 @@ export default function InstructorReviews() {
   const unreplied = reviews.filter((r) => !r.reply).length;
   const fiveStar  = reviews.filter((r) => r.rating === 5).length;
   const replyRate = reviews.length > 0
-    ? Math.round((reviews.filter((r) => r.reply).length / reviews.length) * 100)
+    ? Math.round(((reviews.filter((r) => r.reply).length || 0) / reviews.length) * 100) || 0
     : 0;
 
   const courses = useMemo(() => {
@@ -473,7 +489,14 @@ export default function InstructorReviews() {
           <AnimatePresence mode="popLayout">
             {filtered.length > 0 ? (
               filtered.map((review, i) => (
-                <ReviewCard key={review.id} review={review} index={i} onReply={setReplyTarget} />
+                <ReviewCard 
+                  key={review.id} 
+                  review={review} 
+                  index={i} 
+                  onReply={setReplyTarget}
+                  instructorName={instructorName}
+                  instructorAvatar={instructorAvatar}
+                />
               ))
             ) : (
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

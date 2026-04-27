@@ -6,9 +6,8 @@ import {
   Shield, Zap, ChevronRight, X, CheckCircle2,
   Gift, Lock, BookOpen, Heart, Loader2, AlertCircle,
 } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+// import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCart } from "@/services/cart.service";
-import { useWishlist } from "@/services/wishlist.service";
 import { type CartCourse } from "@/services/cart.service";
 
 // ─── Promo codes (local) ──────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { isValidImageUrl } from "@/lib/utils";
 
-interface SafeImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+interface SafeImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src: string | null | undefined;
   fallback?: React.ReactNode;
   alt: string;

@@ -252,6 +252,7 @@ function StudentRoster({ students, myAudio, myHand }: {
     isSpeaking: false,
     isPinned: false,
     media: { audio: myAudio, video: false, screen: false, hand: myHand },
+    joinedAt: new Date().toISOString(),
   };
 
   const all = [meParticipant, ...students.filter(p => p.id !== MY_ID)];
@@ -629,7 +630,7 @@ export default function StudentLiveClass() {
   const [hand, setHand]     = useState(false);
   const [activePanel, setActivePanel] = useState<PanelType>("chat");
   const [chatUnread, setChatUnread]   = useState(0);
-  const [participants, setParticipants] = useState<LiveParticipant[]>(MOCK_PARTICIPANTS);
+  const [participants] = useState<LiveParticipant[]>(MOCK_PARTICIPANTS);
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>(MOCK_LIVE_CHAT);
   const [poll, setPoll] = useState<LivePoll | null>(MOCK_POLL);
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
@@ -682,6 +683,7 @@ export default function StudentLiveClass() {
       id: MY_ID, name: "You", role: "student",
       avatarBg: "bg-blue-600", isSpeaking: false, isPinned: false,
       media: { audio, video: false, screen: false, hand },
+      joinedAt: new Date().toISOString(),
     },
   ];
 

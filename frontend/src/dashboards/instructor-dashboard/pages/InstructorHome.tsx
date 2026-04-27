@@ -79,9 +79,10 @@ function normalizeStudents(raw: unknown): StudentDetail[] {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
+  const num = Number(n) || 0;
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000)     return `${(num / 1_000).toFixed(1)}k`;
+  return String(num);
 }
 
 function initials(name: string | null | undefined): string {
@@ -288,9 +289,9 @@ export default function InstructorHome() {
   const image          = me?.image ?? null;
   const totalStudents  = summary?.totalStudents?.totalUniqueStudents ?? allStudents.length ?? 0;
   const totalCourses   = summary?.studentsPerCourse?.length ?? 0;
-  const avgRating      = summary?.avgReviews?.overallAverage ?? 0;
+  const avgRating      = Number(summary?.avgReviews?.overallAverage) || 0;
   const totalReviews   = summary?.avgReviews?.totalReviews ?? 0;
-  const completionRate = summary?.completionRate?.overallRate ?? 0;
+  const completionRate = Number(summary?.completionRate?.overallRate) || 0;
   const topCourses     = summary?.topCourses ?? [];
   const perCourse      = summary?.studentsPerCourse ?? [];
 
@@ -344,7 +345,7 @@ export default function InstructorHome() {
                     <>
                       <div className="flex items-center gap-1">
                         <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400">{avgRating.toFixed(1)}</span>
+                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400">{(avgRating || 0).toFixed(1)}</span>
                       </div>
                       <span className="text-gray-300 dark:text-white/20 text-xs">·</span>
                     </>
@@ -373,8 +374,8 @@ export default function InstructorHome() {
             {[
               { icon: Users,      label: "Total Students",  value: fmt(totalStudents),                                                            accent: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-100 dark:bg-blue-900/30"    },
               { icon: BookOpen,   label: "Active Courses",  value: String(totalCourses),                                                          accent: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-100 dark:bg-indigo-900/30" },
-              { icon: TrendingUp, label: "Completion Rate", value: completionRate > 0 ? `${completionRate.toFixed(0)}%` : "—",                    accent: "text-violet-600 dark:text-violet-400", bg: "bg-violet-100 dark:bg-violet-900/30" },
-              { icon: Award,      label: "Avg Rating",      value: avgRating > 0 ? avgRating.toFixed(1) : "—",                                   accent: "text-amber-600 dark:text-amber-400",  bg: "bg-amber-100 dark:bg-amber-900/30"  },
+              { icon: TrendingUp, label: "Completion Rate", value: completionRate > 0 ? `${(completionRate || 0).toFixed(0)}%` : "—",             accent: "text-violet-600 dark:text-violet-400", bg: "bg-violet-100 dark:bg-violet-900/30" },
+              { icon: Award,      label: "Avg Rating",      value: avgRating > 0 ? (avgRating || 0).toFixed(1) : "—",                            accent: "text-amber-600 dark:text-amber-400",  bg: "bg-amber-100 dark:bg-amber-900/30"  },
             ].map(({ icon: Ic, label, value, accent, bg }) => (
               <div key={label} className="flex items-center gap-3">
                 <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-shrink-0`}>
@@ -482,8 +483,8 @@ export default function InstructorHome() {
               <>
                 <div className="space-y-3">
                   {perCourse.slice(0, 5).map((c) => {
-                    const max = Math.max(...perCourse.map(x => x.studentCount), 1);
-                    const pct = Math.round((c.studentCount / max) * 100);
+                    const max = Math.max(...perCourse.map(x => x.studentCount || 0), 1);
+                    const pct = Math.round(((c.studentCount || 0) / max) * 100) || 0;
                     return (
                       <div key={c.courseId}>
                         <div className="flex items-center justify-between mb-1.5">
@@ -585,7 +586,7 @@ export default function InstructorHome() {
                               </span>
                               {c.averageRating > 0 && (
                                 <span className="flex items-center gap-1">
-                                  <Star className="w-3 h-3 text-amber-400" />{c.averageRating.toFixed(1)}
+                                  <Star className="w-3 h-3 text-amber-400" />{(c.averageRating || 0).toFixed(1)}
                                 </span>
                               )}
                             </div>
@@ -683,7 +684,7 @@ export default function InstructorHome() {
                 <h2 className="font-black text-sm text-gray-900 dark:text-white">Recent Reviews</h2>
                 {avgRating > 0 && (
                   <span className="ml-auto flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400">
-                    {avgRating.toFixed(1)} <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                    {(avgRating || 0).toFixed(1)} <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                     <span className="text-gray-400 font-normal">({fmt(totalReviews)})</span>
                   </span>
                 )}

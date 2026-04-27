@@ -49,7 +49,7 @@ interface DashboardCourse {
   courseId: string;
   title: string;
   img?: string;
-  instructor: { name: string };
+  instructor: { name: string; image?: string | null };
   progressPercent: number;
   completedLessons: number;
   totalLessons: number;
@@ -96,12 +96,18 @@ interface EnrollmentCourse {
   price: number;
   level: string;
   instructorId: string;
+  instructor?: {
+    id: string;
+    name: string;
+    image?: string | null;
+  };
 }
 
 interface Enrollment {
   id: string;
   enrolledAt: string;
   course: EnrollmentCourse;
+  progress?: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -258,13 +264,38 @@ export default function StudentHome() {
   const courses      = dashboard?.courses ?? [];
   const weeklyDays   = stats?.weeklyActivity.days ?? [];
   const totalMinutes = stats?.weeklyActivity.totalThisWeek ?? 0;
-  const dailyAvg     = stats?.weeklyActivity.dailyAverage ?? 0;
+  const dailyAvg     = Number(stats?.weeklyActivity.dailyAverage) || 0;
   const mostActive   = stats?.weeklyActivity.mostActiveDay ?? "—";
   const streak       = stats?.streak.currentStreak ?? 0;
   const completed    = stats?.completedCourses ?? 0;
 
-  // Top in-progress course for "Continue Learning"
-  const topCourse = courses.find(c => !c.completed) ?? courses[0];
+  // Merge enrollment data with dashboard progress data for complete course info
+  const enrichedCourses = (enrollments ?? []).map(enrollment => {
+    // Find matching progress data from dashboard (which has instructor info)
+    const progressData = courses.find(c => c.courseId === enrollment.course.id);
+    
+    return {
+      courseId: enrollment.course.id,
+      title: enrollment.course.title || progressData?.title || "Untitled Course",
+      img: enrollment.course.img || progressData?.img,
+      instructor: progressData?.instructor || enrollment.course.instructor || { 
+        name: "Instructor",
+        image: null 
+      },
+      progressPercent: progressData?.progressPercent ?? enrollment.progress ?? 0,
+      completedLessons: progressData?.completedLessons ?? 0,
+      totalLessons: progressData?.totalLessons ?? 0,
+      lastAccessedAt: progressData?.lastAccessedAt,
+      lastLessonTitle: progressData?.lastLessonTitle,
+      completed: progressData?.completed ?? false,
+      myRating: progressData?.myRating,
+    };
+  });
+
+  // Top in-progress course for "Continue Learning" - use enriched data
+  const topCourse = enrichedCourses.find(c => !c.completed && c.progressPercent > 0) 
+    ?? enrichedCourses.find(c => !c.completed) 
+    ?? enrichedCourses[0];
 
   // XP
   const xpTotal     = xp?.totalXp ?? 0;
@@ -272,7 +303,7 @@ export default function StudentHome() {
   const xpLevel     = xp?.currentLevel ?? 0;
   const xpSpan      = xp?.currentLevelSpan ?? 450;
   const xpInto      = xp?.xpIntoCurrentLevel ?? 0;
-  const xpPct       = xpSpan > 0 ? Math.round((xpInto / xpSpan) * 100) : 0;
+  const xpPct       = xpSpan > 0 ? Math.round(((xpInto || 0) / xpSpan) * 100) || 0 : 0;
 
   // Activities
   const activities   = activityRes?.data ?? [];
@@ -313,7 +344,7 @@ export default function StudentHome() {
               </h1>
               <p className="text-blue-200 text-sm mt-2">
                 {topCourse
-                  ? `You're ${Math.round(100 - topCourse.progressPercent)}% away from completing your top course.`
+                  ? `You're ${Math.round(100 - (topCourse.progressPercent || 0)) || 0}% away from completing your top course.`
                   : "Explore courses and start learning today."}
               </p>
 
@@ -365,34 +396,77 @@ export default function StudentHome() {
               <h2 className="font-black text-base text-gray-900 dark:text-white">Continue Learning</h2>
             </div>
             <div className="flex flex-col sm:flex-row gap-5 items-start">
-              {/* Thumbnail */}
-              <div className={`w-full sm:w-36 h-20 rounded-2xl flex-shrink-0 bg-gradient-to-br ${gradientFor(0)} flex items-center justify-center shadow-lg overflow-hidden`}>
+              {/* Course Thumbnail */}
+              <div className={`w-full sm:w-44 h-28 rounded-2xl flex-shrink-0 bg-gradient-to-br ${gradientFor(0)} flex items-center justify-center shadow-lg overflow-hidden relative group`}>
                 {topCourse.img ? (
                   <img src={topCourse.img} alt={topCourse.title} className="w-full h-full object-cover" />
                 ) : (
                   <Play className="w-8 h-8 text-white drop-shadow" />
                 )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-1">{topCourse.title}</h3>
-                <p className="text-xs text-gray-400 mt-0.5">by {topCourse.instructor.name}</p>
-                {topCourse.lastLessonTitle && (
-                  <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-500">
-                    <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">{topCourse.lastLessonTitle}</span>
+                {/* Play overlay on hover */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                    <Play className="w-6 h-6 text-blue-600 ml-0.5" />
                   </div>
-                )}
-                <div className="mt-3">
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-gray-400">{Math.round(topCourse.progressPercent)}% complete</span>
-                    <span className="text-gray-400">{topCourse.completedLessons}/{topCourse.totalLessons} lessons</span>
-                  </div>
-                  <ProgressBar pct={Math.round(topCourse.progressPercent)} />
                 </div>
               </div>
+
+              {/* Course Info */}
+              <div className="flex-1 min-w-0">
+                {/* Course Title - Make it very prominent */}
+                <h3 className="font-black text-gray-900 dark:text-white text-lg leading-tight mb-2">
+                  {topCourse.title || "Untitled Course"}
+                </h3>
+                
+                {/* Instructor info with avatar */}
+                <div className="flex items-center gap-2">
+                  {topCourse.instructor.image ? (
+                    <img 
+                      src={topCourse.instructor.image} 
+                      alt={topCourse.instructor.name}
+                      className="w-6 h-6 rounded-lg object-cover border border-gray-200 dark:border-white/[0.1]"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const parent = e.currentTarget.parentElement!;
+                        const initials = topCourse.instructor.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+                        const avatarDiv = document.createElement('div');
+                        avatarDiv.className = 'w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-[9px] font-black border border-gray-200 dark:border-white/[0.1]';
+                        avatarDiv.textContent = initials;
+                        parent.insertBefore(avatarDiv, parent.firstChild);
+                      }}
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-[9px] font-black border border-gray-200 dark:border-white/[0.1]">
+                      {topCourse.instructor.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{topCourse.instructor.name}</span>
+                  </p>
+                </div>
+
+                {/* Last lesson */}
+                {topCourse.lastLessonTitle && (
+                  <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30">
+                    <BookOpen className="w-3.5 h-3.5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                    <span className="text-xs text-blue-700 dark:text-blue-300 truncate font-medium">Last: {topCourse.lastLessonTitle}</span>
+                  </div>
+                )}
+
+                {/* Progress bar */}
+                <div className="mt-4">
+                  <div className="flex justify-between text-xs mb-2">
+                    <span className="text-gray-600 dark:text-gray-400 font-semibold">{Math.round(topCourse.progressPercent || 0)}% complete</span>
+                    <span className="text-gray-500 dark:text-gray-400">{topCourse.completedLessons || 0} of {topCourse.totalLessons || 0} lessons</span>
+                  </div>
+                  <ProgressBar pct={Math.round(topCourse.progressPercent || 0)} />
+                </div>
+              </div>
+
+              {/* Resume button */}
               <Link
                 to={`/student/courses/${topCourse.courseId}/watch`}
-                className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:opacity-90 shadow-md transition-all"
+                className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg hover:shadow-xl transition-all"
               >
                 <Play className="w-4 h-4" />Resume
               </Link>
@@ -453,7 +527,7 @@ export default function StudentHome() {
             {/* Legend */}
             <div className="flex items-center gap-6 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
               {[
-                { label: "Daily avg",    value: `${dailyAvg} min` },
+                { label: "Daily avg",    value: `${dailyAvg || 0} min` },
                 { label: "Most active",  value: mostActive },
               ].map(({ label, value }) => (
                 <div key={label}>
@@ -467,7 +541,7 @@ export default function StudentHome() {
 
         {/* Recent Activity */}
         <Fade delay={0.11}>
-          <Card className="p-6">
+          <Card className="p-6 h-[338px] overflow-y-scroll">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-black text-base text-gray-900 dark:text-white">Recent Activity</h2>
               {(activityRes?.meta.unreadCount ?? 0) > 0 && (
@@ -588,7 +662,7 @@ export default function StudentHome() {
                 { icon: Clock,        label: "Time this month",  value: `${stats?.totalTimeSpentThisMonth ?? 0} min`,       color: "text-blue-500"    },
                 { icon: Flame,        label: "Current streak",   value: `${streak} day${streak !== 1 ? "s" : ""}`,          color: "text-amber-500"   },
                 { icon: CheckCircle2, label: "Courses completed", value: String(completed),                                  color: "text-emerald-500" },
-                { icon: Star,         label: "Avg completion",   value: `${Math.round(stats?.avgCompletionPercent ?? 0)}%`, color: "text-violet-500"  },
+                { icon: Star,         label: "Avg completion",   value: `${Math.round(Number(stats?.avgCompletionPercent) || 0)}%`, color: "text-violet-500"  },
               ].map(({ icon: Icon, label, value, color }) => (
                 <div key={label} className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-white/[0.04] last:border-0">
                   <div className="flex items-center gap-2">

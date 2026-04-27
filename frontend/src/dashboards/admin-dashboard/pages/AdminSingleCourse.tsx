@@ -487,7 +487,7 @@ export default function AdminSingleCourse() {
 
             {/* Instructor row */}
             {course.instructor && (
-              <div className="flex items-center gap-3 mb-5 pb-5 border-b border-gray-100 dark:border-white/[0.06]">
+              <Link to={`/admin/instructors/${course.instructor.id}`} className="flex items-center gap-3 mb-5 pb-5 border-b border-gray-100 dark:border-white/[0.06] group w-fit">
                 {course.instructor.image ? (
                   <img src={course.instructor.image} alt={course.instructor.name} className="w-9 h-9 rounded-xl object-cover flex-shrink-0" />
                 ) : (
@@ -497,9 +497,9 @@ export default function AdminSingleCourse() {
                 )}
                 <div>
                   <p className="text-xs text-gray-400">Instructor</p>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">{course.instructor.name}</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">{course.instructor.name}</p>
                 </div>
-              </div>
+              </Link>
             )}
 
             {/* Key stats */}

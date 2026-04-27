@@ -923,9 +923,9 @@ function MaterialsSectionBlock({
         title: quiz.title,
         sectionId: sec.sectionId,
         passMark: quiz.passMark,
-        questions: quiz.questions.map((q, idx) => ({
+        questions: quiz.questions.map((q) => ({
           text: q.question,
-          options: q.options.map((opt, optIdx) => ({
+          options: q.options.map((opt) => ({
             text: opt.text,
             isCorrect: opt.id === q.correctOptionId,
           })),
@@ -948,7 +948,7 @@ function MaterialsSectionBlock({
         return quiz;
       }
     },
-    onSuccess: (savedQuiz) => {
+    onSuccess: () => {
       // Refresh course data to get updated quizzes
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
       setEditingQuiz(null);

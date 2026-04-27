@@ -195,7 +195,7 @@ function CourseRow({ course, index, onChangeStatus, onDelete }: {
       {/* Instructor */}
       <td className="px-4 py-4">
         {course.instructor ? (
-          <div className="flex items-center gap-2">
+          <Link to={`/admin/instructors/${course.instructor.id}`} className="flex items-center gap-2 group w-fit">
             {course.instructor.image ? (
               <img src={course.instructor.image} alt={course.instructor.name} className="w-7 h-7 rounded-xl object-cover flex-shrink-0" />
             ) : (
@@ -205,8 +205,8 @@ function CourseRow({ course, index, onChangeStatus, onDelete }: {
                 </span>
               </div>
             )}
-            <span className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[100px]">{course.instructor.name}</span>
-          </div>
+            <span className="text-xs text-gray-600 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors truncate max-w-[100px]">{course.instructor.name}</span>
+          </Link>
         ) : (
           <span className="text-xs text-gray-400 italic">Unassigned</span>
         )}

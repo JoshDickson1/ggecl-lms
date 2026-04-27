@@ -58,6 +58,8 @@ import AdminEditCourse           from "./dashboards/admin-dashboard/pages/AdminE
 import AdminManageCourses        from "./dashboards/admin-dashboard/pages/AdminManageCourses";
 import AdminSingleCourse         from "./dashboards/admin-dashboard/pages/AdminSingleCourse";
 import AdminSearch               from "./dashboards/admin-dashboard/pages/AdminSearch";
+import AdminLiveLobby            from "./dashboards/admin-dashboard/pages/AdminLiveLobby";
+import AdminLiveClass            from "./dashboards/admin-dashboard/pages/AdminLiveClass";
 // ── Instructor pages ──────────────────────────────────────────
 import InstructorHome             from "./dashboards/instructor-dashboard/pages/InstructorHome";
 import InstructorProfile          from "./dashboards/instructor-dashboard/pages/InstructorProfile";
@@ -73,6 +75,8 @@ import InstructorCourseMaterials  from "./dashboards/instructor-dashboard/pages/
 import InstructorCourseManage    from "./dashboards/instructor-dashboard/pages/InstructorCourseManage";
 import InstructorSupport          from "./dashboards/instructor-dashboard/pages/InstructorSupport";
 import InstructorUploadVideo      from "./dashboards/instructor-dashboard/pages/InstructorVideoUpload";
+import InstructorLiveLobby        from "./dashboards/instructor-dashboard/pages/InstructorLiveLobby";
+import InstructorLiveClass        from "./dashboards/instructor-dashboard/pages/InstructorLiveClass";
 // ── Student pages ─────────────────────────────────────────────
 import StudentHome            from "./dashboards/student-dashboard/pages/StudentHome";
 import StudentProfile         from "./dashboards/student-dashboard/pages/StudentProfile";
@@ -187,6 +191,8 @@ const router = createBrowserRouter([
           { path: "search",                           element: <AdminSearch /> },
           { path: "analytics",                           element: <AdminAnalytics /> },
           { path: "activities",                          element: <AdminActivities /> },
+          { path: "live",                                element: <AdminLiveLobby /> },
+          { path: "live/:id",                            element: <AdminLiveClass /> },
         ],
       },
     ],
@@ -225,6 +231,8 @@ const router = createBrowserRouter([
           { path: "students",                       element: <InstructorStudentPreview /> },
           { path: "students/:id",                       element: <InstructorStudentSingle /> },
           { path: "reviews",                       element: <InstructorReviews /> },
+          { path: "live",                         element: <InstructorLiveLobby /> },
+          { path: "live/:id",                     element: <InstructorLiveClass /> },
         ],
       },
     ],

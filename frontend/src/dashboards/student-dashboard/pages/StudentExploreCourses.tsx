@@ -10,7 +10,6 @@ import CoursesService, { CourseLevel } from "@/services/course.service";
 import ProgressService from "@/services/progress.service";
 import { useCart } from "@/services/cart.service";
 import { useWishlist } from "@/services/wishlist.service";
-import { SafeImage } from "@/components/SafeImage";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number) {
@@ -160,7 +159,7 @@ function CourseCard({ course, index, cartCourseIds, wishlistCourseIds, addToCart
         {/* Body */}
         <div className="relative z-10 flex flex-col gap-2.5 p-5">
           {/* Instructor */}
-          <div className="flex items-center gap-2">
+          <Link to={`/student/instructors/${course.instructor?.id}`} className="flex items-center gap-2 group w-fit">
             {course.instructor?.user.image ? (
               <img
                 src={course.instructor.user.image}
@@ -172,8 +171,8 @@ function CourseCard({ course, index, cartCourseIds, wishlistCourseIds, addToCart
                 {getInstructorInitials(course)}
               </span>
             )}
-            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{getInstructorName(course)}</span>
-          </div>
+            <span className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors truncate">{getInstructorName(course)}</span>
+          </Link>
 
           <Link to={`/student/courses/${course.id}`}>
             <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 hover:text-blue-500 transition-colors">{course.title}</h3>

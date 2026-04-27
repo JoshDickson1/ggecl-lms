@@ -4,9 +4,6 @@ import { APIConfig } from "@/lib/api.config";
 
 export enum TransactionType {
   ENROLLMENT = "ENROLLMENT",
-  PAYOUT     = "PAYOUT",
-  REFUND     = "REFUND",
-  WITHDRAWAL = "WITHDRAWAL",
 }
 
 export enum TransactionStatus {
@@ -56,15 +53,6 @@ export interface Transaction {
     img?: string | null;
   };
   
-  // Instructor information (for payouts)
-  instructorId?: string;
-  instructor?: {
-    id: string;
-    name: string;
-    email: string;
-    image?: string | null;
-  };
-  
   createdAt: string;
   updatedAt: string;
   completedAt?: string | null;
@@ -74,7 +62,6 @@ export interface TransactionQuery {
   type?: TransactionType;
   status?: TransactionStatus;
   userId?: string;
-  instructorId?: string;
   courseId?: string;
   search?: string;
   startDate?: string;
@@ -91,10 +78,6 @@ export interface PaginatedTransactions {
   items: Transaction[];
   nextCursor: string | null;
   total?: number;
-}
-
-export interface ApprovePayoutPayload {
-  notes?: string;
 }
 
 // ==================== SERVICE ====================
@@ -155,78 +138,11 @@ export default class TransactionService {
   }
 
   /**
-   * Approve a pending payout (ADMIN only).
-   * @param id - Transaction ID
-   * @param payload - Optional approval notes
-   */
-  static async approvePayout(id: string, payload?: ApprovePayoutPayload): Promise<Transaction> {
-    try {
-      const response = await APIConfig.fetch(`/dashboard/admin/transactions/${id}/approve`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload || {}),
-      });
-      return response.json();
-    } catch (error) {
-      console.error(`Failed to approve payout ${id}:`, error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('404')) {
-          throw new Error(`Transaction not found: ${id}`);
-        } else if (error.message.includes('403')) {
-          throw new Error('Access denied. Admin privileges required to approve payouts.');
-        } else if (error.message.includes('401')) {
-          throw new Error('Please log in to approve payouts.');
-        } else if (error.message.includes('400')) {
-          throw new Error('Invalid transaction. Only pending payouts can be approved.');
-        }
-      }
-      
-      throw error;
-    }
-  }
-
-  /**
-   * Reject a pending payout (ADMIN only).
-   * @param id - Transaction ID
-   * @param payload - Optional rejection notes
-   */
-  static async rejectPayout(id: string, payload?: { notes?: string }): Promise<Transaction> {
-    try {
-      const response = await APIConfig.fetch(`/dashboard/admin/transactions/${id}/reject`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload || {}),
-      });
-      return response.json();
-    } catch (error) {
-      console.error(`Failed to reject payout ${id}:`, error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('404')) {
-          throw new Error(`Transaction not found: ${id}`);
-        } else if (error.message.includes('403')) {
-          throw new Error('Access denied. Admin privileges required to reject payouts.');
-        } else if (error.message.includes('401')) {
-          throw new Error('Please log in to reject payouts.');
-        } else if (error.message.includes('400')) {
-          throw new Error('Invalid transaction. Only pending payouts can be rejected.');
-        }
-      }
-      
-      throw error;
-    }
-  }
-
-  /**
    * Get transaction statistics (ADMIN only).
-   * Returns summary of revenue, payouts, refunds, etc.
+   * Returns summary of revenue.
    */
   static async getStatistics(): Promise<{
     totalRevenue: number;
-    totalPayouts: number;
-    totalRefunds: number;
-    pendingPayouts: number;
     completedTransactions: number;
     failedTransactions: number;
   }> {
@@ -259,7 +175,6 @@ export default class TransactionService {
     if (query.type)         params.append("type",       query.type);
     if (query.status)       params.append("status",     query.status);
     if (query.userId)       params.append("userId",     query.userId);
-    if (query.instructorId) params.append("instructorId", query.instructorId);
     if (query.courseId)     params.append("courseId",   query.courseId);
     if (query.search)       params.append("search",     query.search);
     if (query.startDate)    params.append("startDate",  query.startDate);

@@ -5,24 +5,21 @@ import {
   DollarSign, Search,
   ChevronDown, Download, X, Eye,
   CheckCircle2, XCircle, Clock, RefreshCw,
-  TrendingUp, CreditCard, Info, Loader2,
-  ShoppingCart, BarChart3, ArrowUpRight, ArrowDownLeft,
-  AlertCircle, Check,
+  TrendingUp, CreditCard, Loader2,
+  ShoppingCart, BarChart3,
+  AlertCircle,
 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import AdminDashboardService from "@/services/admin-dashboard.service";
 import EnrollmentService from "@/services/enrollment.service";
 import TransactionService, { 
-  TransactionType, 
-  TransactionStatus, 
-  PaymentMethod,
   type Transaction as ApiTransaction 
 } from "@/services/transaction.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type TxStatus = "COMPLETED" | "PENDING" | "FAILED" | "PROCESSING" | "CANCELLED";
-type TxType = "ENROLLMENT" | "PAYOUT" | "REFUND" | "WITHDRAWAL";
+type TxType = "ENROLLMENT";
 
 interface Transaction {
   id:        string;
@@ -61,17 +58,14 @@ const STATUS_CONFIG: Record<TxStatus, { label: string; icon: React.ElementType; 
 };
 
 const TYPE_CONFIG: Record<TxType, { label: string; icon: React.ElementType; color: string }> = {
-  ENROLLMENT: { label: "Enrollment", icon: ShoppingCart,   color: "text-emerald-600 dark:text-emerald-400" },
-  PAYOUT:     { label: "Payout",     icon: ArrowUpRight,   color: "text-blue-600 dark:text-blue-400"       },
-  REFUND:     { label: "Refund",     icon: ArrowDownLeft,  color: "text-amber-600 dark:text-amber-400"     },
-  WITHDRAWAL: { label: "Withdrawal", icon: ArrowDownLeft,  color: "text-violet-600 dark:text-violet-400"   },
+  ENROLLMENT: { label: "Enrollment", icon: ShoppingCart, color: "text-emerald-600 dark:text-emerald-400" },
 };
 
 // ─── Transform API transaction to UI transaction ──────────────────────────────
 
 function transformApiTransaction(tx: ApiTransaction): Transaction {
-  const participant = tx.user?.name || tx.instructor?.name || "Unknown";
-  const participantEmail = tx.user?.email || tx.instructor?.email || "";
+  const participant = tx.user?.name || "Unknown";
+  const participantEmail = tx.user?.email || "";
   
   return {
     id:        tx.id,
@@ -81,7 +75,7 @@ function transformApiTransaction(tx: ApiTransaction): Transaction {
     currency:  tx.currency || "USD",
     from:      participant,
     fromEmail: participantEmail,
-    to:        tx.type === "ENROLLMENT" ? "Platform" : participant,
+    to:        "Platform",
     course:    tx.course?.title,
     ref:       tx.paystackReference || tx.stripeReference || `TX-${tx.id.slice(0, 8).toUpperCase()}`,
     date:      tx.completedAt || tx.createdAt 
@@ -90,7 +84,7 @@ function transformApiTransaction(tx: ApiTransaction): Transaction {
     dateRaw:   tx.completedAt || tx.createdAt ? new Date(tx.completedAt || tx.createdAt).getTime() : 0,
     method:    tx.paymentMethod?.toLowerCase() || "card",
     paymentRef: tx.paystackReference || tx.stripeReference,
-    canApprove: tx.type === "PAYOUT" && tx.status === "PENDING",
+    canApprove: false,
   };
 }
 
@@ -117,13 +111,9 @@ function buildEnrollmentTransactions(enrollments: unknown[]): Transaction[] {
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
-function TxDetailModal({ tx, onClose, onApprove, onReject, isApproving, isRejecting }: { 
+function TxDetailModal({ tx, onClose }: { 
   tx: Transaction; 
   onClose: () => void;
-  onApprove?: () => void;
-  onReject?: () => void;
-  isApproving?: boolean;
-  isRejecting?: boolean;
 }) {
   const status = STATUS_CONFIG[tx.status];
   const type = TYPE_CONFIG[tx.type];
@@ -143,26 +133,16 @@ function TxDetailModal({ tx, onClose, onApprove, onReject, isApproving, isReject
         transition={{ duration: 0.2 }}
         className="w-full max-w-md rounded-[24px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_24px_80px_rgba(0,0,0,0.22)] overflow-hidden"
       >
-        <div className={`px-6 py-5 border-b ${
-          tx.type === "ENROLLMENT" ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/30" :
-          tx.type === "PAYOUT" ? "bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/30" :
-          tx.type === "REFUND" ? "bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/30" :
-          "bg-violet-50 dark:bg-violet-950/30 border-violet-100 dark:border-violet-900/30"
-        }`}>
+        <div className={`px-6 py-5 border-b bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/30`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-                tx.type === "ENROLLMENT" ? "bg-emerald-100 dark:bg-emerald-900/40" :
-                tx.type === "PAYOUT" ? "bg-blue-100 dark:bg-blue-900/40" :
-                tx.type === "REFUND" ? "bg-amber-100 dark:bg-amber-900/40" :
-                "bg-violet-100 dark:bg-violet-900/40"
-              }`}>
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center bg-emerald-100 dark:bg-emerald-900/40`}>
                 <TIcon className={`w-5 h-5 ${type.color}`} />
               </div>
               <div>
                 <p className={`text-xs font-bold uppercase tracking-wider ${type.color}`}>{type.label}</p>
                 <p className="text-lg font-black text-gray-900 dark:text-white">
-                  {tx.type === "ENROLLMENT" || tx.type === "REFUND" ? "+" : "-"}{fmtUSD(tx.amount)}
+                  +{fmtUSD(tx.amount)}
                 </p>
               </div>
             </div>
@@ -198,26 +178,6 @@ function TxDetailModal({ tx, onClose, onApprove, onReject, isApproving, isReject
             ))}
           </div>
 
-          {/* Approve/Reject actions for pending payouts */}
-          {tx.canApprove && onApprove && onReject && (
-            <div className="flex gap-2 pt-2">
-              <button 
-                onClick={onReject}
-                disabled={isApproving || isRejecting}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
-                {isRejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                {isRejecting ? "Rejecting..." : "Reject"}
-              </button>
-              <button 
-                onClick={onApprove}
-                disabled={isApproving || isRejecting}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
-                {isApproving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                {isApproving ? "Approving..." : "Approve Payout"}
-              </button>
-            </div>
-          )}
-
           <button onClick={onClose}
             className="w-full py-2.5 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all flex items-center justify-center gap-1.5">
             <Download className="w-3.5 h-3.5" /> Export Receipt
@@ -238,7 +198,6 @@ export default function AdminTransactions() {
   const [sortBy,       setSortBy]       = useState<"date" | "amount">("date");
   const [sortDir,      setSortDir]      = useState<"desc" | "asc">("desc");
   const [selected,     setSelected]     = useState<Transaction | null>(null);
-  const qc = useQueryClient();
 
   // ── Try to fetch from transaction API ─────────────────────────────────────
 
@@ -295,30 +254,6 @@ export default function AdminTransactions() {
     console.log('No data available');
     return [];
   }, [apiTransactions, rawEnrollments, usingFallback]);
-
-  // ── Approve/Reject payout mutations ────────────────────────────────────────
-
-  const { mutate: approvePayout, isPending: isApproving } = useMutation({
-    mutationFn: (id: string) => TransactionService.approvePayout(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
-      setSelected(null);
-    },
-    onError: (error: Error) => {
-      alert(`Failed to approve payout: ${error.message}`);
-    },
-  });
-
-  const { mutate: rejectPayout, isPending: isRejecting } = useMutation({
-    mutationFn: (id: string) => TransactionService.rejectPayout(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
-      setSelected(null);
-    },
-    onError: (error: Error) => {
-      alert(`Failed to reject payout: ${error.message}`);
-    },
-  });
 
   // ── Summary stats (from real revenue API) ─────────────────────────────────
 
@@ -444,15 +379,14 @@ export default function AdminTransactions() {
               <ul className="list-disc list-inside space-y-0.5 text-amber-600 dark:text-amber-500">
                 <li>Currently showing enrollment records from <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /enrollments</code> as a proxy</li>
                 <li>Backend should implement <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /dashboard/admin/transactions</code> for full transaction history</li>
-                <li>Missing: payouts, refunds, withdrawals, payment method details, Paystack/Stripe references</li>
-                <li>Payout approval endpoint: <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">PATCH /dashboard/admin/transactions/:id/approve</code></li>
+                <li>Missing: payment method details, Paystack/Stripe references</li>
               </ul>
             </>
           ) : (
             <>
               <p className="font-bold">✓ Connected to Transaction API</p>
               <p className="text-emerald-600 dark:text-emerald-500">
-                Showing full transaction history including enrollments, payouts, refunds, and withdrawals.
+                Showing enrollment transaction history.
               </p>
             </>
           )}
@@ -480,18 +414,6 @@ export default function AdminTransactions() {
               <option value="PROCESSING">Processing</option>
               <option value="FAILED">Failed</option>
               <option value="CANCELLED">Cancelled</option>
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-          </div>
-
-          <div className="relative">
-            <select value={filterType} onChange={e => setFilterType(e.target.value as TxType | "all")}
-              className="appearance-none pl-4 pr-8 py-2 rounded-xl text-sm font-semibold bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 outline-none cursor-pointer focus:border-blue-400">
-              <option value="all">All Types</option>
-              <option value="ENROLLMENT">Enrollment</option>
-              <option value="PAYOUT">Payout</option>
-              <option value="REFUND">Refund</option>
-              <option value="WITHDRAWAL">Withdrawal</option>
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
           </div>
@@ -571,12 +493,7 @@ export default function AdminTransactions() {
                     >
                       {/* Participant */}
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                          tx.type === "ENROLLMENT" ? "bg-emerald-100 dark:bg-emerald-900/30" :
-                          tx.type === "PAYOUT" ? "bg-blue-100 dark:bg-blue-900/30" :
-                          tx.type === "REFUND" ? "bg-amber-100 dark:bg-amber-900/30" :
-                          "bg-violet-100 dark:bg-violet-900/30"
-                        }`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-100 dark:bg-emerald-900/30`}>
                           <TIcon className={`w-4 h-4 ${type.color}`} />
                         </div>
                         <div className="min-w-0">
@@ -593,12 +510,8 @@ export default function AdminTransactions() {
 
                       {/* Amount */}
                       <div>
-                        <p className={`text-sm font-black ${
-                          tx.type === "ENROLLMENT" || tx.type === "REFUND" 
-                            ? "text-emerald-600 dark:text-emerald-400" 
-                            : "text-red-600 dark:text-red-400"
-                        }`}>
-                          {tx.type === "ENROLLMENT" || tx.type === "REFUND" ? "+" : "-"}{fmtUSD(tx.amount)}
+                        <p className={`text-sm font-black text-emerald-600 dark:text-emerald-400`}>
+                          +{fmtUSD(tx.amount)}
                         </p>
                         <p className="text-[10px] text-gray-400 capitalize">{tx.method}</p>
                       </div>
@@ -656,10 +569,6 @@ export default function AdminTransactions() {
           <TxDetailModal 
             tx={selected} 
             onClose={() => setSelected(null)}
-            onApprove={selected.canApprove ? () => approvePayout(selected.id) : undefined}
-            onReject={selected.canApprove ? () => rejectPayout(selected.id) : undefined}
-            isApproving={isApproving}
-            isRejecting={isRejecting}
           />
         )}
       </AnimatePresence>

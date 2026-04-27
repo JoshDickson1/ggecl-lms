@@ -64,7 +64,7 @@ const NAV_ITEMS: NavItemDef[] = [
   },
 
   { 
-    to: "/instructor/video-call",
+    to: "/instructor/live",
     icon: Video,
     label: "Live Classes",
   },

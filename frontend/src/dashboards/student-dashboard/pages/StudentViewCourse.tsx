@@ -7,6 +7,7 @@
 // Light / dark mode toggle.
 
 import { useState, useRef, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, Pause, SkipForward, Volume2, VolumeX, Maximize, Minimize,
@@ -963,7 +964,9 @@ export default function StudentViewCourse() {
                 <div className="flex items-center gap-4 text-xs text-gray-400 dark:text-white/30">
                   <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{course.totalStudents}</span>
                   <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{DEMO_CHUNKS.length} videos</span>
-                  <span className="whitespace-nowrap">by {course.instructor.name}</span>
+                  <Link to={`/student/instructors/${course.instructor.id}`} className="whitespace-nowrap hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
+                    by {course.instructor.name}
+                  </Link>
                 </div>
               </div>
             </div>

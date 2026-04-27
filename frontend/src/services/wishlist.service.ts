@@ -193,7 +193,7 @@ export function useWishlist() {
       
       return { previousWishlist };
     },
-    onError: (error, courseId, context) => {
+    onError: (error, _courseId, context) => {
       console.error('Failed to remove from wishlist:', error);
       if (context?.previousWishlist) {
         queryClient.setQueryData(["wishlist"], context.previousWishlist);
@@ -218,7 +218,7 @@ export function useWishlist() {
       
       return { previousWishlist };
     },
-    onError: (error, variables, context) => {
+    onError: (error, _variables, context) => {
       console.error('Failed to clear wishlist:', error);
       if (context?.previousWishlist) {
         queryClient.setQueryData(["wishlist"], context.previousWishlist);
@@ -264,7 +264,7 @@ export function useWishlist() {
       
       return { previousWishlist, previousCart };
     },
-    onError: (error, courseId, context) => {
+    onError: (error, _courseId, context) => {
       console.error('Failed to move to cart:', error);
       if (context?.previousWishlist) {
         queryClient.setQueryData(["wishlist"], context.previousWishlist);

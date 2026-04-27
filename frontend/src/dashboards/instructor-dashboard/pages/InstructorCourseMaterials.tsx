@@ -8,7 +8,7 @@ import {
   Package, X, Edit3, Trash2, GripVertical, Clock,
   CheckCircle2, ChevronRight, BookOpen, ListChecks,
   Paperclip, Save, HelpCircle, Check, Layers,
-  Film, Send, Sparkles, Pencil, Loader2, AlertTriangle,
+  Film, Send, Sparkles, Pencil, Loader2,
 } from "lucide-react";
 import {
   CourseFile, FileType, getFileType,
@@ -310,7 +310,6 @@ function QuizEditor({
             </div>
             <div>
               <h2 className="font-black text-slate-900 dark:text-white">{quiz ? "Edit Quiz" : "New Inline Quiz"}</h2>
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Saved locally · quiz API endpoint not yet available</p>
             </div>
           </div>
           <button onClick={onClose}
@@ -320,13 +319,6 @@ function QuizEditor({
         </div>
 
         <div className="px-6 py-5 space-y-5">
-          <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-500/20">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-700 dark:text-amber-200/60">
-              Quiz data is saved in browser state only. Backend endpoint needed: <code className="font-mono">POST /courses/:id/sections/:sectionId/quizzes</code>
-            </p>
-          </div>
-
           <div className="grid grid-cols-[1fr_120px] gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-white/40 mb-1.5">Quiz Title</label>

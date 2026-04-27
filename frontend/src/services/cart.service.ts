@@ -126,7 +126,7 @@ export function useCart() {
       // Optimistically update to the new value
       const newItem: CartCourse = {
         id: `temp_${Date.now()}`,
-        addedAt: new Date().toISOString(),
+        addedAt: new Date(),
         course: {
           id: courseId,
           title: "Loading...",
@@ -160,7 +160,7 @@ export function useCart() {
       
       return { previousCart };
     },
-    onError: (error, courseId, context) => {
+    onError: (error, _courseId, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
       console.error('Failed to add to cart:', error);
       if (context?.previousCart) {
@@ -192,7 +192,7 @@ export function useCart() {
       
       return { previousCart };
     },
-    onError: (error, courseId, context) => {
+    onError: (error, _courseId, context) => {
       console.error('Failed to remove from cart:', error);
       if (context?.previousCart) {
         queryClient.setQueryData(["cart"], context.previousCart);
@@ -218,7 +218,7 @@ export function useCart() {
       
       return { previousCart };
     },
-    onError: (error, variables, context) => {
+    onError: (error, _variables, context) => {
       console.error('Failed to clear cart:', error);
       if (context?.previousCart) {
         queryClient.setQueryData(["cart"], context.previousCart);
@@ -264,7 +264,7 @@ export function useCart() {
       
       return { previousCart, previousWishlist };
     },
-    onError: (error, courseId, context) => {
+    onError: (error, _courseId, context) => {
       console.error('Failed to move to wishlist:', error);
       if (context?.previousCart) {
         queryClient.setQueryData(["cart"], context.previousCart);
