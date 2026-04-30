@@ -13,6 +13,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, { CourseStatus } from "@/services/course.service";
 import AdminDashboardService from "@/services/admin-dashboard.service";
+import TransactionService from "@/services/transaction.service";
+import UserService from "@/services/user.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,12 +30,13 @@ interface AdminCourse {
   tags: string[];
   createdAt: string;
   instructor?: { id: string; name: string; image: string | null };
-  _count?: { 
-    sections?: number; 
-    enrollments?: number; // Total enrollments
-    // Note: Backend may provide role-specific counts, but for now use total enrollments
-    // and filter client-side if needed
+  sections?: { id: string }[];
+  totalLectures?: number;
+  _count?: {
+    enrollments?: number;
   };
+  instructorName?: string;
+  instructorId?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -159,14 +162,16 @@ function DeleteModal({ course, onConfirm, onClose, isPending }: {
 
 // ─── Course row ───────────────────────────────────────────────────────────────
 
-function CourseRow({ course, index, onChangeStatus, onDelete }: {
+function CourseRow({ course, index, instructorImageMap, onChangeStatus, onDelete }: {
   course: AdminCourse;
   index: number;
+  instructorImageMap: Map<string, string | null>;
   onChangeStatus: (id: string, status: CourseStatus) => void;
   onDelete: (course: AdminCourse) => void;
 }) {
   const gradient = LEVEL_GRADIENTS[course.level] ?? "from-blue-500 to-indigo-600";
   const enrollments = course._count?.enrollments ?? 0;
+  const instructorImage = course.instructorId ? (instructorImageMap.get(course.instructorId) ?? null) : null;
 
   return (
     <motion.tr
@@ -194,18 +199,20 @@ function CourseRow({ course, index, onChangeStatus, onDelete }: {
 
       {/* Instructor */}
       <td className="px-4 py-4">
-        {course.instructor ? (
-          <Link to={`/admin/instructors/${course.instructor.id}`} className="flex items-center gap-2 group w-fit">
-            {course.instructor.image ? (
-              <img src={course.instructor.image} alt={course.instructor.name} className="w-7 h-7 rounded-xl object-cover flex-shrink-0" />
+        {course.instructorId ? (
+          <Link to={`/admin/instructors/${course.instructorId}`} className="flex items-center gap-2 group w-fit">
+            {instructorImage ? (
+              <img src={instructorImage} alt={course.instructorName} className="w-7 h-7 rounded-xl object-cover flex-shrink-0" />
             ) : (
               <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
                 <span className="text-[10px] font-black text-white">
-                  {course.instructor.name.split(" ").map(w => w[0]).join("").slice(0, 2)}
+                  {course.instructorName?.split(" ").map(w => w[0]).join("").slice(0, 2) ?? "??"}
                 </span>
               </div>
             )}
-            <span className="text-xs text-gray-600 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors truncate max-w-[100px]">{course.instructor.name}</span>
+            <span className="text-xs text-gray-600 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors truncate max-w-[100px]">
+              {course.instructorName ?? "Unknown"}
+            </span>
           </Link>
         ) : (
           <span className="text-xs text-gray-400 italic">Unassigned</span>
@@ -223,7 +230,7 @@ function CourseRow({ course, index, onChangeStatus, onDelete }: {
       {/* Sections */}
       <td className="px-4 py-4">
         <span className="text-sm text-gray-600 dark:text-gray-400">
-          {course._count?.sections ?? 0} sections
+          {course.sections?.length ?? 0} sections
         </span>
       </td>
 
@@ -278,11 +285,35 @@ export default function AdminManageCourses() {
 
   const courses = data?.items ?? [];
 
+  console.log('what courses looks like', courses)
+
   const { data: courseStats } = useQuery({
     queryKey: ["admin-course-stats"],
     queryFn: () => AdminDashboardService.getCourses(),
     staleTime: 1000 * 60 * 2,
   });
+
+  const { data: txAnalytics } = useQuery({
+    queryKey: ["transaction-analytics"],
+    queryFn: () => TransactionService.getAnalytics(),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  // Fetch all instructor profiles once to get avatar images — keyed by instructorProfile.id
+  const { data: instructorProfiles } = useQuery({
+    queryKey: ["instructors-public-all"],
+    queryFn: () => UserService.findAllInstructorsPublic({ limit: 100 }),
+    staleTime: 1000 * 60 * 10,
+  });
+
+  // Map instructorProfile.id → user.image for O(1) lookup in each row
+  const instructorImageMap = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const p of instructorProfiles?.data ?? []) {
+      map.set(p.id, p.user.image ?? null);
+    }
+    return map;
+  }, [instructorProfiles]);
 
   const { mutate: changeStatus } = useMutation({
     mutationFn: ({ id, status }: { id: string; status: CourseStatus }) => {
@@ -303,7 +334,7 @@ export default function AdminManageCourses() {
 
   const filtered = useMemo(() => {
     return courses.filter(c => {
-      const matchSearch = !search.trim() || c.title.toLowerCase().includes(search.toLowerCase()) || (c.instructor?.name ?? "").toLowerCase().includes(search.toLowerCase());
+      const matchSearch = !search.trim() || c.title.toLowerCase().includes(search.toLowerCase()) || (c.instructorName ?? "").toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "ALL" || c.status === statusFilter;
       const matchLevel  = levelFilter  === "ALL" || c.level  === levelFilter;
       return matchSearch && matchStatus && matchLevel;
@@ -316,8 +347,8 @@ export default function AdminManageCourses() {
     draft:     courseStats?.draft     ?? courses.filter(c => c.status === "DRAFT").length,
     archived:  courseStats?.archived  ?? courses.filter(c => c.status === "ARCHIVED").length,
     students:  courses.reduce((a, c) => a + (c._count?.enrollments ?? 0), 0),
-    revenue:   courses.reduce((a, c) => a + (c.price ?? 0) * (c._count?.enrollments ?? 0), 0),
-  }), [courses, courseStats]);
+    revenue:   txAnalytics?.totalRevenue ?? 0,
+  }), [courses, courseStats, txAnalytics]);
 
   if (isLoading) {
     return (
@@ -366,7 +397,7 @@ export default function AdminManageCourses() {
               { icon: Globe,      label: "Published",       value: String(stats.published),      sub: undefined,                     color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
               { icon: Clock,      label: "Draft",           value: String(stats.draft),          sub: undefined,                     color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"     },
               { icon: Users,      label: "Total Students",  value: fmt(stats.students),          sub: undefined,                     color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40"   },
-              { icon: DollarSign, label: "Est. Revenue",    value: `$${fmt(stats.revenue)}`,     sub: "price × enrollments",         color: "text-teal-600",    bg: "bg-teal-50 dark:bg-teal-950/40"       },
+              { icon: DollarSign, label: "Total Revenue",   value: `$${fmt(stats.revenue)}`,     sub: "from paid orders",            color: "text-teal-600",    bg: "bg-teal-50 dark:bg-teal-950/40"       },
             ].map(({ icon: Icon, label, value, sub, color, bg }) => (
               <Card key={label} className="p-5 flex items-center gap-3">
                 <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", bg)}>
@@ -442,6 +473,7 @@ export default function AdminManageCourses() {
                         key={course.id}
                         course={course}
                         index={i}
+                        instructorImageMap={instructorImageMap}
                         onChangeStatus={(id, status) => changeStatus({ id, status })}
                         onDelete={setDeleteTarget}
                       />
