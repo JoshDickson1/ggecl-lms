@@ -28,18 +28,52 @@ export interface CourseStats {
 
 export interface RevenueStats {
   total: number;
-  enrollmentCount: number;
+  /** Summary uses `orderCount`, dedicated revenue endpoint uses `enrollmentCount` */
+  orderCount?: number;
+  enrollmentCount?: number;
   averageOrderValue: number;
+  byGateway?: { gateway: string; revenue: number; count: number }[];
+  daily?: { date: string; revenue: number }[];
 }
 
-export interface CompletionRate {
-  rate: number;
+export interface EnrollmentStats {
+  total: number;
+  daily?: { date: string; count: number }[];
+}
+
+export interface EnrollmentsByCategory {
+  categories: { tag: string; enrollments: number; courseCount: number }[];
+}
+
+export interface CourseCompletionEntry {
+  id: string;
+  title: string;
+  img: string | null;
+  avgCompletionRate: number;
+  enrolledCount: number;
+  completedCount: number;
+}
+
+export interface CoursesByCompletionRate {
+  courses: CourseCompletionEntry[];
+}
+
+export interface CompletionSummary {
+  totalEnrollments: number;
+  completedEnrollments: number;
+  completionRate: number;
 }
 
 export interface TopEnrolledCourse {
   id: string;
   title: string;
+  img?: string | null;
+  price?: number;
+  level?: string;
   enrollmentCount: number;
+  averageRating?: number;
+  instructor?: string;
+  instructorAvatar?: string | null;
 }
 
 export interface SignupDaySeries {
@@ -49,9 +83,12 @@ export interface SignupDaySeries {
 
 export interface SignupStats {
   total: number;
-  students: number;
-  instructors: number;
-  series: SignupDaySeries[];
+  byRole: { students: number; instructors: number; admins: number };
+  daily: SignupDaySeries[];
+  /** Legacy compat — dedicated signups endpoint may return these flat */
+  students?: number;
+  instructors?: number;
+  series?: SignupDaySeries[];
 }
 
 export interface AdminActivityItem {
@@ -68,10 +105,15 @@ export interface AdminSummary {
   instructors: InstructorStats;
   courses: CourseStats;
   revenue: RevenueStats;
-  completionRate: CompletionRate;
+  enrollments: EnrollmentStats;
+  enrollmentsByCategory: EnrollmentsByCategory;
+  coursesByCompletionRate: CoursesByCompletionRate;
+  completion: CompletionSummary;
   topEnrollments: TopEnrolledCourse[];
   signups: SignupStats;
-  recentActivities: AdminActivityItem[];
+  recentActivities?: AdminActivityItem[];
+  /** Legacy compat — dedicated completion endpoint */
+  completionRate?: { rate?: number; overallRate?: number };
 }
 
 // ==================== SERVICE ====================
@@ -116,7 +158,7 @@ export default class AdminDashboardService {
   }
 
   /**
-   * Revenue stats for a date range: total, enrollment count, avg order value.
+   * Revenue stats for a date range: total, order count, avg order value.
    * Defaults to last 30 days if no range is provided.
    * @param query - Optional date range (from, to)
    */
@@ -130,7 +172,7 @@ export default class AdminDashboardService {
   /**
    * Platform-wide course completion rate
    */
-  static async getCompletionRate(): Promise<CompletionRate> {
+  static async getCompletionRate(): Promise<CompletionSummary> {
     const response = await APIConfig.fetch(`${this.base}/completion-rate`);
     return response.json();
   }
