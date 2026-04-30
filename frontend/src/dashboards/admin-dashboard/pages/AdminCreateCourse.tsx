@@ -46,6 +46,7 @@ interface StudentUser {
   name: string;
   image: string | null;
   email: string;
+  studentProfile?: { id: string };
 }
 
 // ─── Shared atoms ─────────────────────────────────────────────────────────────
@@ -497,27 +498,36 @@ export default function AdminCreateCourse() {
 
       const courseId = (data as { id?: string })?.id;
 
-      if (courseId && courseId.trim()) {
+      if (courseId && selectedStudents.length > 0) {
         try {
-          if (selectedStudents.length > 0) {
-            await EnrollmentService.adminEnroll(courseId, selectedStudents.map(s => s.id));
+          // The bulk enroll endpoint requires studentProfile IDs, not user IDs
+          const studentIds = selectedStudents
+            .map(s => s.studentProfile?.id)
+            .filter((id): id is string => !!id);
+
+          const skipped = selectedStudents.length - studentIds.length;
+
+          if (studentIds.length > 0) {
+            const result = await EnrollmentService.adminBulkEnroll(courseId, studentIds) as {
+              enrolled?: number; failed?: number;
+            };
+            setEnrolledCount(result?.enrolled ?? studentIds.length);
           }
 
-          try {
-            const enrollments = await EnrollmentService.findByCourse(courseId);
-            setEnrolledCount(Array.isArray(enrollments) ? enrollments.length : 0);
-          } catch {
-            setEnrolledCount(selectedStudents.length);
+          if (skipped > 0) {
+            setErrors(p => ({
+              ...p,
+              enrollment: `${skipped} student${skipped !== 1 ? "s" : ""} skipped — no student profile found.`,
+            }));
           }
         } catch (enrollErr) {
-          const errorMessage = enrollErr instanceof Error ? enrollErr.message : "Enrollment failed";
           setErrors(p => ({
             ...p,
-            enrollment: `Course created, but enrollment failed: ${errorMessage}`,
+            enrollment: `Course created, but enrollment failed: ${enrollErr instanceof Error ? enrollErr.message : "Unknown error"}`,
           }));
-          setEnrolledCount(0);
         }
       }
+
       setSuccess(true);
     },
     onError: (err: unknown) => {

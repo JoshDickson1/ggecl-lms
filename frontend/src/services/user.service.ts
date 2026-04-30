@@ -75,6 +75,48 @@ export interface InstructorListQuery {
   order?: "asc" | "desc";
 }
 
+export interface PublicUserListQuery {
+  role?: UserRole;
+  page?: number;
+  limit?: number;
+  order?: "asc" | "desc";
+}
+
+export interface PublicUserListItem {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  role: string;
+  gender: string | null;
+  location: string | null;
+  createdAt: string;
+  instructorProfile?: {
+    id: string;
+    userId: string;
+    courses?: { _count?: { enrollments: number } }[];
+    [key: string]: unknown;
+  } | null;
+  studentProfile?: {
+    id: string;
+    userId: string;
+    enrollments?: unknown[];
+    [key: string]: unknown;
+  } | null;
+}
+
+export interface PublicUserListResponse {
+  data: PublicUserListItem[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
 export interface PublicInstructorUser {
   id: string;
   name: string;
@@ -166,6 +208,25 @@ export default class UserService {
    */
   static async findOnePublic(id: string): Promise<unknown> {
     const response = await APIConfig.fetch(`/users/public/${id}`);
+    return response.json();
+  }
+
+  /**
+   * List users publicly with role filter — returns gender, profile counts, etc.
+   * No authentication required. Use this instead of findAll when you need
+   * enrollments (students) or course counts (instructors).
+   * @param query - Optional role filter, pagination, and sort
+   */
+  static async findAllPublicUsers(
+    query?: PublicUserListQuery
+  ): Promise<PublicUserListResponse> {
+    const params = new URLSearchParams();
+    if (query?.role)              params.append("role",  query.role);
+    if (query?.page !== undefined) params.append("page",  String(query.page));
+    if (query?.limit !== undefined) params.append("limit", String(query.limit));
+    if (query?.order)             params.append("order", query.order);
+    const qs = params.toString();
+    const response = await APIConfig.fetch(`/users/public${qs ? `?${qs}` : ""}`);
     return response.json();
   }
 
