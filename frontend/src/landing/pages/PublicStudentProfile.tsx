@@ -341,7 +341,7 @@ export default function PublicStudentProfile() {
         <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/30 to-transparent" />
 
         {/* back btn */}
-        <div className="absolute top-20 left-6">
+        <div className="absolute top-30 left-4 md:left-30">
           <button
             onClick={() => navigate(-1)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30 text-white text-xs font-bold hover:bg-white/30 transition-all"
