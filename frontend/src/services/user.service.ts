@@ -69,6 +69,79 @@ export interface UserQuery {
   sortOrder?: "asc" | "desc";
 }
 
+export interface InstructorListQuery {
+  page?: number;
+  limit?: number;
+  order?: "asc" | "desc";
+}
+
+export interface PublicInstructorUser {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  role: string;
+  gender: string | null;
+  location: string | null;
+  createdAt: string;
+}
+
+export interface PublicInstructorProfile {
+  id: string;
+  userId: string;
+  department: string | null;
+  bio: string | null;
+  specialization: string | null;
+  description: string | null;
+  phoneNumber: string | null;
+  professionalTitle: string | null;
+  tags: string[];
+  website: string | null;
+  github: string | null;
+  twitter: string | null;
+  linkedin: string | null;
+  youtube: string | null;
+  areasOfExpertise: string[];
+  professionalExperience: string | null;
+  teachingCategories: string[];
+  user: PublicInstructorUser;
+}
+
+export interface PublicInstructorListResponse {
+  data: PublicInstructorProfile[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
+export interface FullInstructorUser extends PublicInstructorUser {
+  emailVerified: boolean;
+  status: string;
+  banned: boolean;
+  banReason: string | null;
+  banExpires: string | null;
+  updatedAt: string;
+  studentProfile: {
+    id: string;
+    userId: string;
+    matricNumber: string | null;
+    enrollmentDate: string | null;
+    bio: string | null;
+    phoneNumber: string | null;
+    learningGoals: string[];
+  } | null;
+  instructorProfile: PublicInstructorProfile | null;
+}
+
+export interface FullInstructorProfile extends Omit<PublicInstructorProfile, "user"> {
+  user: FullInstructorUser;
+}
+
 // ==================== SERVICE ====================
 
 export default class UserService {
@@ -93,6 +166,57 @@ export default class UserService {
    */
   static async findOnePublic(id: string): Promise<unknown> {
     const response = await APIConfig.fetch(`/users/public/${id}`);
+    return response.json();
+  }
+
+  // ─── INSTRUCTOR PUBLIC ────────────────────────────────────────────────────────
+
+  /**
+   * List all active instructor profiles publicly (no auth required).
+   * Keyed by instructorProfile.id, not userId.
+   * @param query - Optional pagination and sort options
+   */
+  static async findAllInstructorsPublic(
+    query?: InstructorListQuery
+  ): Promise<PublicInstructorListResponse> {
+    const params = new URLSearchParams();
+    if (query?.page !== undefined)  params.append("page",  String(query.page));
+    if (query?.limit !== undefined) params.append("limit", String(query.limit));
+    if (query?.order)               params.append("order", query.order);
+    const qs = params.toString();
+    const response = await APIConfig.fetch(
+      `/users/instructors/public${qs ? `?${qs}` : ""}`
+    );
+    return response.json();
+  }
+
+  /**
+   * Get a single instructor's public profile by instructorProfile.id (no auth required).
+   * Only returns ACTIVE instructors.
+   * @param instructorId - InstructorProfile ID (not userId)
+   */
+  static async findOneInstructorPublic(
+    instructorId: string
+  ): Promise<PublicInstructorProfile> {
+    const response = await APIConfig.fetch(
+      `/users/instructors/public/${instructorId}`
+    );
+    return response.json();
+  }
+
+  // ─── INSTRUCTOR AUTHENTICATED ─────────────────────────────────────────────────
+
+  /**
+   * Get a full instructor profile by instructorProfile.id (auth required).
+   * ADMIN: any profile. INSTRUCTOR: own profile only. STUDENT: any active profile.
+   * @param instructorId - InstructorProfile ID (not userId)
+   */
+  static async findOneInstructor(
+    instructorId: string
+  ): Promise<FullInstructorProfile> {
+    const response = await APIConfig.fetch(
+      `/users/instructors/${instructorId}`
+    );
     return response.json();
   }
 

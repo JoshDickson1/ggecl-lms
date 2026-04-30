@@ -8,7 +8,7 @@ import {
   Briefcase, Mail, CheckCircle, Loader2,
 } from "lucide-react";
 import { PageHeroBg } from "@/landing/pages/SingleCategory";
-import UserService from "@/services/user.service";
+import UserService, { type PublicInstructorProfile } from "@/services/user.service";
 import CoursesService from "@/services/course.service";
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
@@ -18,26 +18,7 @@ const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@7
 .font-dm   { font-family: 'DM Sans', system-ui, sans-serif; }`;
 
 // ─── API Types ────────────────────────────────────────────────────────────────
-
-interface InstructorProfile {
-  bio: string | null;
-  description: string | null;
-  tags: string[];
-  areasOfExpertise: string[];
-  teachingCategories: string[];
-  specialization: string | null;
-  website: string | null;
-}
-
-interface PublicInstructor {
-  id: string;
-  name: string;
-  email: string;
-  image: string | null;
-  role: string;
-  createdAt: string;
-  instructorProfile: InstructorProfile | null;
-}
+// PublicInstructorProfile is imported from user.service — no local redefinition needed.
 
 interface PublicCourse {
   id: string;
@@ -137,17 +118,18 @@ export default function SingleInstructor() {
   const [imgError, setImgError] = useState(false);
   const [showContact, setShowContact] = useState(false);
 
-  // Fetch instructor public profile by user.id
-  const { data: instructor, isLoading, isError } = useQuery<PublicInstructor>({
+  // Fetch instructor public profile by instructorProfile.id
+  const { data: instructor, isLoading, isError } = useQuery<PublicInstructorProfile>({
     queryKey: ["instructor-public", id],
-    queryFn:  () => UserService.findOnePublic(id!) as Promise<PublicInstructor>,
+    queryFn:  () => UserService.findOneInstructorPublic(id!),
     enabled:  !!id,
   });
 
-  // Fetch all public courses, then filter by this instructor's user.id
+  // Fetch courses for this instructor directly via instructorId query param
   const { data: coursesData } = useQuery<PublicCoursesResponse>({
-    queryKey: ["courses-public-all"],
-    queryFn:  () => CoursesService.findAllPublic() as Promise<PublicCoursesResponse>,
+    queryKey: ["courses-public", "instructor", instructor?.userId],
+    queryFn:  () => CoursesService.findAllPublic({ instructorId: id, limit: 4 }) as Promise<PublicCoursesResponse>,
+    enabled:  !!instructor?.userId,
     staleTime: 1000 * 60 * 10,
   });
 
@@ -168,7 +150,7 @@ export default function SingleInstructor() {
     );
   }
 
-  const profile        = instructor.instructorProfile;
+  const profile        = instructor;
   const bio            = profile?.bio ?? profile?.description ?? "";
   const expertise      = profile?.areasOfExpertise ?? [];
   const categories     = profile?.teachingCategories ?? [];
@@ -177,12 +159,10 @@ export default function SingleInstructor() {
   const specialization = profile?.specialization ?? categories[0] ?? "Instructor";
   const visibleExpertise = showAllExpertise ? expertise : expertise.slice(0, 5);
   const avatarColor    = AVATAR_COLORS[0];
-  const showPhoto      = !!instructor.image && !imgError;
+  const showPhoto      = !!instructor.user.image && !imgError;
 
-  // Filter courses to only this instructor's — matched by user.id from the URL param
-  const instructorCourses = (coursesData?.items ?? [])
-    .filter(c => c.instructor?.user?.id === id)
-    .slice(0, 4);
+  // Courses are already filtered by instructorId from the API
+  const instructorCourses = (coursesData?.items ?? []).slice(0, 4);
 
   return (
     <div className="font-dm min-h-screen bg-[#f8fafc] dark:bg-[#080c17]">
@@ -199,7 +179,7 @@ export default function SingleInstructor() {
             <span className="opacity-40">›</span>
             <Link to="/instructors" className="text-blue-500 hover:underline font-medium">Instructors</Link>
             <span className="opacity-40">›</span>
-            <span className="text-gray-500">{instructor.name}</span>
+            <span className="text-gray-500">{instructor.user.name}</span>
           </motion.div>
 
           <div className="flex flex-col sm:flex-row gap-8 items-start">
@@ -209,10 +189,10 @@ export default function SingleInstructor() {
               <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-[28px] overflow-hidden
                 shadow-[0_8px_32px_rgba(59,130,246,0.22)] border-[3px] border-blue-400/25">
                 <div className={`absolute inset-0 flex items-center justify-center text-4xl font-extrabold text-white ${avatarColor}`}>
-                  {initials(instructor.name)}
+                  {initials(instructor.user.name)}
                 </div>
                 {showPhoto && (
-                  <img src={instructor.image!} alt={instructor.name}
+                  <img src={instructor.user.image!} alt={instructor.user.name}
                     className="absolute inset-0 w-full h-full object-cover object-top"
                     onError={() => setImgError(true)} />
                 )}
@@ -232,7 +212,7 @@ export default function SingleInstructor() {
 
               <h1 className="font-syne text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight
                 text-gray-900 dark:text-white mb-2">
-                {instructor.name}
+                {instructor.user.name}
               </h1>
               <p className="text-gray-500 dark:text-gray-400 text-sm font-light mb-5">{specialization}</p>
 
@@ -282,16 +262,16 @@ export default function SingleInstructor() {
                           </div>
                           <div>
                             <p className="text-sm font-bold text-gray-900 dark:text-white">
-                              Email {instructor.name.split(" ")[0]}?
+                              Email {instructor.user.name.split(" ")[0]}?
                             </p>
                             <p className="text-xs text-gray-400 truncate max-w-[200px]">
-                              {instructor.email ?? "No email on file"}
+                              {instructor.user.email ?? "No email on file"}
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          {instructor.email ? (
-                            <a href={`mailto:${instructor.email}`}
+                          {instructor.user.email ? (
+                            <a href={`mailto:${instructor.user.email}`}
                               onClick={() => setShowContact(false)}
                               className="flex-1 text-center px-4 py-2.5 rounded-xl text-sm font-bold
                                 bg-blue-600 hover:bg-blue-500 text-white transition-colors">
@@ -351,7 +331,7 @@ export default function SingleInstructor() {
                 </svg>
               </div>
               <h2 className="font-syne text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">
-                About {instructor.name.split(" ")[0]}
+                About {instructor.user.name.split(" ")[0]}
               </h2>
             </div>
             {bio ? (

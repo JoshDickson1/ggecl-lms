@@ -112,6 +112,7 @@ export interface CourseQuery {
 /** Query params for the public (unauthenticated) courses endpoint */
 export interface PublicCourseQuery {
   search?: string;
+  instructorId?: string;
   level?: CourseLevel;
   certification?: CertificationType;
   tags?: string[];
@@ -649,7 +650,7 @@ export default class CoursesService {
     if (query.search)        params.append("search",       query.search);
     if (query.level)         params.append("level",        query.level);
     if (query.certification) params.append("certification", query.certification);
-    // if (query.instructorId)  params.append("instructorId",  (query as any).instructorId);
+    if (query.instructorId)  params.append("instructorId",  query.instructorId);
     if (query.cursor)        params.append("cursor",        query.cursor);
     if (query.sortBy)        params.append("sortBy",        query.sortBy);
     if (query.sortOrder)     params.append("sortOrder",     query.sortOrder);

@@ -525,7 +525,7 @@ export default function SingleCourse() {
                 </div>
                 <div>
                   <p className="text-white/60 text-xs">Instructor</p>
-                  <Link to={`/instructors/${course.instructorName}`}
+                  <Link to={`/instructors/${course.instructorId}`}
                     className="text-white font-bold text-sm hover:underline underline-offset-4 decoration-white/50">
                     {course.instructorName}
                   </Link>
