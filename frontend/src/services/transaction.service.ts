@@ -1,192 +1,108 @@
 import { APIConfig } from "@/lib/api.config";
 
-// ==================== ENUMS ====================
-
-export enum TransactionType {
-  ENROLLMENT = "ENROLLMENT",
-}
-
-export enum TransactionStatus {
-  COMPLETED  = "COMPLETED",
-  PENDING    = "PENDING",
-  FAILED     = "FAILED",
-  PROCESSING = "PROCESSING",
-  CANCELLED  = "CANCELLED",
-}
-
-export enum PaymentMethod {
-  CARD       = "CARD",
-  PAYSTACK   = "PAYSTACK",
-  STRIPE     = "STRIPE",
-  BANK       = "BANK",
-  WALLET     = "WALLET",
-}
-
 // ==================== TYPES ====================
 
-export interface Transaction {
+export type OrderStatus = "PENDING" | "PAID" | "FAILED" | "REFUNDED" | "CANCELLED";
+export type Gateway = "PAYSTACK" | "STRIPE";
+
+export interface TransactionStudent {
   id: string;
-  type: TransactionType;
-  status: TransactionStatus;
-  amount: number;
-  currency: string;
-  paymentMethod?: PaymentMethod;
-  paystackReference?: string;
-  stripeReference?: string;
-  description?: string;
-  metadata?: Record<string, any>;
-  
-  // Participant information
-  userId?: string;
-  user?: {
-    id: string;
-    name: string;
-    email: string;
-    image?: string | null;
-  };
-  
-  // Course information (for enrollments)
-  courseId?: string;
-  course?: {
-    id: string;
-    title: string;
-    img?: string | null;
-  };
-  
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string | null;
+  name: string;
+  email: string;
 }
 
-export interface TransactionQuery {
-  type?: TransactionType;
-  status?: TransactionStatus;
-  userId?: string;
-  courseId?: string;
+export interface TransactionPayment {
+  id: string;
+  gateway: Gateway;
+  gatewayRef: string;
+  status: string;
+  paidAt: string | null;
+}
+
+export interface TransactionItem {
+  id: string;
+  courseId: string;
+  courseTitle: string;
+  priceAtPurchase: number;
+}
+
+export interface Transaction {
+  orderId: string;
+  status: OrderStatus;
+  currency: string;
+  gateway: Gateway;
+  subtotal: number;
+  discountAmount: number;
+  total: number;
+  promoCodeSnapshot: string | null;
+  student: TransactionStudent;
+  payment: TransactionPayment | null;
+  items: TransactionItem[];
+  createdAt: string;
+}
+
+export interface TransactionListResponse {
+  items: Transaction[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface TransactionAnalytics {
+  totalRevenue: number;
+  totalCompletedOrders: number;
+  averageOrderValue: number;
+  totalEnrollments: number;
+  averageCostPerEnrollment: number;
+  pendingOrders: number;
+  failedOrders: number;
+  revenueByGateway: { gateway: string; revenue: number; count: number }[];
+}
+
+export interface TransactionListQuery {
   search?: string;
-  startDate?: string;
-  endDate?: string;
+  status?: OrderStatus;
+  gateway?: Gateway;
+  sortBy?: "createdAt" | "total" | "status";
+  order?: "asc" | "desc";
+  page?: number;
+  limit?: number;
   minAmount?: number;
   maxAmount?: number;
-  cursor?: string;
-  limit?: number;
-  sortBy?: "createdAt" | "amount" | "completedAt";
-  sortOrder?: "asc" | "desc";
-}
-
-export interface PaginatedTransactions {
-  items: Transaction[];
-  nextCursor: string | null;
-  total?: number;
 }
 
 // ==================== SERVICE ====================
 
 export default class TransactionService {
-  
-  /**
-   * Get all transactions (ADMIN only).
-   * Returns paginated list with filters.
-   * @param query - Optional filters and pagination
-   */
-  static async findAll(query?: TransactionQuery): Promise<PaginatedTransactions> {
-    try {
-      const response = await APIConfig.fetch(
-        `/dashboard/admin/transactions${this.toQueryString(query)}`
-      );
-      return response.json();
-    } catch (error) {
-      console.error('Failed to fetch transactions:', error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('404')) {
-          throw new Error('Transaction endpoint not found. The backend may not have implemented this endpoint yet.');
-        } else if (error.message.includes('403')) {
-          throw new Error('Access denied. Admin privileges required to view transactions.');
-        } else if (error.message.includes('401')) {
-          throw new Error('Please log in to view transactions.');
-        }
-      }
-      
-      throw error;
-    }
+  static async getAnalytics(): Promise<TransactionAnalytics> {
+    const res = await APIConfig.fetch("/transactions/analytics");
+    return res.json();
   }
 
-  /**
-   * Get a single transaction by ID (ADMIN only).
-   * @param id - Transaction ID
-   */
-  static async findOne(id: string): Promise<Transaction> {
-    try {
-      const response = await APIConfig.fetch(`/dashboard/admin/transactions/${id}`);
-      return response.json();
-    } catch (error) {
-      console.error(`Failed to fetch transaction ${id}:`, error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('404')) {
-          throw new Error(`Transaction not found: ${id}`);
-        } else if (error.message.includes('403')) {
-          throw new Error('Access denied. Admin privileges required.');
-        } else if (error.message.includes('401')) {
-          throw new Error('Please log in to view transaction details.');
-        }
-      }
-      
-      throw error;
-    }
+  static async findAll(query?: TransactionListQuery): Promise<TransactionListResponse> {
+    const res = await APIConfig.fetch(`/transactions${toQS(query)}`);
+    return res.json();
   }
 
-  /**
-   * Get transaction statistics (ADMIN only).
-   * Returns summary of revenue.
-   */
-  static async getStatistics(): Promise<{
-    totalRevenue: number;
-    completedTransactions: number;
-    failedTransactions: number;
-  }> {
-    try {
-      const response = await APIConfig.fetch('/dashboard/admin/transactions/statistics');
-      return response.json();
-    } catch (error) {
-      console.error('Failed to fetch transaction statistics:', error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('404')) {
-          throw new Error('Statistics endpoint not found. The backend may not have implemented this endpoint yet.');
-        } else if (error.message.includes('403')) {
-          throw new Error('Access denied. Admin privileges required.');
-        } else if (error.message.includes('401')) {
-          throw new Error('Please log in to view statistics.');
-        }
-      }
-      
-      throw error;
-    }
+  static async findOne(orderId: string): Promise<Transaction> {
+    const res = await APIConfig.fetch(`/transactions/${orderId}`);
+    return res.json();
   }
+}
 
-  // ─── HELPERS ─────────────────────────────────────────────────────────────────
-
-  private static toQueryString(query?: TransactionQuery): string {
-    if (!query) return "";
-    const params = new URLSearchParams();
-
-    if (query.type)         params.append("type",       query.type);
-    if (query.status)       params.append("status",     query.status);
-    if (query.userId)       params.append("userId",     query.userId);
-    if (query.courseId)     params.append("courseId",   query.courseId);
-    if (query.search)       params.append("search",     query.search);
-    if (query.startDate)    params.append("startDate",  query.startDate);
-    if (query.endDate)      params.append("endDate",    query.endDate);
-    if (query.minAmount !== undefined) params.append("minAmount", String(query.minAmount));
-    if (query.maxAmount !== undefined) params.append("maxAmount", String(query.maxAmount));
-    if (query.cursor)       params.append("cursor",     query.cursor);
-    if (query.sortBy)       params.append("sortBy",     query.sortBy);
-    if (query.sortOrder)    params.append("sortOrder",  query.sortOrder);
-    if (query.limit !== undefined) params.append("limit", String(query.limit));
-
-    const qs = params.toString();
-    return qs ? `?${qs}` : "";
-  }
+function toQS(q?: TransactionListQuery): string {
+  if (!q) return "";
+  const p = new URLSearchParams();
+  if (q.search)                   p.set("search",    q.search);
+  if (q.status)                   p.set("status",    q.status);
+  if (q.gateway)                  p.set("gateway",   q.gateway);
+  if (q.sortBy)                   p.set("sortBy",    q.sortBy);
+  if (q.order)                    p.set("order",     q.order);
+  if (q.page   !== undefined)     p.set("page",      String(q.page));
+  if (q.limit  !== undefined)     p.set("limit",     String(q.limit));
+  if (q.minAmount !== undefined)  p.set("minAmount", String(q.minAmount));
+  if (q.maxAmount !== undefined)  p.set("maxAmount", String(q.maxAmount));
+  const s = p.toString();
+  return s ? `?${s}` : "";
 }

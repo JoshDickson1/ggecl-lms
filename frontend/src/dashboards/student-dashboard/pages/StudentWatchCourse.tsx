@@ -32,6 +32,7 @@ interface LessonProgressDetail {
   id: string;
   title: string;
   isCompleted: boolean;
+  isLocked: boolean;
   watchedSeconds: number;
   totalSeconds: number;
 }
@@ -74,6 +75,20 @@ function buildCompletedSet(progress: unknown): Set<string> {
     if (!Array.isArray(section.lessons)) continue;
     for (const lesson of section.lessons) {
       if (lesson.isCompleted) set.add(lesson.id);
+    }
+  }
+  return set;
+}
+
+function buildLockedSet(progress: unknown): Set<string> {
+  const set = new Set<string>();
+  if (!progress || typeof progress !== "object") return set;
+  const p = progress as CourseProgressDetail;
+  if (!Array.isArray(p.sections)) return set;
+  for (const section of p.sections) {
+    if (!Array.isArray(section.lessons)) continue;
+    for (const lesson of section.lessons) {
+      if (lesson.isLocked) set.add(lesson.id);
     }
   }
   return set;
@@ -265,11 +280,13 @@ function VideoPlayer({
   resumeAt,
   onProgress,
   onComplete,
+  onNearEnd,
 }: {
   material: CourseMaterial;
   resumeAt?: number;
   onProgress: (p: VideoProgress) => void;
   onComplete: () => void;
+  onNearEnd?: (near: boolean) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -334,6 +351,7 @@ function VideoPlayer({
       setCurrentTime(video.currentTime);
       if (video.buffered.length > 0)
         setBuffered((video.buffered.end(video.buffered.length - 1) / video.duration) * 100);
+      if (video.duration > 0) onNearEnd?.(video.currentTime / video.duration >= 0.85);
       if (progressTimer.current) return;
       progressTimer.current = setTimeout(() => {
         progressTimer.current = null;
@@ -575,13 +593,17 @@ function MaterialCard({ material }: { material: CourseMaterial }) {
 
 // ==================== QUIZ PANEL ====================
 
-function SingleQuiz({ quiz }: { quiz: Quiz }) {
+function SingleQuiz({ quiz, onNextSection, isLastSection }: {
+  quiz: Quiz;
+  onNextSection?: () => void;
+  isLastSection?: boolean;
+}) {
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<QuizAttempt | null>(null);
   const [showReview, setShowReview] = useState(false);
 
-  const { data: existingAttempt } = useQuery<QuizAttempt>({
+  const { data: existingAttempt } = useQuery<QuizAttempt | null>({
     queryKey: ["quiz-attempt", quiz.id],
     queryFn: () => QuizService.getMyAttempt(quiz.id),
     enabled: !!quiz.id,
@@ -644,6 +666,27 @@ function SingleQuiz({ quiz }: { quiz: Quiz }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Next section / course complete CTA */}
+      {result.passed && onNextSection && (
+        <motion.button
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          onClick={onNextSection}
+          className="w-full h-11 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-bold shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+        >
+          {isLastSection ? (
+            <><Award className="w-4 h-4" />Complete Course</>
+          ) : (
+            <><span>Unlock Next Section</span><ChevronRight className="w-4 h-4" /></>
+          )}
+        </motion.button>
+      )}
+      {!result.passed && (
+        <p className="text-xs text-center text-gray-400 pt-1">
+          You scored {result.resolvedGrade}% — pass mark is {quiz.passMark}%. Quiz attempts are final.
+        </p>
+      )}
     </div>
   );
 
@@ -686,16 +729,41 @@ function SingleQuiz({ quiz }: { quiz: Quiz }) {
   );
 }
 
-function QuizPanel({ sectionId }: { sectionId: string }) {
-  const { data: quizList, isLoading } = useQuery<{ data: Quiz[] }>({
+function QuizPanel({ sectionId, onNextSection, isLastSection }: {
+  sectionId: string;
+  onNextSection?: () => void;
+  isLastSection?: boolean;
+}) {
+  const { data: quizList, isLoading, isError } = useQuery<{ data: Quiz[] }>({
     queryKey: ["section-quizzes", sectionId],
     queryFn: () => QuizService.findAll({ sectionId }),
     enabled: !!sectionId,
+    retry: false,
   });
+
+  const NextBtn = onNextSection ? (
+    <button
+      onClick={onNextSection}
+      className="mt-2 flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-bold transition-all shadow-lg shadow-emerald-500/20"
+    >
+      {isLastSection ? <><Award className="w-4 h-4" />Complete Course</> : <><span>Continue to Next Section</span><ChevronRight className="w-4 h-4" /></>}
+    </button>
+  ) : null;
 
   if (isLoading) return (
     <div className="flex items-center gap-2 py-8 justify-center text-gray-400 text-sm">
       <Loader2 className="w-4 h-4 animate-spin" /> Loading quizzes…
+    </div>
+  );
+
+  if (isError) return (
+    <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-500/10 flex items-center justify-center">
+        <AlertCircle className="w-6 h-6 text-amber-500" />
+      </div>
+      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Quiz unavailable</p>
+      <p className="text-xs text-gray-400">Could not load this section's quiz. You can still proceed.</p>
+      {NextBtn}
     </div>
   );
 
@@ -707,12 +775,20 @@ function QuizPanel({ sectionId }: { sectionId: string }) {
         <HelpCircle className="w-6 h-6 text-gray-400" />
       </div>
       <p className="text-sm text-gray-400">No quiz for this section</p>
+      {NextBtn}
     </div>
   );
 
   return (
     <div className="space-y-4">
-      {quizzes.map(quiz => <SingleQuiz key={quiz.id} quiz={quiz} />)}
+      {quizzes.map((quiz, i) => (
+        <SingleQuiz
+          key={quiz.id}
+          quiz={quiz}
+          onNextSection={i === quizzes.length - 1 ? onNextSection : undefined}
+          isLastSection={isLastSection}
+        />
+      ))}
     </div>
   );
 }
@@ -797,19 +873,52 @@ function FilePreviewPanel({ material }: { material: CourseMaterial }) {
   );
 }
 
+// ==================== SECTION LOCKED MODAL ====================
+
+function SectionLockedModal({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 16 }}
+        transition={{ duration: 0.18 }}
+        className="relative z-10 w-full max-w-sm rounded-2xl overflow-hidden
+          bg-white dark:bg-[#0d1525] backdrop-blur-2xl
+          border border-white/20 dark:border-white/10
+          shadow-2xl shadow-black/40 p-6 text-center"
+      >
+        <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center mx-auto mb-4">
+          <Lock className="w-6 h-6 text-amber-400" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Content Locked</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{message}</p>
+        <button
+          onClick={onClose}
+          className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white transition-all shadow-lg shadow-blue-500/20"
+        >
+          Got it
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+
 // ==================== LESSON ITEM ====================
 
-function LessonItem({ lesson, isCompleted, isCurrent, onClick }: {
-  lesson: CourseLesson; isCompleted: boolean; isCurrent: boolean; onClick: () => void;
+function LessonItem({ lesson, isCompleted, isLocked, isCurrent, onClick }: {
+  lesson: CourseLesson; isCompleted: boolean; isLocked: boolean; isCurrent: boolean; onClick: () => void;
 }) {
-  const hasVideo = lesson.materials?.some(m => m.type === "VIDEO");
-  const isLocked = !lesson.isPreview && !hasVideo;
-
   return (
-    <button onClick={onClick} className={cn(
-      "w-full flex items-center gap-3 p-3 rounded-xl text-left cursor-pointer transition-all",
-      isCurrent ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30"
-        : "hover:bg-gray-50 dark:hover:bg-white/[0.04] border border-transparent"
+    <button
+      onClick={isLocked ? undefined : onClick}
+      disabled={isLocked}
+      className={cn(
+      "w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all",
+      isLocked ? "cursor-not-allowed opacity-60 border border-transparent"
+        : isCurrent ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 cursor-pointer"
+        : "hover:bg-gray-50 dark:hover:bg-white/[0.04] border border-transparent cursor-pointer"
     )}>
       <div className="flex-shrink-0">
         {isCompleted ? (
@@ -857,6 +966,9 @@ export default function StudentWatchCourse() {
   const [selectedLesson, setSelectedLesson] = useState<CourseLesson | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<CourseMaterial | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [nearEnd, setNearEnd] = useState(false);
+  const [lockedAccessMessage, setLockedAccessMessage] = useState<string | null>(null);
+  const autoCompletedRef = useRef<Set<string>>(new Set());
 
   const [quizSectionId, setQuizSectionId] = useState<string | null>(null);
   const [previewMaterial, setPreviewMaterial] = useState<CourseMaterial | null>(null);
@@ -905,8 +1017,13 @@ export default function StudentWatchCourse() {
   // ── Derived state ─────────────────────────────────────────────────────────────
 
   const completedIds = buildCompletedSet(progress);
+  const lockedIds = buildLockedSet(progress);
   const overallProgress = progress?.overallProgress ?? 0;
   const sections = getSectionsAsArray(course?.sections);
+  // Section is locked when its first lesson is locked
+  const sectionLockedIds = new Set(
+    sections.filter(s => s.lessons?.length > 0 && lockedIds.has(s.lessons[0].id)).map(s => s.id)
+  );
 
   // Flat navigable content list (videos, files, quizzes) for prev/next
   const allContent = sections.flatMap(section => [
@@ -983,21 +1100,38 @@ export default function StudentWatchCourse() {
   };
 
   const selectLesson = (lesson: CourseLesson) => {
+    if (lockedIds.has(lesson.id)) {
+      setLockedAccessMessage("Complete the previous section to unlock this lesson.");
+      return;
+    }
     setSelectedLesson(lesson);
     setQuizSectionId(null);
     setPreviewMaterial(null);
+    setNearEnd(false);
     const vid = lesson.materials?.find(m => m.type === "VIDEO");
     setSelectedMaterial(vid ?? null);
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
   const openQuiz = (sectionId: string) => {
-    setSelectedLesson(null); setSelectedMaterial(null); setQuizSectionId(sectionId); setPreviewMaterial(null);
+    if (sectionLockedIds.has(sectionId)) {
+      setLockedAccessMessage("Complete the previous section first to access this quiz.");
+      return;
+    }
+    setSelectedMaterial(null);
+    setPreviewMaterial(null);
+    setQuizSectionId(sectionId);
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
-  const openFile = (mat: CourseMaterial) => {
-    setSelectedLesson(null); setSelectedMaterial(null); setQuizSectionId(null); setPreviewMaterial(mat);
+  const openFile = (mat: CourseMaterial, fromLessonId?: string) => {
+    if (fromLessonId && lockedIds.has(fromLessonId)) {
+      setLockedAccessMessage("Complete the video lesson first to access course materials.");
+      return;
+    }
+    setSelectedMaterial(null);
+    setQuizSectionId(null);
+    setPreviewMaterial(mat);
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
@@ -1017,11 +1151,119 @@ export default function StudentWatchCourse() {
     }
   };
 
-  const handleVideoProgress = (vp: VideoProgress) => {
-    if (selectedLesson) saveProgress({ lessonId: selectedLesson.id, watchedSeconds: Math.floor(vp.currentTime), totalSeconds: Math.floor(vp.duration) });
+  const handleQuizNextSection = async () => {
+    const isLastSec = sections.length > 0 && sections[sections.length - 1].id === quizSectionId;
+    if (isLastSec && courseId) {
+      ProgressService.completeCourse(courseId).catch(() => {});
+      navigate("/student/courses");
+      return;
+    }
+    // Await the refetch so lockedIds is fresh before we navigate
+    if (courseId) {
+      await queryClient.refetchQueries({ queryKey: ["course-progress", courseId] }).catch(() => {});
+    }
+    // Force-navigate — backend unlocked the next section on quiz pass
+    if (currentIndex < allContent.length - 1) {
+      const next = allContent[currentIndex + 1];
+      if (next.type === "lesson") {
+        setSelectedLesson(next.lesson);
+        setQuizSectionId(null);
+        setPreviewMaterial(null);
+        setNearEnd(false);
+        setSelectedMaterial(next.lesson.materials?.find(m => m.type === "VIDEO") ?? null);
+        setSidebarTab("videos");
+        if (window.innerWidth < 768) setSidebarOpen(false);
+      }
+    }
   };
 
-  const handleVideoComplete = () => { if (selectedLesson) markComplete(selectedLesson.id); };
+  const handleVideoProgress = (vp: VideoProgress) => {
+    if (!selectedLesson) return;
+    saveProgress({ lessonId: selectedLesson.id, watchedSeconds: Math.floor(vp.currentTime), totalSeconds: Math.floor(vp.duration) });
+    if (vp.watched && !completedIds.has(selectedLesson.id) && !autoCompletedRef.current.has(selectedLesson.id)) {
+      autoCompletedRef.current.add(selectedLesson.id);
+      markComplete(selectedLesson.id);
+    }
+  };
+
+  const handleVideoComplete = () => {
+    if (selectedLesson && !autoCompletedRef.current.has(selectedLesson.id)) {
+      autoCompletedRef.current.add(selectedLesson.id);
+      markComplete(selectedLesson.id);
+    }
+  };
+
+  const handleNextLesson = () => {
+    if (selectedLesson && !completedIds.has(selectedLesson.id) && !autoCompletedRef.current.has(selectedLesson.id)) {
+      autoCompletedRef.current.add(selectedLesson.id);
+      markComplete(selectedLesson.id);
+    }
+    // Force-navigate regardless of current lock state — completing this lesson is what unlocks the next
+    if (currentIndex < allContent.length - 1) {
+      const next = allContent[currentIndex + 1];
+      if (next.type === "lesson") {
+        setSelectedLesson(next.lesson);
+        setQuizSectionId(null);
+        setPreviewMaterial(null);
+        setNearEnd(false);
+        setSelectedMaterial(next.lesson.materials?.find(m => m.type === "VIDEO") ?? null);
+        setSidebarTab("videos");
+        if (window.innerWidth < 768) setSidebarOpen(false);
+      } else {
+        setSelectedMaterial(null);
+        setPreviewMaterial(null);
+        setNearEnd(false);
+        setQuizSectionId(next.sectionId);
+        setSidebarTab("quizzes");
+        if (window.innerWidth < 768) setSidebarOpen(false);
+      }
+    }
+  };
+
+  const handleTabChange = (tab: SidebarTab) => {
+    setSidebarTab(tab);
+    if (tab === "videos") {
+      setPreviewMaterial(null);
+      setQuizSectionId(null);
+      if (selectedLesson) {
+        setSelectedMaterial(selectedLesson.materials?.find(m => m.type === "VIDEO") ?? null);
+      }
+    } else if (tab === "files") {
+      if (selectedLesson) {
+        const files = selectedLesson.materials?.filter(m => m.type !== "VIDEO") ?? [];
+        if (files.length > 0) {
+          setSelectedMaterial(null);
+          setQuizSectionId(null);
+          setPreviewMaterial(files[0]);
+        } else {
+          // Try first file from any lesson in the same section
+          const section = sections.find(s => s.lessons.some(l => l.id === selectedLesson.id));
+          if (section) {
+            for (const lesson of section.lessons) {
+              const sectionFiles = lesson.materials?.filter(m => m.type !== "VIDEO") ?? [];
+              if (sectionFiles.length > 0) {
+                setSelectedMaterial(null);
+                setQuizSectionId(null);
+                setPreviewMaterial(sectionFiles[0]);
+                break;
+              }
+            }
+          }
+        }
+      }
+    } else if (tab === "quizzes") {
+      if (selectedLesson) {
+        const section = sections.find(s => s.lessons.some(l => l.id === selectedLesson.id));
+        if (section && !sectionLockedIds.has(section.id)) {
+          setSelectedMaterial(null);
+          setPreviewMaterial(null);
+          setQuizSectionId(section.id);
+        } else if (section && sectionLockedIds.has(section.id)) {
+          setLockedAccessMessage("Complete the previous section first to access quizzes.");
+        }
+      }
+    }
+  };
 
   // ── Guards ────────────────────────────────────────────────────────────────────
 
@@ -1066,7 +1308,7 @@ export default function StudentWatchCourse() {
             { key: "files", icon: <FileText className="w-3.5 h-3.5" />, label: "Files" },
             { key: "quizzes", icon: <HelpCircle className="w-3.5 h-3.5" />, label: "Quizzes" },
           ] as { key: SidebarTab; icon: React.ReactNode; label: string }[]).map(tab => (
-            <button key={tab.key} onClick={() => setSidebarTab(tab.key)}
+            <button key={tab.key} onClick={() => handleTabChange(tab.key)}
               className={cn("flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
                 sidebarTab === tab.key ? "bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300")}>
               {tab.icon}{tab.label}
@@ -1093,38 +1335,61 @@ export default function StudentWatchCourse() {
 
           if (!showSection) return null;
 
+          const sectionLocked = sectionLockedIds.has(section.id);
+
           return (
             <div key={section.id} className={cn(
               "rounded-2xl border overflow-hidden transition-all",
-              sectionComplete
-                ? "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5"
-                : "border-gray-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.02]"
+              sectionLocked
+                ? "border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-white/[0.01]"
+                : sectionComplete
+                  ? "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5"
+                  : "border-gray-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.02]"
             )}>
-              <button onClick={() => setExpandedSections(prev => { const n = new Set(prev); n.has(section.id) ? n.delete(section.id) : n.add(section.id); return n; })}
-                className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
+              <button
+                onClick={() => {
+                  if (sectionLocked) {
+                    setLockedAccessMessage("Complete the previous section first to unlock this content.");
+                    return;
+                  }
+                  setExpandedSections(prev => { const n = new Set(prev); n.has(section.id) ? n.delete(section.id) : n.add(section.id); return n; });
+                }}
+                className={cn("w-full px-3 py-2.5 flex items-center justify-between transition-colors",
+                  sectionLocked ? "cursor-not-allowed" : "hover:bg-gray-50 dark:hover:bg-white/[0.03]")}
+              >
                 <div className="flex items-center gap-2 min-w-0">
-                  {sectionComplete && <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
-                  <span className={cn("text-sm font-semibold truncate", sectionComplete ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-white")}>
+                  {sectionLocked
+                    ? <Lock className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                    : sectionComplete
+                      ? <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                      : null
+                  }
+                  <span className={cn("text-sm font-semibold truncate",
+                    sectionLocked ? "text-gray-400 dark:text-gray-500"
+                    : sectionComplete ? "text-emerald-700 dark:text-emerald-400"
+                    : "text-gray-900 dark:text-white")}>
                     {section.title}
                   </span>
                 </div>
-                <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform flex-shrink-0", sectionExpanded ? "rotate-180" : "")} />
+                <ChevronDown className={cn("w-4 h-4 transition-transform flex-shrink-0",
+                  sectionLocked ? "text-gray-300 dark:text-gray-600" : "text-gray-400",
+                  sectionExpanded && !sectionLocked ? "rotate-180" : "")} />
               </button>
 
               <AnimatePresence>
-                {sectionExpanded && (
+                {sectionExpanded && !sectionLocked && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                     <div className="px-2 pb-2 space-y-1">
                       {/* Videos tab */}
                       {sidebarTab === "videos" && videoLessons.map(lesson => (
-                        <LessonItem key={lesson.id} lesson={lesson} isCompleted={completedIds.has(lesson.id)} isCurrent={selectedLesson?.id === lesson.id} onClick={() => selectLesson(lesson)} />
+                        <LessonItem key={lesson.id} lesson={lesson} isCompleted={completedIds.has(lesson.id)} isLocked={lockedIds.has(lesson.id)} isCurrent={selectedLesson?.id === lesson.id} onClick={() => selectLesson(lesson)} />
                       ))}
 
                       {/* Files tab */}
                       {sidebarTab === "files" && fileLessons.map(lesson => {
                         const fileMaterials = lesson.materials?.filter(m => m.type !== "VIDEO") ?? [];
                         return fileMaterials.map(mat => (
-                          <button key={mat.id} onClick={() => openFile(mat)}
+                          <button key={mat.id} onClick={() => openFile(mat, lesson.id)}
                             className={cn(
                               "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all group text-left border",
                               previewMaterial?.id === mat.id
@@ -1183,7 +1448,7 @@ export default function StudentWatchCourse() {
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0a0f1a] overflow-hidden">
       {/* ── Header ── */}
-      <header className="flex-shrink-0 bg-white/80 dark:bg-[#0d1525]/80 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/[0.06] z-30">
+      <header className="flex-shrink-0 bg-white/80 rounded-2xl mb-2 dark:bg-[#0d1525]/80 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/[0.06] z-30">
         <div className="px-4 py-3 flex items-center gap-3">
           {/* Back button — triggers leave modal if playing */}
           <button onClick={() => tryNavigate("/student/courses")}
@@ -1285,7 +1550,33 @@ export default function StudentWatchCourse() {
                   material={selectedMaterial}
                   onProgress={handleVideoProgress}
                   onComplete={handleVideoComplete}
+                  onNearEnd={setNearEnd}
                 />
+
+                {/* Near-end "Next Lesson" banner */}
+                <AnimatePresence>
+                  {nearEnd && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                        <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 truncate">
+                          {currentIndex >= allContent.length - 1 ? "Last lesson — mark as complete!" : "Almost done! Ready for the next lesson?"}
+                        </span>
+                      </div>
+                      <button
+                        onClick={currentIndex >= allContent.length - 1 ? handleVideoComplete : handleNextLesson}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-lg shadow-emerald-500/20"
+                      >
+                        {currentIndex >= allContent.length - 1 ? "Complete" : <><span>Next</span><ChevronRight className="w-4 h-4" /></>}
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Lesson metadata + prev/next */}
                 <div className="flex items-start justify-between gap-4">
@@ -1336,7 +1627,11 @@ export default function StudentWatchCourse() {
                     </button>
                   </div>
                 </div>
-                <QuizPanel sectionId={quizSectionId} />
+                <QuizPanel
+                  sectionId={quizSectionId}
+                  onNextSection={handleQuizNextSection}
+                  isLastSection={sections.length > 0 && sections[sections.length - 1].id === quizSectionId}
+                />
               </div>
             ) : previewMaterial ? (
               <FilePreviewPanel material={previewMaterial} />
@@ -1355,6 +1650,12 @@ export default function StudentWatchCourse() {
       {/* ── Modals ── */}
       <AnimatePresence>
         {showLeaveModal && <ConfirmLeaveModal onConfirm={confirmLeave} onCancel={cancelLeave} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {lockedAccessMessage && (
+          <SectionLockedModal message={lockedAccessMessage} onClose={() => setLockedAccessMessage(null)} />
+        )}
       </AnimatePresence>
 
       <AnimatePresence>

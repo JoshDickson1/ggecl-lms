@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AssignmentService, { type CreateAssignmentDto } from "@/services/assignment.service";
 import CoursesService from "@/services/course.service";
 import UserService, { UserRole } from "@/services/user.service";
+import StorageService from "@/services/storage.service";
 import { FILE_META, getFileType } from "@/data/academicData";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -247,10 +248,10 @@ function CourseInstructorSelector({
   onInstructorChange: (id: string) => void;
   errors: { course?: string; instructor?: string };
 }) {
-  const { data: courses = [] } = useQuery({
+  const { data: allCourses = [] } = useQuery({
     queryKey: ["courses-list"],
     queryFn: async () => {
-      const res = await CoursesService.findAll();
+      const res = await CoursesService.findAll({ limit: 200 });
       return res.items || [];
     },
   });
@@ -263,23 +264,83 @@ function CourseInstructorSelector({
     },
   });
 
-  const selectedCourse = courses.find((c: any) => c.id === selectedCourseId);
-  const selectedInstructor = instructors.find((i: any) => i.id === selectedInstructorId);
+  // Filter courses to only those belonging to the selected instructor
+  const visibleCourses = selectedInstructorId
+    ? allCourses.filter((c: any) => c.instructorId === selectedInstructorId)
+    : allCourses;
 
-  // When course is selected, auto-fill instructor if not already set
+  const selectedCourse      = (allCourses as any[]).find((c: any) => c.id === selectedCourseId);
+  const selectedInstructor  = (instructors as any[]).find((i: any) => i.id === selectedInstructorId);
+
+  // Course selected → auto-fill instructor
   const handleCourseChange = (id: string) => {
     onCourseChange(id);
-    const course = courses.find((c: any) => c.id === id) as any;
-    if (course && !selectedInstructorId) {
-      onInstructorChange((course.instructorId as string) || "");
+    const course = (allCourses as any[]).find((c: any) => c.id === id);
+    if (course?.instructorId) {
+      onInstructorChange(course.instructorId);
+    }
+  };
+
+  // Instructor selected → clear course if it doesn't belong to this instructor
+  const handleInstructorChange = (id: string) => {
+    onInstructorChange(id);
+    if (selectedCourseId) {
+      const course = (allCourses as any[]).find((c: any) => c.id === selectedCourseId);
+      if (course && course.instructorId !== id) {
+        onCourseChange("");
+      }
     }
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Instructor picker — pick instructor first to filter courses */}
+      <div>
+        <Label required>Instructor</Label>
+        <FieldWrap error={errors.instructor}
+          hint="Selecting an instructor filters the course list to their courses.">
+          <div className={cn(
+            "rounded-xl border overflow-hidden transition-all",
+            errors.instructor ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]"
+          )}>
+            <select
+              value={selectedInstructorId}
+              onChange={e => handleInstructorChange(e.target.value)}
+              className="w-full px-4 py-2.5 text-sm bg-gray-50/80 dark:bg-white/[0.04]
+                text-gray-800 dark:text-white outline-none cursor-pointer"
+            >
+              <option value="">Select an instructor…</option>
+              {(instructors as any[]).map((i: any) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </select>
+          </div>
+        </FieldWrap>
+        <AnimatePresence>
+          {selectedInstructor && (
+            <motion.div key="instructor-preview"
+              initial={{ opacity: 0, y: -8, height: 0 }} animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -8, height: 0 }} transition={{ duration: 0.22 }}
+              className="mt-3 overflow-hidden">
+              <div className="flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06]">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center flex-shrink-0">
+                  <GraduationCap className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-900 dark:text-white">{(selectedInstructor as any).name}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {visibleCourses.length} course{visibleCourses.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* Course picker */}
       <div>
-        <Label required>Assign to Course</Label>
+        <Label required>Course</Label>
         <FieldWrap error={errors.course}>
           <div className={cn(
             "rounded-xl border overflow-hidden transition-all",
@@ -291,88 +352,36 @@ function CourseInstructorSelector({
               className="w-full px-4 py-2.5 text-sm bg-gray-50/80 dark:bg-white/[0.04]
                 text-gray-800 dark:text-white outline-none cursor-pointer"
             >
-              <option value="">Select a course…</option>
-              {courses.map((c: any) => (
+              <option value="">
+                {selectedInstructorId
+                  ? visibleCourses.length === 0 ? "No courses for this instructor" : "Select a course…"
+                  : "Select a course…"}
+              </option>
+              {(visibleCourses as any[]).map((c: any) => (
                 <option key={c.id} value={c.id}>{c.title}</option>
               ))}
             </select>
           </div>
         </FieldWrap>
-
-        {/* Course preview card */}
         <AnimatePresence>
-          {selectedCourse ? (
-            <motion.div
-              key="course-preview"
-              initial={{ opacity: 0, y: -8, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: "auto" }}
-              exit={{ opacity: 0, y: -8, height: 0 }}
-              transition={{ duration: 0.22 }}
-              className="mt-3 overflow-hidden"
-            >
+          {selectedCourse && (
+            <motion.div key="course-preview"
+              initial={{ opacity: 0, y: -8, height: 0 }} animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -8, height: 0 }} transition={{ duration: 0.22 }}
+              className="mt-3 overflow-hidden">
               <div className="flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06]">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0">
                   <BookOpen className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
-                    {(selectedCourse as any).title}
-                  </p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    Course ID: {(selectedCourse as any).id}
+                  <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{(selectedCourse as any).title}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5 capitalize">
+                    {((selectedCourse as any).status ?? "").toLowerCase()} · {((selectedCourse as any).level ?? "").toLowerCase()}
                   </p>
                 </div>
               </div>
             </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </div>
-
-      {/* Instructor picker */}
-      <div>
-        <Label required>Assign to Instructor</Label>
-        <FieldWrap error={errors.instructor}
-          hint="Defaults to the course instructor. You can override this.">
-          <div className={cn(
-            "rounded-xl border overflow-hidden transition-all",
-            errors.instructor ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]"
-          )}>
-            <select
-              value={selectedInstructorId}
-              onChange={e => onInstructorChange(e.target.value)}
-              className="w-full px-4 py-2.5 text-sm bg-gray-50/80 dark:bg-white/[0.04]
-                text-gray-800 dark:text-white outline-none cursor-pointer"
-            >
-              <option value="">Select an instructor…</option>
-              {instructors.map((i: any) => (
-                <option key={i.id} value={i.id}>{i.name}</option>
-              ))}
-            </select>
-          </div>
-        </FieldWrap>
-
-        {/* Instructor preview card */}
-        <AnimatePresence>
-          {selectedInstructor ? (
-            <motion.div
-              key="instructor-preview"
-              initial={{ opacity: 0, y: -8, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: "auto" }}
-              exit={{ opacity: 0, y: -8, height: 0 }}
-              transition={{ duration: 0.22 }}
-              className="mt-3 overflow-hidden"
-            >
-              <div className="flex items-center gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06]">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center flex-shrink-0">
-                  <GraduationCap className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-gray-900 dark:text-white">{(selectedInstructor as any).name}</p>
-                  <p className="text-[10px] text-gray-400 truncate mt-0.5">Instructor</p>
-                </div>
-              </div>
-            </motion.div>
-          ) : null}
+          )}
         </AnimatePresence>
       </div>
     </div>
@@ -591,8 +600,10 @@ export default function AdminCreateAssignment() {
     note:             "",
   });
 
-  const [errors, setErrors]   = useState<FormErrors>({});
-  const [success, setSuccess] = useState(false);
+  const [errors,    setErrors]    = useState<FormErrors>({});
+  const [success,   setSuccess]   = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
 
   const set = <K extends keyof FormState>(key: K) => (value: FormState[K]) => {
     setForm(p => ({ ...p, [key]: value }));
@@ -612,22 +623,42 @@ export default function AdminCreateAssignment() {
     return Object.keys(e).length === 0;
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!validate()) {
-      // Scroll to first error
       document.querySelector("[data-error]")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
+    // Upload attachment files first
+    let attachmentUrls: string[] = [];
+    if (form.attachments.length > 0) {
+      setUploading(true);
+      setUploadProgress({ done: 0, total: form.attachments.length });
+      try {
+        for (let i = 0; i < form.attachments.length; i++) {
+          const url = await StorageService.upload("assignments", form.attachments[i]);
+          attachmentUrls.push(url);
+          setUploadProgress({ done: i + 1, total: form.attachments.length });
+        }
+      } catch {
+        setErrors(p => ({ ...p, submit: "File upload failed. Please try again." }));
+        setUploading(false);
+        setUploadProgress(null);
+        return;
+      }
+      setUploading(false);
+      setUploadProgress(null);
+    }
+
     const payload: CreateAssignmentDto = {
-      title: form.title.trim(),
-      courseId: form.courseId,
-      description: form.description.trim(),
+      title:        form.title.trim(),
+      courseId:     form.courseId,
+      description:  form.description.trim(),
       instructions: form.instructions.trim(),
-      maxScore: form.maxScore,
-      dueDate: new Date(`${form.dueDate}T${form.dueTime}:00`).toISOString(),
-      allowLate: form.allowLate,
-      attachments: [], // TODO: Upload attachments and get URLs
+      maxScore:     form.maxScore,
+      dueDate:      new Date(`${form.dueDate}T${form.dueTime}:00`).toISOString(),
+      allowLate:    form.allowLate,
+      attachments:  attachmentUrls,
     };
 
     createAssignment(payload);
@@ -956,17 +987,19 @@ export default function AdminCreateAssignment() {
               </Link>
 
               <motion.button
-                whileHover={!saving ? { scale: 1.02, boxShadow: "0 10px 32px rgba(59,130,246,0.5)" } : {}}
-                whileTap={!saving ? { scale: 0.97 } : {}}
+                whileHover={!saving && !uploading ? { scale: 1.02, boxShadow: "0 10px 32px rgba(59,130,246,0.5)" } : {}}
+                whileTap={!saving && !uploading ? { scale: 0.97 } : {}}
                 onClick={handlePublish}
-                disabled={saving}
+                disabled={saving || uploading}
                 className={cn(
                   "flex-[2] py-3 rounded-2xl text-sm font-black flex items-center justify-center gap-2.5 transition-all",
-                  saving
+                  saving || uploading
                     ? "bg-blue-400 cursor-wait text-white"
                     : "bg-blue-600 hover:bg-blue-500 text-white shadow-[0_6px_24px_rgba(59,130,246,0.42)]"
                 )}>
-                {saving ? (
+                {uploading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Uploading {uploadProgress?.done}/{uploadProgress?.total}…</>
+                ) : saving ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Publishing…</>
                 ) : (
                   <><Shield className="w-4 h-4" /> Publish Assignment</>

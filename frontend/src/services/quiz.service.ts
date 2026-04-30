@@ -306,21 +306,14 @@ export default class QuizService {
    * Get the calling student's attempt for a quiz
    * @param id - Quiz ID
    */
-  static async getMyAttempt(id: string): Promise<QuizAttempt> {
+  static async getMyAttempt(id: string): Promise<QuizAttempt | null> {
     try {
       const response = await APIConfig.fetch(`/quizzes/${id}/my-attempt`);
       return response.json();
     } catch (error) {
-      console.error(`Failed to fetch my attempt for quiz ${id}:`, error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('404')) {
-          throw new Error('You have not attempted this quiz yet.');
-        } else if (error.message.includes('401')) {
-          throw new Error('Please log in to view your quiz attempt.');
-        }
+      if (error instanceof Error && error.message.includes('404')) {
+        return null; // No attempt yet — normal for first-time visitors
       }
-      
       throw error;
     }
   }

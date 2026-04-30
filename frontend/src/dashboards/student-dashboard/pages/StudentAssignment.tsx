@@ -58,7 +58,7 @@ const STATUS_MAP: Record<AssignmentStatus, {
 };
 
 function StatusBadge({ status }: { status: AssignmentStatus }) {
-  const s = STATUS_MAP[status];
+  const s = STATUS_MAP[status] ?? STATUS_MAP.pending;
   const Icon = s.icon;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${s.color} ${s.bg} ${s.border}`}>

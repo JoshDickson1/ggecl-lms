@@ -76,9 +76,9 @@ function getInstructorInitials(course: Course): string {
 function CourseBadge({ badge }: { badge: Course["badge"] }) {
   if (!badge) return null;
   const styles: Record<string, string> = {
-    Bestseller: "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60",
-    "Hot & New": "bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60",
-    New: "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60",
+    Bestseller: "bg-amber-500 dark:bg-amber-600 text-white border border-amber-600 dark:border-amber-700 shadow-lg",
+    "Hot & New": "bg-rose-500 dark:bg-rose-600 text-white border border-rose-600 dark:border-rose-700 shadow-lg",
+    New: "bg-emerald-500 dark:bg-emerald-600 text-white border border-emerald-600 dark:border-emerald-700 shadow-lg",
   };
   return <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide ${styles[badge]}`}>{badge}</span>;
 }
@@ -159,20 +159,29 @@ function CourseCard({ course, index, cartCourseIds, wishlistCourseIds, addToCart
         {/* Body */}
         <div className="relative z-10 flex flex-col gap-2.5 p-5">
           {/* Instructor */}
-          <Link to={`/student/instructors/${course.instructor?.id}`} className="flex items-center gap-2 group w-fit">
-            {course.instructor?.user.image ? (
-              <img
-                src={course.instructor.user.image}
-                alt={course.instructor.user.name}
-                className="w-6 h-6 rounded-full object-cover flex-shrink-0 ring-1 ring-white/20"
-              />
-            ) : (
-              <span className="w-6 h-6 rounded-full text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0 bg-blue-600 ring-1 ring-white/20">
+          {course.instructor?.id ? (
+            <Link to={`/student/instructors/${course.instructor.id}`} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] group hover:border-blue-300 dark:hover:border-blue-700 transition-all w-fit">
+              {course.instructor?.user.image ? (
+                <img
+                  src={course.instructor.user.image}
+                  alt={course.instructor.user.name}
+                  className="w-5 h-5 rounded-full object-cover flex-shrink-0 ring-1 ring-white/20"
+                />
+              ) : (
+                <span className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center flex-shrink-0 bg-blue-600 ring-1 ring-white/20">
+                  {getInstructorInitials(course)}
+                </span>
+              )}
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">{getInstructorName(course)}</span>
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] w-fit">
+              <span className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center flex-shrink-0 bg-gray-400 ring-1 ring-white/20">
                 {getInstructorInitials(course)}
               </span>
-            )}
-            <span className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors truncate">{getInstructorName(course)}</span>
-          </Link>
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{getInstructorName(course)}</span>
+            </div>
+          )}
 
           <Link to={`/student/courses/${course.id}`}>
             <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 hover:text-blue-500 transition-colors">{course.title}</h3>

@@ -1,124 +1,67 @@
 // src/dashboards/admin-dashboard/pages/AdminTransactions.tsx
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  DollarSign, Search,
-  ChevronDown, Download, X, Eye,
+  DollarSign, Search, ChevronDown, X, Eye,
   CheckCircle2, XCircle, Clock, RefreshCw,
   TrendingUp, CreditCard, Loader2,
-  ShoppingCart, BarChart3,
-  AlertCircle,
+  ShoppingCart, BarChart3, ChevronLeft, ChevronRight,
+  AlertCircle, Tag,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import AdminDashboardService from "@/services/admin-dashboard.service";
-import EnrollmentService from "@/services/enrollment.service";
-import TransactionService, { 
-  type Transaction as ApiTransaction 
+import TransactionService, {
+  type Transaction,
+  type OrderStatus,
+  type Gateway,
+  type TransactionAnalytics,
 } from "@/services/transaction.service";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type TxStatus = "COMPLETED" | "PENDING" | "FAILED" | "PROCESSING" | "CANCELLED";
-type TxType = "ENROLLMENT";
-
-interface Transaction {
-  id:        string;
-  type:      TxType;
-  status:    TxStatus;
-  amount:    number;
-  currency:  string;
-  from:      string;
-  fromEmail: string;
-  to:        string;
-  course?:   string;
-  ref:       string;
-  date:      string;
-  dateRaw:   number;
-  method:    string;
-  paymentRef?: string;
-  canApprove?: boolean;
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtUSD(n: number) {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function fmtCurrency(n: number, currency = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
 }
 
-function fmtK(n: number) {
-  return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
+function fmtK(n: number, currency = "USD") {
+  const sym = currency === "NGN" ? "₦" : "$";
+  return n >= 1_000_000
+    ? `${sym}${(n / 1_000_000).toFixed(1)}M`
+    : n >= 1_000
+    ? `${sym}${(n / 1_000).toFixed(1)}k`
+    : `${sym}${n.toFixed(0)}`;
 }
 
-const STATUS_CONFIG: Record<TxStatus, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  COMPLETED:  { label: "Completed",  icon: CheckCircle2, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50" },
-  PENDING:    { label: "Pending",    icon: Clock,        color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50"         },
-  FAILED:     { label: "Failed",     icon: XCircle,      color: "text-red-600 dark:text-red-400",         bg: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/50"                 },
-  PROCESSING: { label: "Processing", icon: RefreshCw,    color: "text-blue-600 dark:text-blue-400",       bg: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/50"             },
-  CANCELLED:  { label: "Cancelled",  icon: XCircle,      color: "text-gray-600 dark:text-gray-400",       bg: "bg-gray-50 dark:bg-gray-950/30 border-gray-200 dark:border-gray-800/50"             },
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+  });
+}
+
+// ─── Status config ────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<OrderStatus, {
+  label: string; icon: React.ElementType; color: string; bg: string;
+}> = {
+  PAID:      { label: "Paid",      icon: CheckCircle2, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50" },
+  PENDING:   { label: "Pending",   icon: Clock,        color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50"         },
+  FAILED:    { label: "Failed",    icon: XCircle,      color: "text-red-600 dark:text-red-400",         bg: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/50"                 },
+  REFUNDED:  { label: "Refunded",  icon: RefreshCw,    color: "text-blue-600 dark:text-blue-400",       bg: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/50"             },
+  CANCELLED: { label: "Cancelled", icon: XCircle,      color: "text-gray-600 dark:text-gray-400",       bg: "bg-gray-50 dark:bg-gray-950/30 border-gray-200 dark:border-gray-800/50"             },
 };
 
-const TYPE_CONFIG: Record<TxType, { label: string; icon: React.ElementType; color: string }> = {
-  ENROLLMENT: { label: "Enrollment", icon: ShoppingCart, color: "text-emerald-600 dark:text-emerald-400" },
-};
+// ─── Detail modal ─────────────────────────────────────────────────────────────
 
-// ─── Transform API transaction to UI transaction ──────────────────────────────
-
-function transformApiTransaction(tx: ApiTransaction): Transaction {
-  const participant = tx.user?.name || "Unknown";
-  const participantEmail = tx.user?.email || "";
-  
-  return {
-    id:        tx.id,
-    type:      tx.type as TxType,
-    status:    tx.status as TxStatus,
-    amount:    tx.amount,
-    currency:  tx.currency || "USD",
-    from:      participant,
-    fromEmail: participantEmail,
-    to:        "Platform",
-    course:    tx.course?.title,
-    ref:       tx.paystackReference || tx.stripeReference || `TX-${tx.id.slice(0, 8).toUpperCase()}`,
-    date:      tx.completedAt || tx.createdAt 
-      ? new Date(tx.completedAt || tx.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) 
-      : "—",
-    dateRaw:   tx.completedAt || tx.createdAt ? new Date(tx.completedAt || tx.createdAt).getTime() : 0,
-    method:    tx.paymentMethod?.toLowerCase() || "card",
-    paymentRef: tx.paystackReference || tx.stripeReference,
-    canApprove: false,
-  };
-}
-
-// ─── Build enrollment transactions from enrollment list (FALLBACK) ────────────
-
-function buildEnrollmentTransactions(enrollments: unknown[]): Transaction[] {
-  return enrollments.map((e: any, i) => ({
-    id:        e.id ?? `tx-${i}`,
-    type:      "ENROLLMENT" as TxType,
-    status:    "COMPLETED" as TxStatus,
-    amount:    e.course?.price ?? 0,
-    currency:  "USD",
-    from:      e.student?.name ?? e.studentId ?? "Student",
-    fromEmail: e.student?.email ?? "",
-    to:        "Platform",
-    course:    e.course?.title,
-    ref:       `ENR-${e.id?.slice(0, 8).toUpperCase() ?? i}`,
-    date:      e.enrolledAt ? new Date(e.enrolledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—",
-    dateRaw:   e.enrolledAt ? new Date(e.enrolledAt).getTime() : 0,
-    method:    "card",
-    canApprove: false,
-  }));
-}
-
-// ─── Detail Modal ─────────────────────────────────────────────────────────────
-
-function TxDetailModal({ tx, onClose }: { 
-  tx: Transaction; 
-  onClose: () => void;
-}) {
-  const status = STATUS_CONFIG[tx.status];
-  const type = TYPE_CONFIG[tx.type];
-  const SIcon  = status.icon;
-  const TIcon  = type.icon;
+function TxDetailModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
+  const { data: tx, isLoading } = useQuery<Transaction>({
+    queryKey: ["transaction-detail", orderId],
+    queryFn: () => TransactionService.findOne(orderId),
+    staleTime: 1000 * 60 * 5,
+  });
 
   return (
     <motion.div
@@ -131,19 +74,22 @@ function TxDetailModal({ tx, onClose }: {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 20, scale: 0.97 }}
         transition={{ duration: 0.2 }}
-        className="w-full max-w-md rounded-[24px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_24px_80px_rgba(0,0,0,0.22)] overflow-hidden"
+        className="w-full max-w-md rounded-[24px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_24px_80px_rgba(0,0,0,0.22)] overflow-hidden max-h-[90vh] flex flex-col"
       >
-        <div className={`px-6 py-5 border-b bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/30`}>
+        {/* Header */}
+        <div className="px-6 py-5 border-b bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/30 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center bg-emerald-100 dark:bg-emerald-900/40`}>
-                <TIcon className={`w-5 h-5 ${type.color}`} />
+              <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-emerald-100 dark:bg-emerald-900/40">
+                <ShoppingCart className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
-                <p className={`text-xs font-bold uppercase tracking-wider ${type.color}`}>{type.label}</p>
-                <p className="text-lg font-black text-gray-900 dark:text-white">
-                  +{fmtUSD(tx.amount)}
-                </p>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Order</p>
+                {tx && (
+                  <p className="text-lg font-black text-gray-900 dark:text-white">
+                    {fmtCurrency(tx.total, tx.currency)}
+                  </p>
+                )}
               </div>
             </div>
             <button onClick={onClose}
@@ -153,35 +99,93 @@ function TxDetailModal({ tx, onClose }: {
           </div>
         </div>
 
-        <div className="p-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Status</span>
-            <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${status.bg} ${status.color}`}>
-              <SIcon className="w-3.5 h-3.5" /> {status.label}
-            </span>
-          </div>
+        {/* Body */}
+        <div className="p-6 flex flex-col gap-4 overflow-y-auto">
+          {isLoading && (
+            <div className="flex items-center justify-center py-10 gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+              <span className="text-sm text-gray-400">Loading…</span>
+            </div>
+          )}
 
-          <div className="grid grid-cols-1 gap-2">
-            {[
-              { label: "Reference",  value: tx.ref              },
-              { label: "Date",       value: tx.date             },
-              { label: "Participant", value: tx.from            },
-              { label: "Email",      value: tx.fromEmail || "—" },
-              { label: "Method",     value: tx.method           },
-              ...(tx.paymentRef ? [{ label: "Payment Ref", value: tx.paymentRef }] : []),
-              ...(tx.course ? [{ label: "Course", value: tx.course }] : []),
-            ].map(({ label, value }) => (
-              <div key={label} className="flex items-center justify-between px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
-                <span className="text-xs font-bold text-gray-400">{label}</span>
-                <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 text-right max-w-[60%] truncate">{value}</span>
-              </div>
-            ))}
-          </div>
+          {tx && (() => {
+            const status = STATUS_CONFIG[tx.status];
+            const SIcon = status.icon;
+            return (
+              <>
+                {/* Status */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Status</span>
+                  <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${status.bg} ${status.color}`}>
+                    <SIcon className="w-3.5 h-3.5" /> {status.label}
+                  </span>
+                </div>
 
-          <button onClick={onClose}
-            className="w-full py-2.5 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all flex items-center justify-center gap-1.5">
-            <Download className="w-3.5 h-3.5" /> Export Receipt
-          </button>
+                {/* Student */}
+                <div className="rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05] p-4 space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Student</p>
+                  <p className="text-sm font-bold text-gray-800 dark:text-white">{tx.student.name}</p>
+                  <p className="text-xs text-gray-400">{tx.student.email}</p>
+                </div>
+
+                {/* Courses */}
+                <div className="rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05] p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">
+                    Courses ({tx.items.length})
+                  </p>
+                  <div className="space-y-2">
+                    {tx.items.map(item => (
+                      <div key={item.id} className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate flex-1">
+                          {item.courseTitle}
+                        </p>
+                        <p className="text-xs font-bold text-gray-600 dark:text-gray-400 flex-shrink-0">
+                          {fmtCurrency(item.priceAtPurchase, tx.currency)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Breakdown */}
+                <div className="rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05] p-4 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Breakdown</p>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">{fmtCurrency(tx.subtotal, tx.currency)}</span>
+                  </div>
+                  {tx.discountAmount > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        Discount {tx.promoCodeSnapshot && <span className="text-[9px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-bold">{tx.promoCodeSnapshot}</span>}
+                      </span>
+                      <span className="font-semibold text-red-500">−{fmtCurrency(tx.discountAmount, tx.currency)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm border-t border-gray-200 dark:border-white/[0.08] pt-2 mt-1">
+                    <span className="font-bold text-gray-700 dark:text-gray-300">Total</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400">{fmtCurrency(tx.total, tx.currency)}</span>
+                  </div>
+                </div>
+
+                {/* Payment info */}
+                <div className="grid grid-cols-1 gap-2">
+                  {[
+                    { label: "Order ID",   value: tx.orderId },
+                    { label: "Gateway",    value: tx.gateway },
+                    { label: "Date",       value: fmtDate(tx.createdAt) },
+                    ...(tx.payment?.gatewayRef ? [{ label: "Gateway Ref", value: tx.payment.gatewayRef }] : []),
+                    ...(tx.payment?.paidAt    ? [{ label: "Paid At",     value: fmtDate(tx.payment.paidAt) }] : []),
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-center justify-between px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
+                      <span className="text-xs font-bold text-gray-400">{label}</span>
+                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 text-right max-w-[60%] truncate">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </motion.div>
     </motion.div>
@@ -190,112 +194,58 @@ function TxDetailModal({ tx, onClose }: {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 20;
+
 export default function AdminTransactions() {
-  const [search,       setSearch]       = useState("");
-  const [filterStatus, setFilterStatus] = useState<TxStatus | "all">("all");
-  const [filterType,   setFilterType]   = useState<TxType | "all">("all");
-  const [filterPeriod, setFilterPeriod] = useState<"all" | "today" | "week" | "month">("all");
-  const [sortBy,       setSortBy]       = useState<"date" | "amount">("date");
-  const [sortDir,      setSortDir]      = useState<"desc" | "asc">("desc");
-  const [selected,     setSelected]     = useState<Transaction | null>(null);
+  const [search,        setSearch]        = useState("");
+  const [filterStatus,  setFilterStatus]  = useState<OrderStatus | "all">("all");
+  const [filterGateway, setFilterGateway] = useState<Gateway | "all">("all");
+  const [sortBy,        setSortBy]        = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
+  const [page,          setPage]          = useState(1);
+  const [selectedId,    setSelectedId]    = useState<string | null>(null);
 
-  // ── Try to fetch from transaction API ─────────────────────────────────────
+  const sortMap = {
+    "date-desc":   { sortBy: "createdAt" as const, order: "desc" as const },
+    "date-asc":    { sortBy: "createdAt" as const, order: "asc"  as const },
+    "amount-desc": { sortBy: "total"     as const, order: "desc" as const },
+    "amount-asc":  { sortBy: "total"     as const, order: "asc"  as const },
+  };
 
-  const { data: apiTransactions, isLoading: apiLoading, error: apiError } = useQuery({
-    queryKey: ["admin-transactions"],
-    queryFn: () => TransactionService.findAll({ limit: 1000 }),
+  const query = {
+    ...(search.trim()            && { search: search.trim()              }),
+    ...(filterStatus !== "all"   && { status: filterStatus               }),
+    ...(filterGateway !== "all"  && { gateway: filterGateway             }),
+    ...sortMap[sortBy],
+    page,
+    limit: PAGE_SIZE,
+  };
+
+  const { data: list, isLoading: listLoading } = useQuery({
+    queryKey: ["admin-transactions", query],
+    queryFn: () => TransactionService.findAll(query),
     staleTime: 1000 * 60 * 2,
-    retry: false, // Don't retry if endpoint doesn't exist
+    placeholderData: (prev) => prev,
   });
 
-  // ── Fallback: fetch enrollments (always fetch as backup) ──────────────────
-
-  const { data: rawEnrollments, isLoading: enrollLoading } = useQuery({
-    queryKey: ["admin-all-enrollments"],
-    queryFn: () => EnrollmentService.findAll(),
-    staleTime: 1000 * 60 * 2,
+  const { data: analytics, isLoading: analyticsLoading } = useQuery<TransactionAnalytics>({
+    queryKey: ["admin-transactions-analytics"],
+    queryFn: () => TransactionService.getAnalytics(),
+    staleTime: 1000 * 60 * 5,
   });
 
-  // ── Real API data ──────────────────────────────────────────────────────────
+  const isLoading = listLoading || analyticsLoading;
+  const transactions = list?.items ?? [];
+  const totalPages = list?.totalPages ?? 1;
+  const totalCount = list?.total ?? 0;
 
-  const { data: revenue, isLoading: revLoading } = useQuery({
-    queryKey: ["admin-revenue"],
-    queryFn: () => AdminDashboardService.getRevenue(),
-  });
+  const hasFilters = filterStatus !== "all" || filterGateway !== "all" || search.trim() !== "";
+  const clearFilters = () => {
+    setSearch(""); setFilterStatus("all"); setFilterGateway("all"); setPage(1);
+  };
 
-  // ── Determine which data source to use ─────────────────────────────────────
-
-  const usingFallback = !!apiError || !apiTransactions?.items;
-  const isLoading = apiLoading || enrollLoading || revLoading;
-
-  // ── Build transactions from appropriate source ─────────────────────────────
-
-  const allTransactions = useMemo<Transaction[]>(() => {
-    console.log('Building transactions:', {
-      usingFallback,
-      hasApiTransactions: !!apiTransactions?.items,
-      apiTransactionsCount: apiTransactions?.items?.length || 0,
-      hasRawEnrollments: !!rawEnrollments,
-      rawEnrollmentsType: Array.isArray(rawEnrollments) ? 'array' : typeof rawEnrollments,
-    });
-
-    if (!usingFallback && apiTransactions?.items) {
-      // Use real transaction API
-      console.log('Using transaction API data');
-      return apiTransactions.items.map(transformApiTransaction);
-    } else if (rawEnrollments) {
-      // Fallback to enrollments
-      const list = Array.isArray(rawEnrollments)
-        ? rawEnrollments
-        : ((rawEnrollments as any)?.data ?? []);
-      console.log('Using enrollment fallback data, count:', list.length);
-      return buildEnrollmentTransactions(list as unknown[]);
-    }
-    console.log('No data available');
-    return [];
-  }, [apiTransactions, rawEnrollments, usingFallback]);
-
-  // ── Summary stats (from real revenue API) ─────────────────────────────────
-
-  const totalRevenue   = revenue?.total           ?? 0;
-  const enrollCount    = revenue?.enrollmentCount  ?? 0;
-  const avgOrderValue  = revenue?.averageOrderValue ?? 0;
-  const pendingCount   = allTransactions.filter(t => t.status === "PENDING").length;
-
-  // ── Filtering ──────────────────────────────────────────────────────────────
-
-  const filtered = useMemo(() => {
-    let result = [...allTransactions];
-
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(t =>
-        t.from.toLowerCase().includes(q) ||
-        t.ref.toLowerCase().includes(q) ||
-        (t.course?.toLowerCase().includes(q)) ||
-        t.fromEmail.toLowerCase().includes(q)
-      );
-    }
-
-    if (filterStatus !== "all") result = result.filter(t => t.status === filterStatus);
-    if (filterType !== "all") result = result.filter(t => t.type === filterType);
-
-    if (filterPeriod !== "all") {
-      const now  = Date.now();
-      const cuts = { today: 86400000, week: 604800000, month: 2592000000 };
-      result = result.filter(t => (now - t.dateRaw) <= cuts[filterPeriod]);
-    }
-
-    result.sort((a, b) => {
-      const val = sortBy === "date" ? b.dateRaw - a.dateRaw : b.amount - a.amount;
-      return sortDir === "desc" ? val : -val;
-    });
-
-    return result;
-  }, [allTransactions, search, filterStatus, filterType, filterPeriod, sortBy, sortDir]);
-
-  const hasFilters = filterStatus !== "all" || filterType !== "all" || filterPeriod !== "all" || search.trim() !== "";
-  const clearFilters = () => { setSearch(""); setFilterStatus("all"); setFilterType("all"); setFilterPeriod("all"); };
+  const handleSearchChange = (v: string) => { setSearch(v); setPage(1); };
+  const handleStatusChange = (v: OrderStatus | "all") => { setFilterStatus(v); setPage(1); };
+  const handleGatewayChange = (v: Gateway | "all") => { setFilterGateway(v); setPage(1); };
 
   return (
     <div className="max-w-[1100px] mx-auto pb-10 space-y-6">
@@ -305,36 +255,33 @@ export default function AdminTransactions() {
         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-gray-900 dark:text-white">Transactions</h1>
-          <p className="text-sm text-gray-400 mt-1">Platform financial activity — enrollments & revenue</p>
+          <p className="text-sm text-gray-400 mt-1">Platform revenue — orders, payments & refunds</p>
         </div>
-        <button className="self-start flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:border-blue-200 hover:text-blue-600 transition-all">
-          <Download className="w-4 h-4" /> Export CSV
-        </button>
       </motion.div>
 
-      {/* Summary stats */}
+      {/* Analytics cards */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
         className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           {
             icon: TrendingUp, color: "emerald",
-            value: isLoading ? "—" : fmtK(totalRevenue),
-            label: "Total Revenue", sub: "all-time enrollments",
+            value: analyticsLoading ? "—" : fmtK(analytics?.totalRevenue ?? 0),
+            label: "Total Revenue", sub: "all paid orders",
           },
           {
             icon: ShoppingCart, color: "blue",
-            value: isLoading ? "—" : enrollCount.toLocaleString(),
-            label: "Total Enrollments", sub: "completed purchases",
+            value: analyticsLoading ? "—" : (analytics?.totalCompletedOrders ?? 0).toLocaleString(),
+            label: "Completed Orders", sub: "paid enrollments",
           },
           {
             icon: BarChart3, color: "violet",
-            value: isLoading ? "—" : fmtUSD(avgOrderValue),
-            label: "Avg Order Value", sub: "per enrollment",
+            value: analyticsLoading ? "—" : fmtCurrency(analytics?.averageOrderValue ?? 0),
+            label: "Avg Order Value", sub: "per paid order",
           },
           {
             icon: Clock, color: "amber",
-            value: isLoading ? "—" : String(pendingCount),
-            label: "Pending", sub: "awaiting settlement",
+            value: analyticsLoading ? "—" : String(analytics?.pendingOrders ?? 0),
+            label: "Pending", sub: "awaiting payment",
           },
         ].map(({ icon: Icon, color, value, label, sub }) => {
           const p: Record<string, string> = {
@@ -346,7 +293,7 @@ export default function AdminTransactions() {
           return (
             <div key={label} className={`flex flex-col items-center py-5 px-3 rounded-2xl border transition-colors ${p[color]}`}>
               <div className="ic w-9 h-9 rounded-xl flex items-center justify-center mb-2">
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : <Icon className="w-4 h-4" />}
+                {analyticsLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : <Icon className="w-4 h-4" />}
               </div>
               <p className="text-xl font-black text-gray-900 dark:text-white leading-none">{value}</p>
               {sub && <p className="text-[9px] font-bold mt-0.5 text-gray-400">{sub}</p>}
@@ -356,82 +303,62 @@ export default function AdminTransactions() {
         })}
       </motion.div>
 
-      {/* Backend callout — payouts/refunds/withdrawals */}
-      <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }}
-        className={`flex items-start gap-3 p-4 rounded-2xl border ${
-          usingFallback 
-            ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/30"
-            : "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/30"
-        }`}>
-        {usingFallback ? (
-          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-        ) : (
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-        )}
-        <div className={`text-xs space-y-1 ${
-          usingFallback 
-            ? "text-amber-700 dark:text-amber-400"
-            : "text-emerald-700 dark:text-emerald-400"
-        }`}>
-          {usingFallback ? (
-            <>
-              <p className="font-bold">Using fallback data — Transaction API not available</p>
-              <ul className="list-disc list-inside space-y-0.5 text-amber-600 dark:text-amber-500">
-                <li>Currently showing enrollment records from <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /enrollments</code> as a proxy</li>
-                <li>Backend should implement <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 rounded">GET /dashboard/admin/transactions</code> for full transaction history</li>
-                <li>Missing: payment method details, Paystack/Stripe references</li>
-              </ul>
-            </>
-          ) : (
-            <>
-              <p className="font-bold">✓ Connected to Transaction API</p>
-              <p className="text-emerald-600 dark:text-emerald-500">
-                Showing enrollment transaction history.
-              </p>
-            </>
-          )}
-        </div>
-      </motion.div>
+      {/* Gateway breakdown */}
+      {analytics && analytics.revenueByGateway.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }}
+          className="flex flex-wrap items-center gap-3 px-5 py-4 rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07]">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-400 mr-1">Revenue by gateway</span>
+          {analytics.revenueByGateway.map(g => (
+            <div key={g.gateway} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07]">
+              <CreditCard className="w-3 h-3 text-gray-400" />
+              <span className="text-xs font-bold text-gray-700 dark:text-gray-300">{g.gateway}</span>
+              <span className="text-xs text-gray-400">{fmtK(g.revenue)}</span>
+              <span className="text-[10px] text-gray-400">({g.count} orders)</span>
+            </div>
+          ))}
+        </motion.div>
+      )}
 
       {/* Filter bar */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
         className="rounded-[20px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.05)] p-4">
-
         <div className="flex flex-wrap gap-3">
+          {/* Search */}
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search name, ref, course…"
+            <input value={search} onChange={e => handleSearchChange(e.target.value)}
+              placeholder="Search student, order ID, course…"
               className="w-full pl-9 pr-4 py-2 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all" />
           </div>
 
+          {/* Status filter */}
           <div className="relative">
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as TxStatus | "all")}
+            <select value={filterStatus} onChange={e => handleStatusChange(e.target.value as OrderStatus | "all")}
               className="appearance-none pl-4 pr-8 py-2 rounded-xl text-sm font-semibold bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 outline-none cursor-pointer focus:border-blue-400">
               <option value="all">All Status</option>
-              <option value="COMPLETED">Completed</option>
+              <option value="PAID">Paid</option>
               <option value="PENDING">Pending</option>
-              <option value="PROCESSING">Processing</option>
               <option value="FAILED">Failed</option>
+              <option value="REFUNDED">Refunded</option>
               <option value="CANCELLED">Cancelled</option>
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
           </div>
 
+          {/* Gateway filter */}
           <div className="relative">
-            <select value={filterPeriod} onChange={e => setFilterPeriod(e.target.value as "all" | "today" | "week" | "month")}
+            <select value={filterGateway} onChange={e => handleGatewayChange(e.target.value as Gateway | "all")}
               className="appearance-none pl-4 pr-8 py-2 rounded-xl text-sm font-semibold bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 outline-none cursor-pointer focus:border-blue-400">
-              <option value="all">All Time</option>
-              <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
+              <option value="all">All Gateways</option>
+              <option value="PAYSTACK">Paystack</option>
+              <option value="STRIPE">Stripe</option>
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
           </div>
 
+          {/* Sort */}
           <div className="relative">
-            <select value={`${sortBy}-${sortDir}`}
-              onChange={e => { const [s, d] = e.target.value.split("-"); setSortBy(s as "date" | "amount"); setSortDir(d as "desc" | "asc"); }}
+            <select value={sortBy} onChange={e => { setSortBy(e.target.value as typeof sortBy); setPage(1); }}
               className="appearance-none pl-4 pr-8 py-2 rounded-xl text-sm font-semibold bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 outline-none cursor-pointer focus:border-blue-400">
               <option value="date-desc">Newest First</option>
               <option value="date-asc">Oldest First</option>
@@ -454,66 +381,81 @@ export default function AdminTransactions() {
         </div>
 
         <p className="text-xs text-gray-400 mt-3">
-          Showing <span className="font-bold text-gray-700 dark:text-gray-300">{filtered.length}</span> of {allTransactions.length} transactions
+          Showing page <span className="font-bold text-gray-700 dark:text-gray-300">{page}</span> of{" "}
+          <span className="font-bold text-gray-700 dark:text-gray-300">{totalPages}</span> — {totalCount} total
         </p>
       </motion.div>
 
-      {/* Transaction table */}
+      {/* Table */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
         className="rounded-[22px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.05)] overflow-hidden">
 
-        <div className="grid grid-cols-[2fr_1.2fr_1fr_1fr_auto] gap-4 px-5 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/[0.06] text-[10px] font-black text-gray-400 uppercase tracking-wider">
-          <span>Participant</span>
-          <span>Reference</span>
+        <div className="grid grid-cols-[2fr_1.4fr_1fr_1fr_auto] gap-4 px-5 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/[0.06] text-[10px] font-black text-gray-400 uppercase tracking-wider">
+          <span>Student / Course</span>
+          <span>Order ID</span>
           <span>Amount</span>
           <span>Status</span>
           <span className="w-8" />
         </div>
 
         <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
-          {isLoading ? (
+          {listLoading ? (
             <div className="flex items-center justify-center py-20 gap-3">
               <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
               <span className="text-sm text-gray-400">Loading transactions…</span>
             </div>
           ) : (
             <AnimatePresence mode="popLayout">
-              {filtered.length > 0 ? (
-                filtered.map((tx, i) => {
+              {transactions.length > 0 ? (
+                transactions.map((tx, i) => {
                   const status = STATUS_CONFIG[tx.status];
-                  const type = TYPE_CONFIG[tx.type];
-                  const SIcon  = status.icon;
-                  const TIcon  = type.icon;
+                  const SIcon = status.icon;
+                  const courseSummary = tx.items.length === 1
+                    ? tx.items[0].courseTitle
+                    : `${tx.items.length} courses`;
+
                   return (
-                    <motion.div key={tx.id} layout
+                    <motion.div key={tx.orderId} layout
                       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                       transition={{ delay: i * 0.015 }}
-                      className="grid grid-cols-[2fr_1.2fr_1fr_1fr_auto] gap-4 px-5 py-4 items-center hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors cursor-pointer group"
-                      onClick={() => setSelected(tx)}
+                      className="grid grid-cols-[2fr_1.4fr_1fr_1fr_auto] gap-4 px-5 py-4 items-center hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors cursor-pointer group"
+                      onClick={() => setSelectedId(tx.orderId)}
                     >
-                      {/* Participant */}
+                      {/* Student / Course */}
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-100 dark:bg-emerald-900/30`}>
-                          <TIcon className={`w-4 h-4 ${type.color}`} />
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-100 dark:bg-emerald-900/30">
+                          <ShoppingCart className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-gray-800 dark:text-white truncate">{tx.from}</p>
-                          <p className="text-[10px] text-gray-400 truncate">{tx.course ?? type.label}</p>
+                          <p className="text-xs font-bold text-gray-800 dark:text-white truncate">{tx.student.name}</p>
+                          <p className="text-[10px] text-gray-400 truncate">{courseSummary}</p>
                         </div>
                       </div>
 
-                      {/* Reference */}
+                      {/* Order ID + date */}
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 truncate">{tx.ref}</p>
-                        <p className="text-[10px] text-gray-400">{tx.date}</p>
+                        <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 truncate font-mono">
+                          {tx.orderId.slice(0, 16)}…
+                        </p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <p className="text-[10px] text-gray-400">{fmtDate(tx.createdAt)}</p>
+                          <span className="text-[9px] px-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 font-bold">{tx.gateway}</span>
+                          {tx.promoCodeSnapshot && (
+                            <span className="text-[9px] px-1.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-bold flex items-center gap-0.5">
+                              <Tag className="w-2 h-2" />{tx.promoCodeSnapshot}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Amount */}
                       <div>
-                        <p className={`text-sm font-black text-emerald-600 dark:text-emerald-400`}>
-                          +{fmtUSD(tx.amount)}
+                        <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                          {fmtCurrency(tx.total, tx.currency)}
                         </p>
-                        <p className="text-[10px] text-gray-400 capitalize">{tx.method}</p>
+                        {tx.discountAmount > 0 && (
+                          <p className="text-[10px] text-gray-400 line-through">{fmtCurrency(tx.subtotal, tx.currency)}</p>
+                        )}
                       </div>
 
                       {/* Status */}
@@ -532,11 +474,11 @@ export default function AdminTransactions() {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                   className="flex flex-col items-center justify-center py-16 text-center">
                   <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center mb-3">
-                    <CreditCard className="w-6 h-6 text-gray-400" />
+                    <AlertCircle className="w-6 h-6 text-gray-400" />
                   </div>
                   <p className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-1">No transactions found</p>
                   <p className="text-xs text-gray-400">
-                    {hasFilters ? "Try adjusting your filters" : "No transactions have been made yet"}
+                    {hasFilters ? "Try adjusting your filters" : "No transactions recorded yet"}
                   </p>
                 </motion.div>
               )}
@@ -544,18 +486,54 @@ export default function AdminTransactions() {
           )}
         </div>
 
-        {/* Revenue summary footer */}
-        {!isLoading && filtered.length > 0 && (
+        {/* Pagination */}
+        {totalPages > 1 && (
           <div className="px-5 py-4 border-t border-gray-100 dark:border-white/[0.06] bg-gray-50/60 dark:bg-white/[0.02] flex items-center justify-between">
             <p className="text-xs text-gray-400">
-              {filtered.length} record{filtered.length !== 1 ? "s" : ""} shown
+              Page {page} of {totalPages} · {totalCount} orders
             </p>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="w-8 h-8 rounded-xl flex items-center justify-center border border-gray-200 dark:border-white/[0.08] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+                const pg = start + i;
+                return (
+                  <button key={pg}
+                    onClick={() => setPage(pg)}
+                    className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                      pg === page
+                        ? "bg-blue-500 text-white shadow-sm"
+                        : "border border-gray-200 dark:border-white/[0.08] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+                    }`}>
+                    {pg}
+                  </button>
+                );
+              })}
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className="w-8 h-8 rounded-xl flex items-center justify-center border border-gray-200 dark:border-white/[0.08] text-gray-500 hover:bg-gray-100 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Subtotal footer (single page) */}
+        {totalPages <= 1 && !listLoading && transactions.length > 0 && (
+          <div className="px-5 py-4 border-t border-gray-100 dark:border-white/[0.06] bg-gray-50/60 dark:bg-white/[0.02] flex items-center justify-between">
+            <p className="text-xs text-gray-400">{transactions.length} record{transactions.length !== 1 ? "s" : ""}</p>
             <div className="flex items-center gap-1.5">
               <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
               <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                Subtotal:{" "}
+                Page total:{" "}
                 <span className="text-emerald-600 dark:text-emerald-400">
-                  {fmtUSD(filtered.reduce((a, t) => a + t.amount, 0))}
+                  {fmtCurrency(transactions.reduce((a, t) => a + t.total, 0))}
                 </span>
               </span>
             </div>
@@ -565,11 +543,8 @@ export default function AdminTransactions() {
 
       {/* Detail modal */}
       <AnimatePresence>
-        {selected && (
-          <TxDetailModal 
-            tx={selected} 
-            onClose={() => setSelected(null)}
-          />
+        {selectedId && (
+          <TxDetailModal orderId={selectedId} onClose={() => setSelectedId(null)} />
         )}
       </AnimatePresence>
     </div>
