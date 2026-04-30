@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import AdminDashboardService, { type AdminActivityItem, type SignupDaySeries } from "@/services/admin-dashboard.service";
+import TransactionService from "@/services/transaction.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -110,11 +111,18 @@ export default function AdminHome() {
     queryFn: () => AdminDashboardService.getSummary(),
   });
 
+  console.log('summary of data', summary)
+
+  const { data: txAnalytics } = useQuery({
+    queryKey: ["transaction-analytics"],
+    queryFn: () => TransactionService.getAnalytics(),
+  });
+
   const totalStudents   = summary?.students?.total      ?? 0;
   const activeInstr     = summary?.instructors?.active  ?? 0;
   const totalCourses    = summary?.courses?.total        ?? 0;
   const draftCourses    = summary?.courses?.draft        ?? 0;
-  const totalRevenue    = summary?.revenue?.total        ?? 0;
+  const totalRevenue    = txAnalytics?.totalRevenue      ?? 0;
   const completionRate  = Number(summary?.completionRate?.rate) || 0;
 
   const platformStats = [
