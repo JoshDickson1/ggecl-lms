@@ -80,12 +80,6 @@ const COURSE_COMPLETION = [
   { name: "UI/UX Design", completed: 78, dropped: 22 },
 ];
 
-const COHORT_RETENTION = [
-  { cohort: "Jan '25", w1: 100, w2: 84, w4: 72, w8: 61, w12: 54 },
-  { cohort: "Feb '25", w1: 100, w2: 88, w4: 76, w8: 64, w12: 58 },
-  { cohort: "Mar '25", w1: 100, w2: 86, w4: 74, w8: 62, w12: null },
-];
-
 // --- Shared UI atoms ---
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -179,24 +173,6 @@ function PieTooltip({ active, payload }: any) {
       <p className="font-bold text-gray-900 dark:text-white">{name}</p>
       <p className="text-gray-500 mt-0.5">{value.toLocaleString()} enrollments</p>
     </div>
-  );
-}
-
-// --- Cohort Retention Table ---
-
-function RetentionCell({ value }: { value: number | null }) {
-  if (value === null) {
-    return <td className="px-4 py-3 text-center"><span className="text-[11px] text-gray-300 dark:text-gray-600">--</span></td>;
-  }
-  const bg =
-    value >= 90 ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
-    : value >= 70 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-    : value >= 50 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
-    : "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300";
-  return (
-    <td className="px-4 py-3 text-center">
-      <span className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold ${bg}`}>{value}%</span>
-    </td>
   );
 }
 
