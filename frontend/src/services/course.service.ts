@@ -298,7 +298,7 @@ export default class CoursesService {
    * ADMIN sees all, INSTRUCTOR sees own, STUDENT sees PUBLISHED only.
    * @param query - Optional filters and pagination
    */
-  static async findAll(query?: CourseQuery): Promise<PaginatedCourses<unknown>> {
+  static async findAll<T = unknown>(query?: CourseQuery): Promise<PaginatedCourses<T>> {
     const response = await APIConfig.fetch(
       `/courses${this.toQueryString(query)}`
     );
