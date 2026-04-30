@@ -51,7 +51,7 @@ function aggregateSignupSeries(
       return buckets.map((v, i) => ({ label: `W${i + 1}`, students: v }));
     }
 
-    // 90d / 1y â†’ aggregate by month
+    // 90d / 1y: aggregate by month
     const monthMap = new Map<string, number>();
     series.forEach(s => {
       const key = new Date(s.date).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
@@ -60,7 +60,7 @@ function aggregateSignupSeries(
     return Array.from(monthMap.entries()).map(([label, students]) => ({ label, students }));
   }
 
-  // No series from backend â€” fall back to a single bar showing the period total
+  // No series from backend -- fall back to a single bar showing the period total
   if (total > 0) {
     const labels: Record<Range, string> = { "7d": "This Week", "30d": "This Month", "90d": "Last 90d", "1y": "This Year" };
     return [{ label: labels[range], students: total }];
@@ -69,7 +69,7 @@ function aggregateSignupSeries(
   return [];
 }
 
-// â”€â”€â”€ Mock data kept for charts without a backend series endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Mock data kept for charts without a backend series endpoint ---
 
 const COURSE_COMPLETION = [
   { name: "React & TS",   completed: 87, dropped: 13 },
@@ -80,14 +80,13 @@ const COURSE_COMPLETION = [
   { name: "UI/UX Design", completed: 78, dropped: 22 },
 ];
 
-
 const COHORT_RETENTION = [
   { cohort: "Jan '25", w1: 100, w2: 84, w4: 72, w8: 61, w12: 54 },
   { cohort: "Feb '25", w1: 100, w2: 88, w4: 76, w8: 64, w12: 58 },
   { cohort: "Mar '25", w1: 100, w2: 86, w4: 74, w8: 62, w12: null },
 ];
 
-// â”€â”€â”€ Shared UI atoms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Shared UI atoms ---
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -149,7 +148,7 @@ function BackendCallout({ text }: { text: string }) {
   );
 }
 
-// â”€â”€â”€ Custom Tooltips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Custom Tooltips ---
 
 function SignupTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -183,11 +182,11 @@ function PieTooltip({ active, payload }: any) {
   );
 }
 
-// â”€â”€â”€ Cohort Retention Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Cohort Retention Table ---
 
 function RetentionCell({ value }: { value: number | null }) {
   if (value === null) {
-    return <td className="px-4 py-3 text-center"><span className="text-[11px] text-gray-300 dark:text-gray-600">â€”</span></td>;
+    return <td className="px-4 py-3 text-center"><span className="text-[11px] text-gray-300 dark:text-gray-600">--</span></td>;
   }
   const bg =
     value >= 90 ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
@@ -201,29 +200,28 @@ function RetentionCell({ value }: { value: number | null }) {
   );
 }
 
-// â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Main Page ---
 
 export default function AdminAnalytics() {
   const [revenueRange, setRevenueRange] = useState<Range>("30d");
   const [signupRange,  setSignupRange]  = useState<Range>("30d");
 
-  // â”€â”€ Single summary call covers all KPIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Single summary call covers all KPIs (no date range = all-time / default 30d from backend)
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["admin-summary"],
     queryFn:  () => AdminDashboardService.getSummary(),
     staleTime: 1000 * 60 * 5,
   });
 
-
-  // â”€â”€ Range-scoped revenue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Range-scoped summary for the Revenue card -- reuses the same summary endpoint with date params
   const revDates = useMemo(() => getRangeDates(revenueRange), [revenueRange]);
-  const { data: revenueData, isLoading: revLoading } = useQuery({
-    queryKey: ["admin-revenue", revenueRange],
-    queryFn:  () => AdminDashboardService.getRevenue(revDates),
+  const { data: revSummary, isLoading: revLoading } = useQuery({
+    queryKey: ["admin-summary-revenue", revenueRange],
+    queryFn:  () => AdminDashboardService.getSummary(revDates),
     staleTime: 1000 * 60 * 5,
   });
 
-  // â”€â”€ Range-scoped signups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Range-scoped signups
   const signDates = useMemo(() => getRangeDates(signupRange), [signupRange]);
   const { data: signupData, isLoading: signLoading } = useQuery({
     queryKey: ["admin-signups", signupRange],
@@ -231,19 +229,21 @@ export default function AdminAnalytics() {
     staleTime: 1000 * 60 * 5,
   });
 
-  console.log('summary data is', summary)
+  // Revenue data sourced from the range-scoped summary (revSummary), falls back to global summary
+  const revenueData = revSummary?.revenue ?? summary?.revenue;
 
-
-  //  Derived values from summary ----------------------------------
+  // Derived values from summary
   const completion        = summary?.completion;
-  const completionRate    = completion?.completionRate ?? 0;
+  const completionRate    = completion?.completionRate ?? completion?.overallRate ?? 0;
   const topEnrollments    = summary?.topEnrollments ?? [];
 
-  // Per-course completion from coursesByCompletionRate
-  const perCourseCompletion = summary?.coursesByCompletionRate?.courses ?? [];
+  // Per-course completion from coursesByCompletionRate or completion.perCourse
+  const perCourseCompletion = summary?.coursesByCompletionRate?.courses
+    ?? summary?.completion?.perCourse
+    ?? [];
 
-  // Enrollments by category  real data from summary
-  const categoryData = (summary?.enrollmentsByCategory?.categories ?? []).map((c, i) => ({
+  // Enrollments by category -- real data from summary
+  const categoryData = (summary?.enrollmentsByCategory?.categories ?? []).map((c: any, i: number) => ({
     name: c.tag,
     value: c.enrollments,
     color: ["#3b82f6","#8b5cf6","#f59e0b","#10b981","#f43f5e","#06b6d4","#a78bfa","#fb923c"][i % 8],
@@ -262,9 +262,9 @@ export default function AdminAnalytics() {
     [signupSeries, signupRange, signupTotal],
   );
 
-  const pieTotal = categoryData.reduce((a, d) => a + d.value, 0) || 1;
+  const pieTotal = categoryData.reduce((a: number, d: any) => a + d.value, 0) || 1;
 
-  //  KPI cards -
+  // KPI cards -- all sourced from the global summary
   const orderCount = summary?.revenue?.orderCount ?? summary?.revenue?.enrollmentCount ?? 0;
   const kpiSummary = [
     {
@@ -276,7 +276,7 @@ export default function AdminAnalytics() {
     {
       label: "New Signups",
       value: summaryLoading ? "" : (summary?.signups?.total ?? 0).toLocaleString(),
-      sub: `${summary?.signups?.byRole?.students ?? 0} students  ${summary?.signups?.byRole?.instructors ?? 0} instructors`,
+      sub: `${summary?.signups?.byRole?.students ?? 0} students / ${summary?.signups?.byRole?.instructors ?? 0} instructors`,
       icon: UserCheck, color: "from-blue-500 to-blue-600", trendUp: true,
     },
     {
@@ -309,13 +309,13 @@ export default function AdminAnalytics() {
   return (
     <div className="max-w-[1200px] mx-auto space-y-5 pb-12">
 
-      {/* â”€â”€ Page header â”€â”€ */}
+      {/* Page header */}
       <Fade>
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <BarChart2 className="w-4 h-4 text-blue-500" />
-              <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">Admin Â· Analytics</span>
+              <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">Admin Analytics</span>
             </div>
             <h1 className="text-2xl font-black text-gray-900 dark:text-white">Platform Analytics</h1>
             <p className="text-xs text-gray-400 mt-0.5">
@@ -333,7 +333,7 @@ export default function AdminAnalytics() {
         </div>
       </Fade>
 
-      {/* â”€â”€ KPI grid â”€â”€ */}
+      {/* KPI grid */}
       <Fade delay={0.04}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {kpiSummary.map(({ label, value, sub, icon: Ic, color, trendUp }, i) => (
@@ -354,10 +354,10 @@ export default function AdminAnalytics() {
         </div>
       </Fade>
 
-      {/* â”€â”€ Revenue (real totals) + Signups (real chart) â”€â”€ */}
+      {/* Revenue (real totals from range-scoped summary) + Signups (real chart) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {/* Revenue â€” real totals, no time series yet */}
+        {/* Revenue -- powered by range-scoped getSummary call */}
         <Fade delay={0.1}>
           <Card className="p-6 flex flex-col">
             <SectionHeader icon={DollarSign} title="Revenue" sub="Gross revenue for selected period">
@@ -371,9 +371,9 @@ export default function AdminAnalytics() {
             ) : (
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { icon: TrendingUp,  label: "Total Revenue",       value: `$${((revenueData?.total ?? 0) / 1000).toFixed(1)}k`,    color: "from-emerald-500 to-teal-600"  },
-                  { icon: ShoppingCart, label: "Enrollments",         value: (revenueData?.enrollmentCount ?? 0).toLocaleString(),     color: "from-blue-500 to-indigo-600"   },
-                  { icon: DollarSign,  label: "Avg Order",            value: `$${(revenueData?.averageOrderValue ?? 0).toFixed(2)}`,  color: "from-violet-500 to-purple-600" },
+                  { icon: TrendingUp,   label: "Total Revenue", value: `$${((revenueData?.total ?? 0) / 1000).toFixed(1)}k`,           color: "from-emerald-500 to-teal-600"  },
+                  { icon: ShoppingCart, label: "Enrollments",   value: (revenueData?.enrollmentCount ?? revenueData?.orderCount ?? 0).toLocaleString(), color: "from-blue-500 to-indigo-600"   },
+                  { icon: DollarSign,   label: "Avg Order",     value: `$${(revenueData?.averageOrderValue ?? 0).toFixed(2)}`,          color: "from-violet-500 to-purple-600" },
                 ].map(({ icon: Icon, label, value, color }) => (
                   <div key={label} className="flex flex-col items-center py-5 px-3 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] text-center">
                     <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-2`}>
@@ -385,12 +385,10 @@ export default function AdminAnalytics() {
                 ))}
               </div>
             )}
-
-            
           </Card>
         </Fade>
 
-        {/* Signups â€” real series data from API */}
+        {/* Signups -- real series data from API */}
         <Fade delay={0.12}>
           <Card className="p-6">
             <SectionHeader icon={Users} title="New Signups" sub="Users joining the platform">
@@ -464,7 +462,7 @@ export default function AdminAnalytics() {
                 {signupStudents === 0 && signupInstructors === 0 && (
                   <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
                     <Info className="w-3 h-3" />
-                    Showing combined total â€” per-role breakdown not available for this period.
+                    Showing combined total -- per-role breakdown not available for this period.
                   </p>
                 )}
               </>
@@ -473,7 +471,7 @@ export default function AdminAnalytics() {
         </Fade>
       </div>
 
-      {/* â”€â”€ Completion + Enrollment breakdown (mock + callouts) â”€â”€ */}
+      {/* Completion + Enrollment breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-5">
 
         <Fade delay={0.14}>
@@ -482,10 +480,10 @@ export default function AdminAnalytics() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart
                 data={perCourseCompletion.length > 0
-                  ? perCourseCompletion.map(c => ({
-                      name: c.title.length > 14 ? c.title.slice(0, 14) + "" : c.title,
-                      completed: Math.round(c.avgCompletionRate),
-                      dropped: Math.round(100 - c.avgCompletionRate),
+                  ? perCourseCompletion.map((c: any) => ({
+                      name: c.title.length > 14 ? c.title.slice(0, 14) + "..." : c.title,
+                      completed: Math.round(c.avgCompletionRate ?? c.completionRate ?? 0),
+                      dropped:   Math.round(100 - (c.avgCompletionRate ?? c.completionRate ?? 0)),
                     }))
                   : COURSE_COMPLETION
                 }
@@ -504,7 +502,7 @@ export default function AdminAnalytics() {
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-rose-400 opacity-70 inline-block" />Dropped</span>
             </div>
             {perCourseCompletion.length === 0 && (
-              <BackendCallout text="Showing sample data. The summary endpoint's completion.perCourse array is empty â€” data will appear once students complete courses." />
+              <BackendCallout text="Showing sample data. The summary endpoint's completion.perCourse array is empty -- data will appear once students complete courses." />
             )}
           </Card>
         </Fade>
@@ -516,15 +514,15 @@ export default function AdminAnalytics() {
               <PieChart>
                 <Pie data={categoryData} cx="50%" cy="50%" outerRadius={70} innerRadius={40}
                   dataKey="value" paddingAngle={3}>
-                  {categoryData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
+                  {categoryData.map((_: any, i: number) => (
+                    <Cell key={i} fill={categoryData[i].color} />
                   ))}
                 </Pie>
                 <Tooltip content={<PieTooltip />} />
               </PieChart>
             </ResponsiveContainer>
             <div className="mt-2 space-y-2">
-              {categoryData.map((d) => (
+              {categoryData.map((d: any) => (
                 <div key={d.name} className="flex items-center gap-2.5">
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
                   <span className="text-xs text-gray-600 dark:text-gray-400 flex-1">{d.name}</span>
@@ -533,68 +531,11 @@ export default function AdminAnalytics() {
                 </div>
               ))}
             </div>
-            
           </Card>
         </Fade>
       </div>
 
-      {/* â”€â”€ Cohort Retention Table (mock + callout) â”€â”€ */}
-      {/* <Fade delay={0.18}>
-        <Card className="p-6">
-          <SectionHeader icon={Repeat2} title="Cohort Retention"
-            sub="% of students still active at each week milestone" />
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-white/[0.06]">
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Cohort</th>
-                  {["Week 1", "Week 2", "Week 4", "Week 8", "Week 12"].map(w => (
-                    <th key={w} className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">{w}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-white/[0.04]">
-                {COHORT_RETENTION.map((row, i) => (
-                  <motion.tr key={row.cohort}
-                    initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.22 + i * 0.06 }}
-                    className="hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors">
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-bold text-gray-900 dark:text-white">{row.cohort}</span>
-                    </td>
-                    <RetentionCell value={row.w1} />
-                    <RetentionCell value={row.w2} />
-                    <RetentionCell value={row.w4} />
-                    <RetentionCell value={row.w8} />
-                    <RetentionCell value={row.w12} />
-                  </motion.tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-gray-100 dark:border-white/[0.06]">
-                  <td className="px-4 py-3 text-xs font-bold text-gray-400">Avg</td>
-                  {[100, 86, 74, 62, 56].map((avg, i) => (
-                    <td key={i} className="px-4 py-3 text-center">
-                      <span className="text-xs font-bold text-gray-600 dark:text-gray-300">{avg}%</span>
-                    </td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div className="mt-3 flex items-center gap-4 text-[11px] text-gray-400">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-100 dark:bg-emerald-900/30 inline-block" />90%</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 inline-block" />89%</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30 inline-block" />69%</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-rose-100 dark:bg-rose-900/30 inline-block" />50%</span>
-          </div>
-          
-        </Card>
-      </Fade> */}
-
-      {/* â”€â”€ Top Courses Table (real data) â”€â”€ */}
+      {/* Top Courses Table (real data) */}
       <Fade delay={0.2}>
         <Card className="p-6">
           <div className="flex items-center justify-between mb-5">
@@ -604,7 +545,7 @@ export default function AdminAnalytics() {
               </div>
               <div>
                 <h2 className="font-black text-base text-gray-900 dark:text-white">Top Performing Courses</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Ranked by enrollment· all time</p>
+                <p className="text-xs text-gray-400 mt-0.5">Ranked by enrollment · all time</p>
               </div>
             </div>
             <Link to="/admin/courses"
@@ -623,7 +564,7 @@ export default function AdminAnalytics() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-white/[0.04]">
-                {topEnrollments.map((c, i) => (
+                {topEnrollments.map((c: any, i: number) => (
                   <motion.tr key={c.id}
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.24 + i * 0.05 }}
                     className="hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors group">
@@ -662,7 +603,7 @@ export default function AdminAnalytics() {
         </Card>
       </Fade>
 
-      {/* â”€â”€ Activities link â”€â”€ */}
+      {/* Activities link */}
       <Fade delay={0.22}>
         <Link to="/admin/activities"
           className="flex items-center justify-between p-5 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 hover:opacity-90 transition-all shadow-lg group">
@@ -678,4 +619,3 @@ export default function AdminAnalytics() {
     </div>
   );
 }
-
