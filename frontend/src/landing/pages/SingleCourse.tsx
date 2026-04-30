@@ -43,6 +43,7 @@ interface PublicCourse {
   badge: string | null;
   totalDuration: number;
   instructorId: string;
+  instructorName: string;
   syllabus: string[];
   includes: string[];
   _count: { enrollments: number };
@@ -56,13 +57,37 @@ interface Review {
   id: string;
   rating: number;
   comment: string | null;
+  isEdited: boolean;
   createdAt: string;
-  student: { name: string; image: string | null };
+  updatedAt: string;
+  student: {
+    id: string;
+    user: {
+      id: string;
+      name: string;
+      image?: string | null;
+    };
+  };
+  reply?: {
+    id: string;
+    comment: string;
+    isEdited: boolean;
+    instructor: {
+      id: string;
+      user: {
+        id: string;
+        name: string;
+        image?: string | null;
+      };
+    };
+    createdAt: string;
+    updatedAt: string;
+  };
 }
 
 interface ReviewsResponse {
-  items: Review[];
-  meta: { total: number; averageRating: number };
+  data: Review[];
+  meta: { total: number; page: number; limit: number; averageRating: number; ratingBreakdown: Record<string, number> };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -381,6 +406,8 @@ export default function SingleCourse() {
     enabled:  !!id,
   });
 
+  console.log('reviews data', reviewsData)
+
   const toggleSection = (i: number) =>
     setOpenSections(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]);
 
@@ -402,7 +429,7 @@ export default function SingleCourse() {
   }
 
   const gradient   = GRADIENTS[0];
-  const reviews    = reviewsData?.items ?? [];
+  const reviews    = reviewsData?.data ?? [];
   const sortedSections = [...course.sections].sort((a, b) => a.position - b.position);
   const totalLessons   = sortedSections.reduce((acc, s) => acc + s.lessons.length, 0);
 
@@ -498,9 +525,9 @@ export default function SingleCourse() {
                 </div>
                 <div>
                   <p className="text-white/60 text-xs">Instructor</p>
-                  <Link to={`/instructors/${course.instructorId}`}
+                  <Link to={`/instructors/${course.instructorName}`}
                     className="text-white font-bold text-sm hover:underline underline-offset-4 decoration-white/50">
-                    View instructor
+                    {course.instructorName}
                   </Link>
                 </div>
               </motion.div>
@@ -591,11 +618,11 @@ export default function SingleCourse() {
                     <motion.div key={review.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.3 + i * 0.08 }} className="flex gap-4">
                       <div className={`w-10 h-10 rounded-2xl text-sm font-black text-white flex items-center justify-center flex-shrink-0 ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`}>
-                        {initials(review.student.name)}
+                        {initials(review.student.user.name)}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-1">
-                          <span className="text-sm font-bold text-gray-900 dark:text-white">{review.student.name}</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">{review.student.user.name}</span>
                           <Stars rating={review.rating} size="sm" />
                           <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{fmtRelative(review.createdAt)}</span>
                         </div>
