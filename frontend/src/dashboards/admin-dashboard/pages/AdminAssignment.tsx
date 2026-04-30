@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import {
   Plus, Search, FileText, Edit3, Trash2,
   BookOpen, Users, CheckCircle2, Clock, Loader2,
-  AlertTriangle, Eye, X,
+  AlertTriangle, Eye,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AssignmentService from "@/services/assignment.service";

@@ -131,7 +131,7 @@ export default function AdminAssignmentPreview() {
 
   const { data: coursesData } = useQuery({
     queryKey: ["courses-list", 200],
-    queryFn: () => CoursesService.findAll({ limit: 200, page: 1 }),
+    queryFn: () => CoursesService.findAll({ limit: 200 }),
     staleTime: 1000 * 60 * 5,
   });
 

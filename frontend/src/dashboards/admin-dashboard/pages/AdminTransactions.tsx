@@ -233,7 +233,6 @@ export default function AdminTransactions() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const isLoading = listLoading || analyticsLoading;
   const transactions = list?.items ?? [];
   const totalPages = list?.totalPages ?? 1;
   const totalCount = list?.total ?? 0;
