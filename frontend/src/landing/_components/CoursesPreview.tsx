@@ -23,6 +23,7 @@ interface PublicCourseDto {
   badge: string | null;
   totalDuration: number;
   instructorId: string;
+  instructorName: string;
   _count: { enrollments: number };
   averageRating: number;
   reviewCount: number;
@@ -105,6 +106,7 @@ function mapDtoToCourse(dto: PublicCourseDto, index: number): Course {
       students: 0,
       courses:  0,
     },
+    instructorName: dto.instructorName
   };
 }
 
@@ -204,7 +206,7 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
               {course.instructor.avatar}
             </span>
             <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {course.instructor.name}
+              {course.instructorName}
             </span>
           </div>
 

@@ -31,6 +31,7 @@ export type Course = {
   title: string;
   description: string;
   instructor: Instructor;
+  instructorName?: string;
   thumbnail: string; // gradient classes used as bg fallback
   price: number;
   originalPrice: number;
