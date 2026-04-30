@@ -473,7 +473,7 @@ export default function OurStudents() {
       <style>{FONTS}</style>
 
       {/* ── Hero ── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#0a1628] via-[#0e1f3d] to-[#0a1628] pt-24 pb-20">
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#0a1628] via-[#0e1f3d] to-[#0a1628] pt-36 pb-28">
         {/* grid bg */}
         <div className="absolute inset-0 opacity-[0.04]"
           style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.8) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />

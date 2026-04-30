@@ -334,14 +334,14 @@ export default function PublicStudentProfile() {
       <style>{FONTS}</style>
 
       {/* ── Hero / cover ── */}
-      <div className={`relative h-52 md:h-64 bg-gradient-to-br ${student.gradient} overflow-hidden`}>
+      <div className={`relative h-64 md:h-80 bg-gradient-to-br ${student.gradient} overflow-hidden pt-20 pb-8`}>
         {/* pattern */}
         <div className="absolute inset-0 opacity-[0.15]"
           style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
         <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/30 to-transparent" />
 
         {/* back btn */}
-        <div className="absolute top-5 left-6">
+        <div className="absolute top-20 left-6">
           <button
             onClick={() => navigate(-1)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30 text-white text-xs font-bold hover:bg-white/30 transition-all"
@@ -362,7 +362,7 @@ export default function PublicStudentProfile() {
           <div className="flex-1 pb-1">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white leading-tight"
+                <h1 className="text-2xl md:text-3xl font-black text-white leading-tight"
                   style={{ fontFamily: "'Syne', sans-serif" }}>
                   {student.name}
                 </h1>
