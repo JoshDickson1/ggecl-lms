@@ -232,9 +232,11 @@ export default function AdminAnalytics() {
   // Revenue data sourced from the range-scoped summary (revSummary), falls back to global summary
   const revenueData = revSummary?.revenue ?? summary?.revenue;
 
+  console.log('range scoped', revSummary)
+
   // Derived values from summary
   const completion        = summary?.completion;
-  const completionRate    = completion?.completionRate ?? completion?.overallRate ?? 0;
+  const completionRate    = completion?.completionRate ??  0;
   const topEnrollments    = summary?.topEnrollments ?? [];
 
   // Per-course completion from coursesByCompletionRate or completion.perCourse
@@ -264,6 +266,7 @@ export default function AdminAnalytics() {
 
   const pieTotal = categoryData.reduce((a: number, d: any) => a + d.value, 0) || 1;
 
+  console.log('summarry', summary)
   // KPI cards -- all sourced from the global summary
   const orderCount = summary?.revenue?.orderCount ?? summary?.revenue?.enrollmentCount ?? 0;
   const kpiSummary = [
@@ -372,7 +375,7 @@ export default function AdminAnalytics() {
               <div className="grid grid-cols-3 gap-3">
                 {[
                   { icon: TrendingUp,   label: "Total Revenue", value: `$${((revenueData?.total ?? 0) / 1000).toFixed(1)}k`,           color: "from-emerald-500 to-teal-600"  },
-                  { icon: ShoppingCart, label: "Enrollments",   value: (revenueData?.enrollmentCount ?? revenueData?.orderCount ?? 0).toLocaleString(), color: "from-blue-500 to-indigo-600"   },
+                  { icon: ShoppingCart, label: "Enrollments",   value: (revSummary?.enrollments.total ?? 0).toLocaleString(), color: "from-blue-500 to-indigo-600"   },
                   { icon: DollarSign,   label: "Avg Order",     value: `$${(revenueData?.averageOrderValue ?? 0).toFixed(2)}`,          color: "from-violet-500 to-purple-600" },
                 ].map(({ icon: Icon, label, value, color }) => (
                   <div key={label} className="flex flex-col items-center py-5 px-3 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] text-center">
