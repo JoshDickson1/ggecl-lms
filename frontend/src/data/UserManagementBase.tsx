@@ -9,7 +9,7 @@ import {
   CheckCircle2, AlertTriangle, Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import UserService, { UserRole as ApiUserRole } from "@/services/user.service";
+import UserService, { UserRole as ApiUserRole, type PublicUserListItem } from "@/services/user.service";
 import AdminDashboardService from "@/services/admin-dashboard.service";
 import { useDashboardUser } from "@/hooks/useDashboardUser";
 
@@ -31,16 +31,6 @@ export interface ManagedUser {
   permissions?: string;
 }
 
-interface ApiUser {
-  id: string;
-  name: string;
-  email: string;
-  image?: string | null;
-  role: string;
-  bio?: string | null;
-  phone?: string | null;
-  createdAt: string;
-}
 
 const ROLE_ENUM: Record<UserRole, ApiUserRole> = {
   student:    ApiUserRole.STUDENT,
@@ -57,19 +47,35 @@ function generatePassword(): string {
   return [rand(upper), rand(upper), rand(chars), rand(chars), rand(chars), rand(chars), rand(digits), rand(digits), rand(sym)].join("");
 }
 
-function mapApiUser(u: ApiUser, role: UserRole): ManagedUser {
+function normalizeGender(g: string | null | undefined): ManagedUser["gender"] {
+  const v = (g ?? "").toLowerCase();
+  if (v === "male")   return "Male";
+  if (v === "female") return "Female";
+  return "Other";
+}
+
+function mapPublicUser(u: PublicUserListItem, role: UserRole): ManagedUser {
   const [firstName, ...rest] = u.name.split(" ");
+
+  const enrollments = role === "student"
+    ? (u.studentProfile?.enrollments?.length ?? 0)
+    : undefined;
+
+  const courses = role === "instructor"
+    ? (u.instructorProfile?.courses?.length ?? 0)
+    : undefined;
+
   return {
     id:        u.id,
     firstName: firstName || u.name,
     lastName:  rest.join(" ") || "",
     email:     u.email,
     image:     u.image,
-    gender:    "Other",
+    gender:    normalizeGender(u.gender),
     status:    "Active",
     createdAt: new Date(u.createdAt),
-    ...(role === "student"    ? { enrollments: 0 }          : {}),
-    ...(role === "instructor" ? { courses: 0 }              : {}),
+    ...(role === "student"    ? { enrollments }           : {}),
+    ...(role === "instructor" ? { courses }               : {}),
     ...(role === "admin"      ? { permissions: "Read Only" } : {}),
   };
 }
@@ -223,24 +229,40 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
   const { data: rawUsers = [], isLoading, isError } = useQuery<ManagedUser[]>({
     queryKey: ["admin-users", role],
     queryFn: async () => {
-      let res: { data?: ApiUser[] } | ApiUser[];
-
+      // Admins aren't in the public endpoint — use authenticated findAll
       if (role === "admin") {
+        type AdminRes = { data?: { id: string; name: string; email: string; image?: string | null; role: string; createdAt: string }[] } | { id: string; name: string; email: string; image?: string | null; role: string; createdAt: string }[];
+        let res: AdminRes;
         try {
-          res = await UserService.findAdmins({ limit: 200 }) as { data?: ApiUser[] } | ApiUser[];
+          res = await UserService.findAdmins({ limit: 200 }) as AdminRes;
         } catch {
-          res = await UserService.findAll({ limit: 200 }) as { data?: ApiUser[] } | ApiUser[];
+          res = await UserService.findAll({ limit: 200 }) as AdminRes;
         }
-      } else {
-        res = await UserService.findAll({ role: ROLE_ENUM[role], limit: 200 }) as { data?: ApiUser[] } | ApiUser[];
+        const list = Array.isArray(res) ? res : ((res as { data?: typeof res extends Array<infer T> ? T[] : never }).data ?? []) as { id: string; name: string; email: string; image?: string | null; role: string; createdAt: string }[];
+        return list
+          .filter(u => u.role?.toUpperCase() === ApiUserRole.ADMIN)
+          .map(u => {
+            const [firstName, ...rest] = u.name.split(" ");
+            return {
+              id: u.id, firstName: firstName || u.name, lastName: rest.join(" ") || "",
+              email: u.email, image: u.image, gender: "Other" as const,
+              status: "Active" as const, createdAt: new Date(u.createdAt),
+              permissions: "Read Only",
+            };
+          });
       }
 
-      const list: ApiUser[] = Array.isArray(res) ? res : ((res as { data?: ApiUser[] }).data ?? []);
-      return list
-        .filter(u => u.role?.toUpperCase() === ROLE_ENUM[role]?.toUpperCase())
-        .map(u => mapApiUser(u, role));
+      // Students and instructors: use the public endpoint which includes
+      // gender, studentProfile.enrollments, and instructorProfile.courses
+      const res = await UserService.findAllPublicUsers({
+        role: ROLE_ENUM[role],
+        limit: 200,
+      });
+      return (res.data ?? []).map(u => mapPublicUser(u, role));
     },
   });
+
+  console.log('raw users look like', rawUsers)
 
   const createMutation = useMutation({
     mutationFn: async () => {
