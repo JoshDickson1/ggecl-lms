@@ -54,6 +54,7 @@ interface StudentUser {
   name: string;
   image: string | null;
   email: string;
+  studentProfile?: { id: string };
 }
 
 // ─── Student Enrollment Manager ─────────────────────────────────────────────────
@@ -97,7 +98,13 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
 
   // Mutations for enrollment management
   const enrollMutation = useMutation({
-    mutationFn: (studentIds: string[]) => EnrollmentService.adminEnroll(courseId, studentIds),
+    mutationFn: (students: StudentUser[]) => {
+      const studentIds = students
+        .map(s => s.studentProfile?.id)
+        .filter((id): id is string => !!id);
+      if (!studentIds.length) return Promise.resolve(null);
+      return EnrollmentService.adminBulkEnroll(courseId, studentIds);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["course-enrollments", courseId] });
       qc.invalidateQueries({ queryKey: ["admin-courses"] });
@@ -119,8 +126,8 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
   const enrolledStudentIds = new Set((enrollments as any[]).map((e: any) => e.student?.id || e.studentId));
   const availableStudents = allStudents.filter(s => !enrolledStudentIds.has(s.id));
 
-  const handleEnroll = (studentIds: string[]) => {
-    enrollMutation.mutate(studentIds);
+  const handleEnroll = (student: StudentUser) => {
+    enrollMutation.mutate([student]);
   };
 
   const handleUnenroll = (studentIds: string[]) => {
@@ -249,7 +256,7 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
                       <p className="text-xs text-gray-400 truncate">{student.email}</p>
                     </div>
                     <button
-                      onClick={() => handleEnroll([student.id])}
+                      onClick={() => handleEnroll(student)}
                       disabled={enrollMutation.isPending}
                       className="p-2 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors disabled:opacity-50"
                     >
