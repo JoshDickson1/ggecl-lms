@@ -241,7 +241,6 @@ export default function AdminAnalytics() {
 
   // Per-course completion from coursesByCompletionRate or completion.perCourse
   const perCourseCompletion = summary?.coursesByCompletionRate?.courses
-    ?? summary?.completion?.perCourse
     ?? [];
 
   // Enrollments by category -- real data from summary

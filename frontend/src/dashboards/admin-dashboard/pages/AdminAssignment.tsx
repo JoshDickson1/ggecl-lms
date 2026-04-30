@@ -1,15 +1,17 @@
 // src/pages/admin/AdminAssignment.tsx
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   Plus, Search, FileText, Edit3, Trash2,
   BookOpen, Users, CheckCircle2, Clock, Loader2,
-  AlertTriangle, Eye,
+  AlertTriangle, Eye, X, Save, Upload,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import AssignmentService from "@/services/assignment.service";
+import AssignmentService, { type UpdateAssignmentDto } from "@/services/assignment.service";
 import CoursesService from "@/services/course.service";
+import StorageService from "@/services/storage.service";
+import { FILE_META, getFileType } from "@/data/academicData";
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(" "); }
 
@@ -21,19 +23,12 @@ function Fade({ children, delay = 0 }: { children: React.ReactNode; delay?: numb
   return <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.36, delay, ease: "easeOut" }}>{children}</motion.div>;
 }
 
-// Per-row submission count — each row fetches its own stats (React Query deduplicates + caches)
-function SubmissionCount({ assignmentId }: { assignmentId: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["assignment-stats", assignmentId],
-    queryFn: () => AssignmentService.getStats(assignmentId),
-    staleTime: 1000 * 60 * 5,
-  });
-  if (isLoading) return <Loader2 className="w-3 h-3 animate-spin text-gray-400" />;
-  if (!data) return <span className="text-gray-400 text-xs">—</span>;
+// Per-row submission count — reads from the submissions array already included in the list response
+function SubmissionCount({ count }: { count: number }) {
   return (
     <div className="flex items-baseline gap-1">
-      <span className="text-sm font-black text-gray-800 dark:text-white">{data.totalSubmissions}</span>
-      <span className="text-[10px] text-gray-400">/ {data.totalEnrolled} enrolled</span>
+      <span className="text-sm font-black text-gray-800 dark:text-white">{count}</span>
+      <span className="text-[10px] text-gray-400">submission{count !== 1 ? "s" : ""}</span>
     </div>
   );
 }
@@ -79,10 +74,284 @@ function DeleteModal({
   );
 }
 
+// Edit modal
+interface EditTarget {
+  id: string;
+  title: string;
+  description: string;
+  instructions: string;
+  maxScore: number;
+  dueDate: string;
+  allowLate: boolean;
+  attachments: string[]; // existing CDN URLs
+}
+
+function EditModal({
+  target, onSave, onCancel, isSaving,
+}: {
+  target: EditTarget;
+  onSave: (id: string, data: UpdateAssignmentDto) => void;
+  onCancel: () => void;
+  isSaving: boolean;
+}) {
+  // Convert ISO → datetime-local string (YYYY-MM-DDTHH:mm)
+  const toLocalDT = (iso: string) => {
+    if (!iso) return "";
+    try { return new Date(iso).toISOString().slice(0, 16); } catch { return ""; }
+  };
+
+  const [title,        setTitle]        = useState(target.title);
+  const [description,  setDescription]  = useState(target.description);
+  const [instructions, setInstructions] = useState(target.instructions);
+  const [maxScore,     setMaxScore]     = useState(target.maxScore);
+  const [dueDate,      setDueDate]      = useState(toLocalDT(target.dueDate));
+  const [allowLate,    setAllowLate]    = useState(target.allowLate);
+
+  // Existing attachments (URLs) — user can remove them
+  const [existingAttachments, setExistingAttachments] = useState<string[]>(target.attachments ?? []);
+  // New files to upload
+  const [newFiles,    setNewFiles]    = useState<File[]>([]);
+  const [uploading,   setUploading]   = useState(false);
+  const [uploadProg,  setUploadProg]  = useState<{ done: number; total: number } | null>(null);
+  const [saveError,   setSaveError]   = useState<string | null>(null);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    setNewFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
+  }, []);
+
+  const handleSave = async () => {
+    setSaveError(null);
+    let uploadedUrls: string[] = [];
+
+    if (newFiles.length > 0) {
+      setUploading(true);
+      setUploadProg({ done: 0, total: newFiles.length });
+      try {
+        for (let i = 0; i < newFiles.length; i++) {
+          const url = await StorageService.upload("assignments", newFiles[i]);
+          uploadedUrls.push(url);
+          setUploadProg({ done: i + 1, total: newFiles.length });
+        }
+      } catch {
+        setSaveError("File upload failed. Please try again.");
+        setUploading(false);
+        setUploadProg(null);
+        return;
+      }
+      setUploading(false);
+      setUploadProg(null);
+    }
+
+    const payload: UpdateAssignmentDto = {
+      title:        title.trim(),
+      description:  description.trim(),
+      instructions: instructions.trim(),
+      maxScore,
+      dueDate:      dueDate ? new Date(dueDate).toISOString() : undefined,
+      allowLate,
+      attachments:  [...existingAttachments, ...uploadedUrls],
+    };
+
+    onSave(target.id, payload);
+  };
+
+  const inputCls =
+    "w-full px-3 py-2 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 outline-none transition-all";
+  const labelCls = "block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1";
+
+  const busy = isSaving || uploading;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && !busy && onCancel()}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        className="w-full max-w-lg rounded-[24px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_24px_80px_rgba(0,0,0,0.22)] overflow-hidden flex flex-col max-h-[90vh]"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950/40 flex items-center justify-center">
+              <Edit3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <h2 className="text-base font-black text-gray-900 dark:text-white">Edit Assignment</h2>
+          </div>
+          <button onClick={onCancel} disabled={busy}
+            className="w-7 h-7 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-all disabled:opacity-40">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
+
+          {/* Error banner */}
+          {saveError && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 text-xs text-red-600 dark:text-red-400">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              {saveError}
+            </div>
+          )}
+
+          {/* Title */}
+          <div>
+            <label className={labelCls}>Title <span className="text-blue-500">*</span></label>
+            <input value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="Assignment title" className={inputCls} />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className={labelCls}>Description</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)}
+              rows={2} placeholder="Brief description…" className={`${inputCls} resize-none`} />
+          </div>
+
+          {/* Instructions */}
+          <div>
+            <label className={labelCls}>Instructions</label>
+            <textarea value={instructions} onChange={e => setInstructions(e.target.value)}
+              rows={4} placeholder="Step-by-step instructions for students…"
+              className={`${inputCls} resize-none font-mono text-xs`} />
+          </div>
+
+          {/* Max score + Due date */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Max Score</label>
+              <input type="number" min={1} value={maxScore}
+                onChange={e => setMaxScore(Math.max(1, Number(e.target.value)))}
+                className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Due Date & Time</label>
+              <input type="datetime-local" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                className={inputCls} />
+            </div>
+          </div>
+
+          {/* Allow late toggle */}
+          <button type="button" onClick={() => setAllowLate(v => !v)}
+            className="flex items-center gap-3 cursor-pointer select-none w-full text-left">
+            <div className={`w-10 h-5 rounded-full transition-colors flex-shrink-0 relative ${allowLate ? "bg-blue-600" : "bg-gray-200 dark:bg-white/[0.1]"}`}>
+              <motion.div animate={{ x: allowLate ? 20 : 2 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow" />
+            </div>
+            <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">Allow late submissions</span>
+          </button>
+
+          {/* ── Attachments ── */}
+          <div>
+            <label className={labelCls}>Attachments</label>
+
+            {/* Existing URLs */}
+            {existingAttachments.length > 0 && (
+              <div className="flex flex-col gap-1.5 mb-2">
+                {existingAttachments.map((url, i) => {
+                  const name = url.split("/").pop() ?? url;
+                  const type = getFileType(name);
+                  const meta = FILE_META[type];
+                  return (
+                    <div key={i} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl ${meta.bg} border border-gray-100 dark:border-white/[0.06] group`}>
+                      <span className="text-base leading-none flex-shrink-0">{meta.icon}</span>
+                      <span className="flex-1 text-xs text-gray-700 dark:text-gray-300 truncate min-w-0">{name}</span>
+                      <button type="button"
+                        onClick={() => setExistingAttachments(prev => prev.filter((_, j) => j !== i))}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                        title="Remove">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* New files queued */}
+            {newFiles.length > 0 && (
+              <div className="flex flex-col gap-1.5 mb-2">
+                {newFiles.map((file, i) => {
+                  const type = getFileType(file.name);
+                  const meta = FILE_META[type];
+                  return (
+                    <div key={i} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl ${meta.bg} border border-blue-100 dark:border-blue-900/30 group`}>
+                      <span className="text-base leading-none flex-shrink-0">{meta.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">{file.name}</p>
+                        <p className={`text-[10px] ${meta.color}`}>{(file.size / 1024 / 1024).toFixed(2)} MB · new</p>
+                      </div>
+                      <button type="button"
+                        onClick={() => setNewFiles(prev => prev.filter((_, j) => j !== i))}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                        title="Remove">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Drop zone */}
+            <div
+              onDragOver={e => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl px-4 py-5 text-center cursor-pointer transition-all duration-200 ${
+                dragging
+                  ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20"
+                  : "border-gray-200 dark:border-white/[0.08] hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/20 dark:hover:bg-blue-950/10"
+              }`}>
+              <Upload className={`w-5 h-5 mx-auto mb-1.5 transition-colors ${dragging ? "text-blue-500" : "text-gray-300 dark:text-gray-600"}`} />
+              <p className={`text-xs font-semibold transition-colors ${dragging ? "text-blue-600 dark:text-blue-400" : "text-gray-400"}`}>
+                {dragging ? "Drop to attach" : "Drag & drop or click to add files"}
+              </p>
+              <p className="text-[10px] text-gray-400 mt-0.5">PDF, images, ZIP, MP4 — max 50 MB each</p>
+              <input ref={fileRef} type="file" multiple accept=".pdf,.zip,image/*,video/mp4"
+                className="hidden" onChange={e => e.target.files && setNewFiles(prev => [...prev, ...Array.from(e.target.files!)])} />
+            </div>
+
+            {/* Upload progress */}
+            {uploading && uploadProg && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+                Uploading {uploadProg.done} / {uploadProg.total}…
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100 dark:border-white/[0.06] flex-shrink-0">
+          <button onClick={onCancel} disabled={busy}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-all disabled:opacity-40">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={busy || !title.trim()}
+            className="flex-1 py-2.5 rounded-xl text-sm font-black bg-blue-600 hover:bg-blue-500 text-white transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+            {busy
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />{uploading ? "Uploading…" : "Saving…"}</>
+              : <><Save className="w-3.5 h-3.5" /> Save Changes</>}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function AdminAssignment() {
   const [search, setSearch]           = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [editTarget, setEditTarget]     = useState<EditTarget | null>(null);
   const qc = useQueryClient();
 
   // Courses list for name lookup + filter dropdown
@@ -106,6 +375,8 @@ export default function AdminAssignment() {
     },
   });
 
+
+  console.log('assignments data', assignmentsData)
   // Admin overview stats
   const { data: adminStats } = useQuery({
     queryKey: ["admin-assignment-stats"],
@@ -118,6 +389,21 @@ export default function AdminAssignment() {
       qc.invalidateQueries({ queryKey: ["assignments"] });
       qc.invalidateQueries({ queryKey: ["admin-assignment-stats"] });
       setDeleteTarget(null);
+    },
+  });
+
+  const { mutate: updateAssignment, isPending: isUpdating } = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateAssignmentDto }) =>
+      AssignmentService.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assignments"] });
+      setEditTarget(null);
+    },
+    onError: (err: unknown) => {
+      // The EditModal handles its own upload errors; this catches PATCH failures.
+      // We re-open the modal with an error by keeping editTarget set — the modal
+      // reads isSaving=false and the user sees the save button re-enabled.
+      console.error("Failed to update assignment:", err);
     },
   });
 
@@ -292,7 +578,7 @@ export default function AdminAssignment() {
 
                         {/* Submission count */}
                         <td className="px-4 py-3.5">
-                          <SubmissionCount assignmentId={a.id} />
+                          <SubmissionCount count={Array.isArray(a.submissions) ? a.submissions.length : 0} />
                         </td>
 
                         {/* Status */}
@@ -321,11 +607,21 @@ export default function AdminAssignment() {
                               title="Submissions">
                               <Users className="w-3 h-3" /> Submissions
                             </Link>
-                            <Link to={`/admin/assignments/${a.id}/edit`}
+                            <button
+                              onClick={() => setEditTarget({
+                                id:           a.id,
+                                title:        a.title,
+                                description:  a.description ?? "",
+                                instructions: a.instructions ?? "",
+                                maxScore:     a.maxScore ?? 100,
+                                dueDate:      a.dueDate ?? "",
+                                allowLate:    a.allowLate ?? false,
+                                attachments:  a.attachments ?? [],
+                              })}
                               className="w-7 h-7 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-blue-600 hover:border-blue-300 transition-all"
                               title="Edit">
                               <Edit3 className="w-3 h-3" />
-                            </Link>
+                            </button>
                             <button onClick={() => setDeleteTarget({ id: a.id, title: a.title })}
                               className="w-7 h-7 rounded-xl border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-300 transition-all"
                               title="Delete">
@@ -351,6 +647,14 @@ export default function AdminAssignment() {
             isDeleting={isDeleting}
             onConfirm={() => deleteAssignment(deleteTarget.id)}
             onCancel={() => setDeleteTarget(null)}
+          />
+        )}
+        {editTarget && (
+          <EditModal
+            target={editTarget}
+            isSaving={isUpdating}
+            onSave={(id, data) => updateAssignment({ id, data })}
+            onCancel={() => setEditTarget(null)}
           />
         )}
       </AnimatePresence>
