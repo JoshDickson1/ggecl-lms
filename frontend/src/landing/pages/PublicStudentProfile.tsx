@@ -349,7 +349,7 @@ export default function PublicStudentProfile() {
             <ArrowLeft className="w-3.5 h-3.5" /> Our Students
           </button>
         </div> 
-      </div>
+      </div>  
 
       {/* ── Profile header ── */}
       <div className="max-w-5xl mx-auto px-6">
