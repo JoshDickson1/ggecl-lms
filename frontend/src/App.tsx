@@ -28,6 +28,8 @@ import Provider         from "./landing/pages/Provider";
 import StudentInfoForm  from "./landing/pages/StudentInfoForm";
 import CartSuccessFailure from "./landing/pages/CartSuccessFailure";
 import About            from "./landing/pages/About";
+import OurStudents      from "./landing/pages/OurStudents";
+import PublicStudentProfile from "./landing/pages/PublicStudentProfile";
 // ── Auth pages ────────────────────────────────────────────────
 import Login                from "./auth/student_auth/Login";
 import Forgotten            from "./auth/student_auth/Forgotten";
@@ -140,6 +142,8 @@ const router = createBrowserRouter([
       { path: "checkout",           element: <Checkout /> },
       { path: "student-info",       element: <StudentInfoForm /> },
       { path: "about",              element: <About /> },
+      { path: "our-students/public",     element: <OurStudents /> },
+      { path: "our-students/public/:id", element: <PublicStudentProfile /> },
       // ── Auth ────────────────────────────────────────────────────────
       { path: "login",                         element: <Login /> },
       { path: "signup",                         element: <Signup /> },
