@@ -1,0 +1,1440 @@
+# Courses, Enrollment & Progress API
+
+> Base URL: all endpoints are prefixed with `/api`
+
+This document covers three modules your frontend will interact with most:
+
+- **Courses** — browsing, course detail, curriculum management
+- **Enrollments** — enrolling/unenrolling, listing enrolled courses
+- **Progress** — lesson/course progress tracking, XP, streaks, watch time, dashboard
+
+---
+
+## Authentication
+
+All endpoints (except the public course routes) require a valid session cookie set by the auth module. Include credentials on every request.
+
+```ts
+// Example fetch wrapper
+const api = (path: string, init?: RequestInit) =>
+  fetch(`/api${path}`, { credentials: 'include', ...init });
+```
+
+### Roles
+
+| Role | Description |
+|------|-------------|
+| `STUDENT` | Enrolled learner |
+| `INSTRUCTOR` | Course creator |
+| `ADMIN` | Platform administrator |
+
+---
+
+## Data Models
+
+### Course
+
+```ts
+interface Course {
+  id: string;
+  title: string;
+  description: string;
+  img: string;               // thumbnail URL
+  videoUrl: string;          // intro/preview video URL
+  price: number;
+  level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  certification: 'NORMAL' | 'PROFESSIONAL' | 'ADVANCED';
+  badge: string | null;
+  tags: string[];
+  syllabus: string[];        // "What you'll learn" bullet points
+  includes: string[];        // "What the course includes" bullet points
+  averageRating: number;     // computed from reviews (0 when no reviews)
+  reviewCount: number;
+  totalDuration: number;     // total seconds of all lessons
+  totalLectures: number;     // total lesson count
+  publishedAt: string | null;
+  instructorId: string;      // InstructorProfile.id
+  instructorName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count: { enrollments: number };
+}
+```
+
+### CourseSection (outline-only, used in lists)
+
+```ts
+interface CurriculumSection {
+  id: string;
+  title: string;
+  position: number;
+  lessons: Array<{
+    id: string;
+    title: string;
+    position: number;
+  }>;
+}
+```
+
+### Lesson (full detail, enrolled users only)
+
+```ts
+interface Lesson {
+  id: string;
+  title: string;
+  description: string | null;
+  position: number;
+  duration: number;          // seconds
+  isPreview: boolean;
+  materials: CourseMaterial[];
+}
+
+interface CourseMaterial {
+  id: string;
+  type: 'VIDEO' | 'PDF' | 'AUDIO' | 'LINK';
+  title: string;
+  url: string;
+  publicId: string | null;
+  fileName: string | null;
+  size: number | null;       // bytes
+  uploadedAt: string;
+}
+```
+
+---
+
+## Courses Module
+
+Base path: `/api/courses`
+
+### Curriculum visibility rules
+
+| Caller | Endpoint | Curriculum depth |
+|--------|----------|-----------------|
+| Anyone (no auth) | `GET /courses/public` or `GET /courses/public/:id` | Outline only (title + position) |
+| STUDENT, not enrolled | `GET /courses/:id` | Outline only + `isEnrolled: false` |
+| STUDENT, enrolled | `GET /courses/:id` | Full (duration, isPreview, materials) + `isEnrolled: true` |
+| INSTRUCTOR (own course) | `GET /courses/:id` | Full |
+| ADMIN | `GET /courses/:id` | Full |
+
+---
+
+### GET /courses/public
+
+Browse published courses. No authentication required. Always returns `PUBLISHED` courses only.
+
+**Query parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `search` | `string` | Full-text search across title, description, and tags |
+| `level` | `BEGINNER \| INTERMEDIATE \| ADVANCED` | Filter by difficulty |
+| `certification` | `NORMAL \| PROFESSIONAL \| ADVANCED` | Filter by certification type |
+| `tags` | `string[]` | Course must contain ALL specified tags |
+| `minPrice` | `number` | Minimum price |
+| `maxPrice` | `number` | Maximum price |
+| `cursor` | `string` | Last seen course `id` — omit for first page |
+| `limit` | `number` | Page size (default `20`) |
+| `sortBy` | `createdAt \| price \| totalRating \| publishedAt \| title` | Sort field (default `createdAt`) |
+| `sortOrder` | `asc \| desc` | Sort direction (default `desc`) |
+
+**Response** `200`
+
+```ts
+interface PaginatedCourses {
+  items: CourseListItem[];   // Course + sections (outline only) + totalLectures
+  nextCursor: string | null; // null = last page
+}
+```
+
+**Example**
+
+```ts
+const res = await fetch('/api/courses/public?search=nestjs&limit=10');
+const { items, nextCursor } = await res.json();
+```
+
+---
+
+### GET /courses/public/:id
+
+Course landing page for unauthenticated users. Returns a single `PUBLISHED` course with marketing fields and outline-only curriculum.
+
+**Response** `200`
+
+```ts
+interface PublicCourseDetail extends Course {
+  videoUrl: string;
+  syllabus: string[];
+  includes: string[];
+  sections: CurriculumSection[];  // outline only
+  totalLectures: number;
+}
+```
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `404` | Course not found or not published |
+
+---
+
+### GET /courses
+
+Role-scoped course list. Requires authentication.
+
+- **ADMIN** — all courses regardless of status; supports `status` and `instructorId` filters
+- **INSTRUCTOR** — their own courses only; `status` filter available
+- **STUDENT** — `PUBLISHED` courses only
+
+Accepts the same query params as `GET /courses/public`, plus:
+
+| Param | Type | Roles | Description |
+|-------|------|-------|-------------|
+| `status` | `DRAFT \| PUBLISHED \| ARCHIVED` | ADMIN only | Filter by status |
+| `instructorId` | `string` | ADMIN only | Filter by instructor |
+
+**Response** `200` — same `PaginatedCourses` shape as the public list.
+
+---
+
+### GET /courses/:id
+
+Full course detail. Requires authentication.
+
+The `isEnrolled` flag is always present so you know which UI to render without a separate request.
+
+**Response** `200`
+
+```ts
+interface CourseDetail extends Course {
+  videoUrl: string;
+  syllabus: string[];
+  includes: string[];
+  // Full sections when enrolled/admin/instructor, outline-only otherwise
+  sections: CourseSectionFull[] | CurriculumSection[];
+  totalLectures: number;
+  totalDuration?: number;  // present when full curriculum is returned
+  isEnrolled: boolean;
+}
+```
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `401` | Unauthenticated |
+| `403` | INSTRUCTOR does not own this course |
+| `404` | Course not found |
+
+---
+
+### POST /courses
+
+Create a course. Roles: `ADMIN`, `INSTRUCTOR`.
+
+**Body**
+
+```ts
+interface CreateCourseDto {
+  title: string;
+  price: number;
+  description?: string;
+  videoUrl?: string;
+  img?: string;
+  level?: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  certification?: 'NORMAL' | 'PROFESSIONAL' | 'ADVANCED';
+  syllabus?: string[];
+  includes?: string[];
+  tags?: string[];
+  badge?: string;
+  instructorId?: string;  // required when ADMIN creates a course
+}
+```
+
+**Response** `201` — `CourseListItem`
+
+---
+
+### PATCH /courses/:id
+
+Update a course. Roles: `ADMIN`, `INSTRUCTOR` (own courses only).
+
+**Body** — same as `CreateCourseDto`, all fields optional.
+
+> INSTRUCTOR cannot change `instructorId`. ADMIN can reassign it.
+
+**Response** `200` — `CourseListItem`
+
+---
+
+### DELETE /courses/:id
+
+Delete a course. Roles: `ADMIN`, `INSTRUCTOR`.
+
+> INSTRUCTOR can only delete their own **DRAFT** courses. Archive instead of delete for published courses.
+
+**Response** `200`
+
+```json
+{ "message": "Course deleted successfully" }
+```
+
+---
+
+### PATCH /courses/:id/publish
+
+Publish a course. Sets `status` to `PUBLISHED` and stamps `publishedAt` on first publish.
+
+**Response** `200` — `CourseListItem`
+
+---
+
+### PATCH /courses/:id/archive
+
+Archive a course. Sets `status` to `ARCHIVED`.
+
+**Response** `200` — `CourseListItem`
+
+---
+
+### Sections
+
+#### POST /courses/:id/sections
+
+Add a section to a course. Roles: `ADMIN`, `INSTRUCTOR`.
+
+```ts
+interface CreateCourseSectionDto {
+  title: string;
+  position: number;  // 0-indexed display order
+}
+```
+
+**Response** `201` — created section
+
+#### PATCH /courses/:id/sections/:sectionId
+
+Update a section title or position. All fields optional.
+
+**Response** `200` — updated section
+
+#### DELETE /courses/:id/sections/:sectionId
+
+Remove a section and all its lessons (cascade). Course `totalDuration` is resynced automatically.
+
+**Response** `200`
+
+```json
+{ "message": "Section removed" }
+```
+
+---
+
+### Lessons
+
+#### POST /courses/:id/sections/:sectionId/lessons
+
+Add a lesson to a section. Roles: `ADMIN`, `INSTRUCTOR`.
+
+```ts
+interface CreateLessonDto {
+  title: string;
+  position: number;
+  description?: string;
+  duration?: number;    // seconds
+  isPreview?: boolean;  // free preview lesson (default false)
+}
+```
+
+**Response** `201` — created lesson
+
+#### PATCH /courses/:id/sections/:sectionId/lessons/:lessonId
+
+Update a lesson. All fields optional. Changing `duration` triggers a course `totalDuration` resync.
+
+**Response** `200` — updated lesson
+
+#### DELETE /courses/:id/sections/:sectionId/lessons/:lessonId
+
+Remove a lesson. Course `totalDuration` is resynced.
+
+**Response** `200`
+
+```json
+{ "message": "Lesson removed" }
+```
+
+---
+
+### Materials
+
+#### POST /courses/:id/sections/:sectionId/lessons/:lessonId/materials
+
+Attach a material to a lesson. Roles: `ADMIN`, `INSTRUCTOR`.
+
+```ts
+interface AddCourseMaterialDto {
+  type: 'VIDEO' | 'PDF' | 'AUDIO' | 'LINK';
+  title: string;
+  url: string;
+  publicId?: string;   // Cloudinary/S3 asset ID for deletion
+  fileName?: string;
+  size?: number;       // bytes
+}
+```
+
+**Response** `201` — created material
+
+#### DELETE /courses/:id/sections/:sectionId/lessons/:lessonId/materials/:materialId
+
+Remove a material.
+
+**Response** `200`
+
+```json
+{ "message": "Material removed" }
+```
+
+---
+
+## Enrollments Module
+
+Base path: `/api/enrollments`
+
+### POST /enrollments
+
+Enroll the authenticated student in a course. Role: `STUDENT`.
+
+The course must be `PUBLISHED`. Each student can only enroll once per course.
+
+**Body**
+
+```ts
+interface EnrollDto {
+  courseId: string;
+}
+```
+
+**Response** `201`
+
+```ts
+interface EnrollResponse {
+  id: string;
+  courseId: string;
+  studentId: string;  // StudentProfile.id
+  enrolledAt: string;
+}
+```
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `400` | Course is not published |
+| `404` | Course not found |
+| `409` | Already enrolled |
+
+---
+
+### DELETE /enrollments/:courseId
+
+Unenroll the authenticated student from a course. Role: `STUDENT`.
+
+**Response** `200`
+
+```json
+{ "message": "Unenrolled successfully" }
+```
+
+---
+
+### GET /enrollments/mine
+
+Get all courses the authenticated student is enrolled in. Role: `STUDENT`.
+
+**Response** `200`
+
+```ts
+interface MyEnrollment {
+  id: string;
+  enrolledAt: string;
+  course: {
+    id: string;
+    title: string;
+    img: string;
+    price: number;
+    level: string;
+    instructorId: string;
+    instructorName: string | null;
+  };
+}[]
+```
+
+---
+
+### GET /enrollments/count
+
+Get enrollment count. Public — no auth required.
+
+**Query parameters**
+
+| Param | Description |
+|-------|-------------|
+| `courseId` | Scope to a specific course |
+| `instructorId` | Scope to all courses by an instructor |
+
+Omit both for the platform-wide total. `courseId` takes precedence if both are supplied.
+
+**Response** `200`
+
+```ts
+interface EnrollmentCountResponse {
+  total: number;
+  courseId?: string;
+  instructorId?: string;
+}
+```
+
+---
+
+### GET /enrollments/courses/by-enrollments
+
+Courses ranked by enrollment count. Role: `ADMIN`.
+
+**Query parameters**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `order` | `asc \| desc` | Sort direction (default `desc` — most enrolled first) |
+| `instructorId` | `string` | Filter to courses owned by this instructor |
+| `courseId` | `string` | Scope to a single course |
+| `cursor` | `string` | Pagination cursor |
+| `limit` | `number` | Page size (default `20`, max `100`) |
+
+**Response** `200`
+
+```ts
+interface PaginatedCoursesByEnrollment {
+  items: Array<{
+    id: string;
+    title: string;
+    img: string;
+    price: number;
+    level: string;
+    status: string;
+    instructorId: string;
+    instructorName: string | null;
+    enrollmentCount: number;
+  }>;
+  nextCursor: string | null;
+  total: number;
+}
+```
+
+---
+
+### POST /enrollments/admin/enroll
+
+Enroll a single student in a course. Role: `ADMIN`.
+
+**Body**
+
+```ts
+interface AdminEnrollDto {
+  courseId: string;
+  studentId: string;  // StudentProfile.id (not User.id)
+}
+```
+
+**Response** `201` — same `EnrollResponse` shape as student self-enroll.
+
+---
+
+### POST /enrollments/admin/enroll/bulk
+
+Bulk enroll multiple students in a course. Role: `ADMIN`.
+
+The operation never fails wholesale — each student is processed independently. Already-enrolled or not-found students are reported as failures without blocking the rest.
+
+**Body**
+
+```ts
+interface AdminBulkEnrollDto {
+  courseId: string;
+  studentIds: string[];  // StudentProfile.id values; duplicates are ignored
+}
+```
+
+**Response** `201`
+
+```ts
+interface BulkEnrollResponse {
+  courseId: string;
+  total: number;
+  enrolled: number;
+  failed: number;
+  results: Array<{
+    studentId: string;
+    success: boolean;
+    enrollmentId?: string;  // present when success is true
+    reason?: string;        // present when success is false
+  }>;
+}
+```
+
+---
+
+### GET /enrollments
+
+List all enrollments across the platform. Role: `ADMIN`.
+
+**Query parameters**
+
+| Param | Description |
+|-------|-------------|
+| `courseId` | Filter by course |
+| `studentId` | Filter by student profile ID |
+| `cursor` | Pagination cursor |
+| `limit` | Page size (default `20`, max `100`) |
+
+**Response** `200`
+
+```ts
+interface PaginatedAdminEnrollments {
+  items: Array<{
+    id: string;
+    courseId: string;
+    enrolledAt: string;
+    student: {
+      id: string;
+      userId: string;
+      name: string;
+      image: string | null;
+    };
+  }>;
+  nextCursor: string | null;
+  total: number;
+}
+```
+
+---
+
+### GET /enrollments/course/:courseId
+
+Get all students enrolled in a specific course. Roles: `ADMIN`, `INSTRUCTOR`.
+
+INSTRUCTOR can only view enrollments for their own courses.
+
+**Response** `200` — array of the same enrollment shape as the admin list (without pagination wrapper).
+
+---
+
+## Progress Module
+
+Base path: `/api/progress`
+
+All progress endpoints require `STUDENT` role unless noted otherwise.
+
+### How progress works
+
+1. The video player sends periodic **pings** via `PATCH /progress/lessons/:lessonId` with the current playback position in seconds.
+2. The server stores a **high-water mark** — `watchedSeconds` never decreases.
+3. A lesson is **auto-completed** when `watchedSeconds / duration >= 0.8` (80%).
+4. Students can also manually complete a lesson via `POST /progress/lessons/:lessonId/complete`.
+5. On each completion, the server recomputes `CourseProgress`, updates the **learning streak**, and awards **XP**.
+
+### Sequential lesson locking
+
+Lessons are locked until the previous lesson has been watched at least **90%** or is marked complete. Preview lessons (`isPreview: true`) and the very first lesson of a course are always unlocked.
+
+The `isLocked` field is returned on every lesson in progress detail responses.
+
+---
+
+### GET /progress/dashboard
+
+Full student learning dashboard. Role: `STUDENT`.
+
+**Response** `200`
+
+```ts
+interface FullDashboard {
+  stats: {
+    totalTimeSpentThisMonth: number;  // minutes
+    streak: LearningStreak;
+    completedCourses: number;
+    avgCompletionPercent: number;
+    weeklyActivity: WeeklyActivity;
+  };
+  courses: CourseProgressSummary[];
+}
+
+interface LearningStreak {
+  currentStreak: number;    // consecutive active days
+  longestStreak: number;    // all-time best
+  totalActiveDays: number;
+  lastActiveDate: string | null;
+}
+
+interface WeeklyActivity {
+  days: Array<{
+    date: string;    // YYYY-MM-DD
+    label: string;   // e.g. "Mon"
+    minutes: number;
+  }>;
+  totalThisWeek: number;
+  dailyAverage: number;
+  mostActiveDay: string | null;
+}
+
+interface CourseProgressSummary {
+  courseId: string;
+  courseTitle: string;
+  courseImg: string;
+  instructor: { name: string; image: string | null };
+  completedLessons: number;
+  totalLessons: number;
+  percentComplete: number;   // 0–100
+  totalTimeSpent: number;    // seconds
+  isCompleted: boolean;
+  lastActivityAt: string;
+  lastLessonId: string | null;
+  lastLessonTitle: string | null;
+}
+```
+
+---
+
+### GET /progress/top-courses
+
+Enrolled courses sorted by learning relevance. Role: `STUDENT`.
+
+Ranking order:
+1. **In-progress** courses — sorted by `percentComplete` descending (closest to 100% first)
+2. **Completed** courses — sorted by `completedAt` descending (most recently finished first)
+
+Use this to power a "Continue Learning" or "My Courses" widget.
+
+**Response** `200` — `TopCourse[]`
+
+```ts
+interface TopCourse {
+  courseId: string;
+  courseTitle: string;
+  courseImg: string;
+  instructor: { name: string; image: string | null };
+  completedLessons: number;
+  totalLessons: number;
+  percentComplete: number;
+  isCompleted: boolean;
+  lastLessonId: string | null;
+  lastLessonTitle: string | null;
+  lastActivityAt: string;
+}
+```
+
+---
+
+### GET /progress/streak
+
+Live streak state. Role: `STUDENT`.
+
+Unlike the dashboard, this corrects a stale streak on read — if the student missed yesterday, `currentStreak` is returned as `0` immediately without waiting for the next lesson ping.
+
+**Response** `200` — `LearningStreak`
+
+---
+
+### GET /progress/xp
+
+Student XP and level state. Role: `STUDENT`.
+
+Each completed lesson awards **45 XP**. Level is capped at **9** but XP keeps accumulating.
+
+**XP thresholds**
+
+| Level | Cumulative XP required |
+|-------|----------------------|
+| 0 | 0 |
+| 1 | 450 |
+| 2 | 700 |
+| 3 | 1,000 |
+| 4 | 1,200 |
+| 5 | 1,500 |
+| 6 | 1,900 |
+| 7 | 2,400 |
+| 8 | 3,000 |
+| 9 (max) | 3,750 |
+
+**Response** `200`
+
+```ts
+interface XPState {
+  totalXp: number;
+  currentLevel: number;          // 0–9
+  xpToNextLevel: number;         // 0 when at max level
+  xpIntoCurrentLevel: number;    // XP accumulated inside current level bracket
+  currentLevelSpan: number;      // total XP span of current level bracket (0 at max)
+  maxLevel: number;              // always 9
+  recentAwards: Array<{
+    lessonId: string;
+    xpAwarded: number;
+    awardedAt: string;
+  }>;
+}
+```
+
+**Example — rendering a level progress bar**
+
+```ts
+const { xpIntoCurrentLevel, currentLevelSpan, currentLevel, xpToNextLevel } = xpState;
+
+// percentage filled in the current level bracket
+const pct = currentLevelSpan > 0
+  ? (xpIntoCurrentLevel / currentLevelSpan) * 100
+  : 100; // at max level
+```
+
+---
+
+### GET /progress/watch-time
+
+Student watch time analytics. Role: `STUDENT`.
+
+**Query parameters**
+
+| Param | Values | Description |
+|-------|--------|-------------|
+| `period` | `daily \| weekly \| monthly \| all` | Time window (default `weekly`) |
+
+**Response** `200`
+
+```ts
+interface WatchTimeSummary {
+  totalMinutes: number;
+  period: 'daily' | 'weekly' | 'monthly' | 'all';
+  breakdown: Array<{
+    date: string;    // YYYY-MM-DD
+    minutes: number;
+  }>;
+}
+```
+
+---
+
+### GET /progress/courses/:courseId
+
+Full progress detail for a single enrolled course. Role: `STUDENT`.
+
+Returns the overall `CourseProgress` record plus every section and lesson enriched with progress data and lock state.
+
+**Response** `200`
+
+```ts
+interface CourseProgressDetail {
+  courseProgress: {
+    courseId: string;
+    completedLessons: number;
+    totalLessons: number;
+    percentComplete: number;
+    totalTimeSpent: number;   // seconds
+    isCompleted: boolean;
+    completedAt: string | null;
+    lastActivityAt: string;
+    lastLessonId: string | null;
+  } | null;
+  sections: Array<{
+    id: string;
+    title: string;
+    position: number;
+    isLocked: boolean;         // true when every lesson in the section is locked
+    completedLessons: number;
+    totalLessons: number;
+    percentComplete: number;
+    lessons: LessonDetail[];
+  }>;
+}
+
+interface LessonDetail {
+  id: string;
+  title: string;
+  duration: number;
+  position: number;
+  isPreview: boolean;
+  watchedSeconds: number;
+  percentWatched: number;    // 0–100
+  isCompleted: boolean;
+  completedAt: string | null;
+  lastWatchedAt: string | null;
+  isLocked: boolean;
+}
+```
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `403` | Not enrolled in this course |
+
+---
+
+### GET /progress/courses/:courseId/sections/:sectionId
+
+Progress detail for a single section. Role: `STUDENT`.
+
+**Response** `200`
+
+```ts
+interface SectionProgressDetail {
+  id: string;
+  title: string;
+  position: number;
+  isLocked: boolean;
+  completedLessons: number;
+  totalLessons: number;
+  percentComplete: number;
+  lessons: LessonDetail[];
+}
+```
+
+---
+
+### GET /progress/courses/:courseId/lessons/:lessonId
+
+Progress detail for a single lesson. Role: `STUDENT`.
+
+**Response** `200`
+
+```ts
+interface LessonProgressDetail {
+  lessonId: string;
+  lessonTitle: string;
+  duration: number;
+  position: number;
+  isPreview: boolean;
+  isLocked: boolean;
+  watchedSeconds: number;
+  percentWatched: number;
+  isCompleted: boolean;
+  completedAt: string | null;
+  lastWatchedAt: string | null;
+}
+```
+
+---
+
+### PATCH /progress/lessons/:lessonId
+
+Video player progress ping. Role: `STUDENT`.
+
+Call this periodically (e.g. every 10–30 seconds) while the student is watching a lesson. The server stores a high-water mark — sending a lower value than previously recorded is a no-op.
+
+**Body**
+
+```ts
+interface UpdateLessonProgressDto {
+  watchedSeconds: number;  // current playback position in seconds (>= 0)
+}
+```
+
+**Response** `200`
+
+```ts
+interface LessonProgressResponse {
+  lessonId: string;
+  watchedSeconds: number;
+  duration: number;
+  percentWatched: number;
+  isCompleted: boolean;
+  completedAt: string | null;
+  lastWatchedAt: string;
+  xpAwarded?: number;  // only present when the lesson was just completed by this ping
+}
+```
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `403` | Not enrolled in this course |
+| `403` | Lesson is locked (previous lesson not yet 90% watched) |
+| `404` | Lesson not found |
+
+**Example — video player integration**
+
+```ts
+let pingTimer: ReturnType<typeof setInterval>;
+
+function startProgressPing(lessonId: string) {
+  pingTimer = setInterval(async () => {
+    const currentTime = videoPlayer.currentTime; // seconds
+    const res = await api(`/progress/lessons/${lessonId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ watchedSeconds: Math.floor(currentTime) }),
+    });
+    const data = await res.json();
+    if (data.xpAwarded) {
+      showXPToast(data.xpAwarded); // e.g. "+45 XP"
+    }
+  }, 15_000); // ping every 15 seconds
+}
+
+function stopProgressPing() {
+  clearInterval(pingTimer);
+}
+```
+
+---
+
+### POST /progress/lessons/:lessonId/complete
+
+Manually mark a lesson as complete. Role: `STUDENT`.
+
+Credits the full lesson duration as watched. Idempotent — calling it on an already-completed lesson does not re-award XP.
+
+**Response** `200` — same `LessonProgressResponse` shape as the ping endpoint.
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `403` | Not enrolled or lesson is locked |
+| `404` | Lesson not found |
+
+---
+
+### POST /progress/courses/:courseId/complete
+
+Manually mark a course as complete. Role: `STUDENT`.
+
+**Response** `200` — `CourseProgress` record
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `400` | Course is already marked as complete |
+| `403` | Not enrolled in this course |
+
+---
+
+### GET /progress/instructor/watch-time
+
+Watch time analytics for instructors and admins. Roles: `INSTRUCTOR`, `ADMIN`.
+
+- **INSTRUCTOR** — automatically scoped to their own courses. Pass `courseId` to drill into one course and see per-student breakdown.
+- **ADMIN** — no scope restriction. Omit `courseId` for platform-wide per-course totals.
+
+**Query parameters**
+
+| Param | Description |
+|-------|-------------|
+| `courseId` | Drill into a specific course (shows per-student breakdown) |
+| `studentId` | Further narrow to a single student |
+| `period` | `daily \| weekly \| monthly \| all` (default `all`) |
+
+**Response** `200`
+
+```ts
+interface InstructorWatchTimeSummary {
+  totalMinutes: number;
+  period: 'daily' | 'weekly' | 'monthly' | 'all';
+  // present when no courseId filter — per-course totals
+  byCourse?: Array<{
+    courseId: string;
+    courseTitle: string;
+    totalMinutes: number;
+  }>;
+  // present when courseId filter applied — per-student totals
+  byStudent?: Array<{
+    studentId: string;
+    studentName: string;
+    totalMinutes: number;
+  }>;
+}
+```
+
+---
+
+## Common Patterns
+
+### Cursor-based pagination
+
+All list endpoints use cursor pagination. Pass the `nextCursor` from the previous response as the `cursor` query param to get the next page. A `null` `nextCursor` means you're on the last page.
+
+```ts
+async function fetchAllCourses() {
+  const courses = [];
+  let cursor: string | null = undefined;
+
+  do {
+    const params = new URLSearchParams({ limit: '50' });
+    if (cursor) params.set('cursor', cursor);
+
+    const res = await api(`/courses/public?${params}`);
+    const { items, nextCursor } = await res.json();
+
+    courses.push(...items);
+    cursor = nextCursor;
+  } while (cursor !== null);
+
+  return courses;
+}
+```
+
+### Checking enrollment before rendering
+
+`GET /courses/:id` always returns `isEnrolled` so you can decide which UI to show in a single request:
+
+```ts
+const course = await api(`/courses/${courseId}`).then(r => r.json());
+
+if (course.isEnrolled) {
+  // show full curriculum with lesson player
+} else {
+  // show landing page with enroll CTA
+}
+```
+
+### Resume last lesson
+
+`CourseProgressSummary` (from the dashboard) and `TopCourse` both include `lastLessonId` and `lastLessonTitle`. Use these to build a "Resume" button:
+
+```ts
+const { lastLessonId, lastLessonTitle } = topCourse;
+
+if (lastLessonId) {
+  // navigate to /courses/:courseId/lessons/:lastLessonId
+}
+```
+
+### Rendering the XP level bar
+
+```ts
+const xp = await api('/progress/xp').then(r => r.json());
+
+const isMaxLevel = xp.currentLevel >= xp.maxLevel;
+const progressPct = isMaxLevel
+  ? 100
+  : (xp.xpIntoCurrentLevel / xp.currentLevelSpan) * 100;
+
+// Display: Level 3 | 50 / 300 XP | [=====>    ]
+```
+
+---
+
+## Error Reference
+
+All errors follow this shape:
+
+```ts
+interface ApiError {
+  statusCode: number;
+  message: string;
+  error?: string;
+}
+```
+
+| Status | Meaning |
+|--------|---------|
+| `400` | Bad request — invalid input or business rule violation |
+| `401` | Unauthenticated — no valid session |
+| `403` | Forbidden — insufficient role or resource ownership |
+| `404` | Resource not found |
+| `409` | Conflict — e.g. already enrolled |
+
+
+---
+
+## Storage Module
+
+Base path: `/api/storage`
+
+The storage module handles all file uploads for the platform using **Cloudflare R2** (S3-compatible). The NestJS server never handles raw file bytes — instead it issues short-lived pre-signed URLs and the client uploads directly to R2.
+
+### Upload flow
+
+```
+Client                          NestJS API                    Cloudflare R2
+  │                                  │                               │
+  │  POST /api/storage/presigned-upload                              │
+  │  { folder, fileName, contentType, contentLength }                │
+  │ ────────────────────────────────>│                               │
+  │                                  │  validates type + size        │
+  │                                  │  generates signed PUT URL     │
+  │  { uploadUrl, key, publicUrl }   │                               │
+  │ <────────────────────────────────│                               │
+  │                                  │                               │
+  │  PUT {uploadUrl}  (raw file bytes, Content-Type header)          │
+  │ ─────────────────────────────────────────────────────────────── >│
+  │                                  │                               │
+  │  204 No Content                  │                               │
+  │ <─────────────────────────────────────────────────────────────── │
+  │                                  │                               │
+  │  Store key / publicUrl in your resource (course, lesson, etc.)   │
+```
+
+### Folder reference
+
+| Folder | `folder` value | Allowed MIME types | Max size |
+|--------|---------------|-------------------|----------|
+| Course thumbnails | `course-images` | `image/jpeg`, `image/png`, `image/webp` | 5 MB |
+| Course intro videos | `course-videos` | `video/mp4`, `video/webm`, `video/quicktime` | 2 GB |
+| Lesson materials | `lesson-materials` | PDF, audio (mp3/ogg/wav), video (mp4/webm/quicktime), images | 500 MB |
+| User avatars | `avatars` | `image/jpeg`, `image/png`, `image/webp`, `image/gif` | 2 MB |
+| Assignment files | `assignments` | PDF, `video/mp4`, images, `application/zip` | 50 MB |
+| Course badges | `course-badges` | `image/jpeg`, `image/png`, `image/webp`, `image/svg+xml` | 1 MB |
+| Chat attachments | `chat-attachments` | Images, PDF, video, audio, zip, Word, Excel, plain text | 25 MB |
+
+---
+
+### POST /storage/presigned-upload
+
+Get a pre-signed PUT URL for a direct-to-R2 upload. Roles: `STUDENT`, `INSTRUCTOR`, `ADMIN`.
+
+**Body**
+
+```ts
+interface PresignedUploadRequestDto {
+  folder: StorageFolder;    // see folder reference above
+  fileName: string;         // original file name — used to derive the extension
+  contentType: string;      // MIME type, e.g. "video/mp4"
+  contentLength: number;    // file size in bytes
+}
+```
+
+**Response** `201`
+
+```ts
+interface PresignedUploadResponse {
+  uploadUrl: string;   // pre-signed PUT URL — expires in `expiresIn` seconds
+  key: string;         // R2 object key — store this as publicId / key in your DB record
+  publicUrl: string;   // CDN public URL — available after the PUT completes
+  expiresIn: number;   // seconds until uploadUrl expires (default 900 = 15 min)
+}
+```
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `400` | MIME type not allowed in the target folder |
+| `400` | File size exceeds the folder limit |
+| `401` | Unauthenticated |
+
+---
+
+### GET /storage/signed-url?key=
+
+Get a temporary signed GET URL for a **private** R2 object. All authenticated roles.
+
+Use this for private assets like assignment submissions. Public assets (course thumbnails, intro videos) should be served directly via their `publicUrl` — no signed URL needed.
+
+**Query parameter**
+
+| Param | Description |
+|-------|-------------|
+| `key` | The R2 object key returned by the presigned-upload endpoint |
+
+**Response** `200`
+
+```ts
+interface SignedViewUrlResponse {
+  url: string;        // temporary signed GET URL
+  expiresIn: number;  // seconds until URL expires (default 3600 = 1 hour)
+}
+```
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `401` | Unauthenticated |
+| `404` | No object exists at the given key |
+
+---
+
+### DELETE /storage/file
+
+Delete a single file from R2. Roles: `STUDENT`, `INSTRUCTOR`, `ADMIN`.
+
+**Body**
+
+```ts
+interface DeleteFileRequestDto {
+  key: string;  // full R2 object key, e.g. "course-images/uuid/thumbnail.jpg"
+}
+```
+
+**Response** `200`
+
+```ts
+interface DeleteFileResponse {
+  success: boolean;
+  key: string;
+}
+```
+
+**Errors**
+
+| Status | Reason |
+|--------|--------|
+| `401` | Unauthenticated |
+| `403` | Insufficient permissions |
+| `404` | No object exists at the given key |
+
+---
+
+### Course-related upload workflows
+
+#### Uploading a course thumbnail (`img`)
+
+```ts
+// 1. Get a pre-signed URL
+const { uploadUrl, key, publicUrl } = await api('/storage/presigned-upload', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    folder: 'course-images',
+    fileName: file.name,
+    contentType: file.type,
+    contentLength: file.size,
+  }),
+}).then(r => r.json());
+
+// 2. Upload directly to R2
+await fetch(uploadUrl, {
+  method: 'PUT',
+  headers: { 'Content-Type': file.type },
+  body: file,
+});
+
+// 3. Save the publicUrl when creating/updating the course
+await api('/courses', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    title: 'My Course',
+    price: 49.99,
+    img: publicUrl,   // ← use publicUrl here
+    // ...
+  }),
+});
+```
+
+#### Uploading a course intro video (`videoUrl`)
+
+Same flow as above but with `folder: 'course-videos'`. The `publicUrl` goes into the `videoUrl` field on the course.
+
+```ts
+const { uploadUrl, publicUrl } = await api('/storage/presigned-upload', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    folder: 'course-videos',
+    fileName: videoFile.name,
+    contentType: videoFile.type,   // e.g. "video/mp4"
+    contentLength: videoFile.size,
+  }),
+}).then(r => r.json());
+
+await fetch(uploadUrl, {
+  method: 'PUT',
+  headers: { 'Content-Type': videoFile.type },
+  body: videoFile,
+});
+
+// Use publicUrl as the videoUrl when creating/updating the course
+```
+
+> Large video uploads (up to 2 GB) can take time. Show a progress bar using the `XMLHttpRequest` `upload.onprogress` event or the `fetch` streaming API.
+
+#### Uploading a lesson material
+
+```ts
+const { uploadUrl, key, publicUrl } = await api('/storage/presigned-upload', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    folder: 'lesson-materials',
+    fileName: file.name,
+    contentType: file.type,   // e.g. "application/pdf"
+    contentLength: file.size,
+  }),
+}).then(r => r.json());
+
+await fetch(uploadUrl, {
+  method: 'PUT',
+  headers: { 'Content-Type': file.type },
+  body: file,
+});
+
+// Attach the material to the lesson
+await api(`/courses/${courseId}/sections/${sectionId}/lessons/${lessonId}/materials`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    type: 'PDF',           // VIDEO | PDF | AUDIO | LINK
+    title: 'Lesson Slides',
+    url: publicUrl,        // ← CDN public URL
+    publicId: key,         // ← store the key for future deletion
+    fileName: file.name,
+    size: file.size,
+  }),
+});
+```
+
+> Always store the `key` as `publicId` on the material record. This is what you pass to `DELETE /storage/file` when the material is removed.
+
+#### Deleting a material and its file
+
+When the instructor removes a lesson material, delete the R2 object too:
+
+```ts
+// 1. Remove the material record
+await api(`/courses/${courseId}/sections/${sectionId}/lessons/${lessonId}/materials/${materialId}`, {
+  method: 'DELETE',
+});
+
+// 2. Delete the file from R2 (use the publicId you stored)
+await api('/storage/file', {
+  method: 'DELETE',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ key: material.publicId }),
+});
+```
+
+#### Uploading a course badge
+
+```ts
+const { uploadUrl, publicUrl } = await api('/storage/presigned-upload', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    folder: 'course-badges',
+    fileName: badgeFile.name,
+    contentType: badgeFile.type,  // e.g. "image/svg+xml"
+    contentLength: badgeFile.size,
+  }),
+}).then(r => r.json());
+
+await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': badgeFile.type }, body: badgeFile });
+
+// Pass publicUrl as the `badge` field when creating/updating the course
+```
+
+---
+
+### Key vs publicUrl — when to use which
+
+| Field | When to use |
+|-------|-------------|
+| `publicUrl` | Store in the DB and render in the UI for **public** assets (course images, videos, lesson materials). Serve directly — no extra API call needed. |
+| `key` | Store as `publicId` in the DB. Use it to call `DELETE /storage/file` when the asset is removed. Also pass to `GET /storage/signed-url?key=` for **private** assets. |
+
+Public assets (everything in `course-images`, `course-videos`, `lesson-materials`, `course-badges`) are served via the CDN public domain and do not need a signed view URL. Only use `GET /storage/signed-url` for private assets like assignment submissions.
