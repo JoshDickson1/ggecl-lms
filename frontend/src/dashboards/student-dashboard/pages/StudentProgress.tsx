@@ -41,16 +41,25 @@ interface DashboardStats {
 
 interface DashboardCourse {
   courseId: string;
-  title: string;
+  courseTitle?: string;
+  courseImg?: string;
+  title?: string;
   img?: string;
-  instructor: { name: string };
-  progressPercent: number;
+  instructor: { name: string; image?: string | null };
+  // API returns percentComplete, but some versions return progressPercent
+  percentComplete?: number;
+  progressPercent?: number;
   completedLessons: number;
   totalLessons: number;
-  watchTimeSeconds: number;
+  // API returns totalTimeSpent (seconds), some versions return watchTimeSeconds
+  totalTimeSpent?: number;
+  watchTimeSeconds?: number;
+  lastActivityAt?: string;
   lastAccessedAt?: string;
   lastLessonTitle?: string;
-  completed: boolean;
+  lastLessonId?: string | null;
+  isCompleted?: boolean;
+  completed?: boolean;
   myRating?: number;
 }
 
@@ -79,10 +88,23 @@ function colorFor<T>(arr: T[], i: number): T {
   return arr[i % arr.length];
 }
 
+// totalTimeSpentThisMonth comes back as minutes from the API
+function fmtMinutes(min: number): string {
+  if (!min || isNaN(min)) return "0m";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+// totalTimeSpent on a course comes back as seconds
 function fmtSeconds(sec: number): string {
+  if (!sec || isNaN(sec)) return "0m";
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
 
@@ -147,7 +169,13 @@ function ProgressBar({ pct, color = "blue" }: { pct: number; color?: "blue" | "e
 // ─── Course card ──────────────────────────────────────────────────────────────
 
 function CourseProgressCard({ course, index }: { course: DashboardCourse; index: number }) {
-  const pct       = Math.round(course.progressPercent);
+  // Normalise field names — API may return percentComplete or progressPercent
+  const pct       = Math.round(course.percentComplete ?? course.progressPercent ?? 0);
+  const isCompleted = course.isCompleted ?? course.completed ?? false;
+  const watchSecs   = course.totalTimeSpent ?? course.watchTimeSeconds ?? 0;
+  const lastAccess  = course.lastActivityAt ?? course.lastAccessedAt;
+  const courseTitle = course.courseTitle ?? course.title ?? "Untitled Course";
+  const courseImg   = course.courseImg ?? course.img;
   const remaining = course.totalLessons - course.completedLessons;
 
   return (
@@ -167,7 +195,7 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
           transition={{ duration: 1, ease: "easeOut", delay: index * 0.06 }}
-          className={`h-full bg-gradient-to-r ${course.completed ? "from-emerald-500 to-emerald-400" : "from-blue-500 to-cyan-400"}`}
+          className={`h-full bg-gradient-to-r ${isCompleted ? "from-emerald-500 to-emerald-400" : "from-blue-500 to-cyan-400"}`}
         />
       </div>
 
@@ -176,9 +204,9 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
           {/* Thumbnail */}
           <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br ${colorFor(THUMBNAIL_GRADIENTS, index)}
             flex items-center justify-center flex-shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.12)] overflow-hidden`}>
-            {course.img
-              ? <img src={course.img} alt={course.title} className="w-full h-full object-cover" />
-              : course.completed
+            {courseImg
+              ? <img src={courseImg} alt={courseTitle} className="w-full h-full object-cover" />
+              : isCompleted
                 ? <CheckCircle2 className="w-6 h-6 text-white" />
                 : <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
             }
@@ -188,13 +216,13 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
               <Link
-                to={`/student/courses/${course.courseId}`}
+                to={`/student/courses/${course.courseId}/watch`}
                 className="text-sm font-black text-gray-900 dark:text-white line-clamp-1
                   hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                {course.title}
+                {courseTitle}
               </Link>
               <span className={`flex-shrink-0 text-xs font-black px-2.5 py-1 rounded-xl
-                ${course.completed
+                ${isCompleted
                   ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400"
                   : "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400"
                 }`}>
@@ -203,20 +231,30 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
             </div>
 
             <div className="flex items-center gap-1.5 mb-3">
-              <span className={`w-5 h-5 rounded-full text-[9px] font-bold text-white
-                flex items-center justify-center flex-shrink-0 ${colorFor(INSTRUCTOR_COLORS, index)}`}>
-                {course.instructor.name[0]}
-              </span>
-              <span className="text-xs text-gray-400">{course.instructor.name}</span>
+              {/* Instructor avatar — image or initial fallback */}
+              {course.instructor?.image ? (
+                <img
+                  src={course.instructor.image}
+                  alt={course.instructor.name}
+                  className="w-5 h-5 rounded-full object-cover flex-shrink-0 ring-1 ring-gray-200 dark:ring-white/10"
+                  onError={e => { e.currentTarget.style.display = "none"; }}
+                />
+              ) : (
+                <span className={`w-5 h-5 rounded-full text-[9px] font-bold text-white
+                  flex items-center justify-center flex-shrink-0 ${colorFor(INSTRUCTOR_COLORS, index)}`}>
+                  {(course.instructor?.name ?? "?")[0].toUpperCase()}
+                </span>
+              )}
+              <span className="text-xs text-gray-400">{course.instructor?.name ?? "Instructor"}</span>
             </div>
 
-            <ProgressBar pct={pct} color={course.completed ? "emerald" : "blue"} />
+            <ProgressBar pct={pct} color={isCompleted ? "emerald" : "blue"} />
 
             <div className="flex items-center justify-between mt-2">
               <span className="text-[11px] text-gray-400">
                 {course.completedLessons}/{course.totalLessons} lessons
               </span>
-              {!course.completed && (
+              {!isCompleted && (
                 <span className="text-[11px] text-gray-400">{remaining} remaining</span>
               )}
             </div>
@@ -229,18 +267,18 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
             <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Time Spent</span>
             <span className="text-xs font-black text-gray-800 dark:text-white flex items-center gap-1">
               <Clock className="w-3 h-3 text-blue-500" />
-              {fmtSeconds(course.watchTimeSeconds)}
+              {fmtSeconds(watchSecs)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Last Watched</span>
             <span className="text-xs font-bold text-gray-600 dark:text-gray-400 flex items-center gap-1">
               <Calendar className="w-3 h-3 text-blue-500" />
-              {fmtRelative(course.lastAccessedAt)}
+              {fmtRelative(lastAccess)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5 items-end text-right">
-            {course.completed && course.myRating ? (
+            {isCompleted && course.myRating ? (
               <>
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Your Rating</span>
                 <span className="flex items-center gap-0.5">
@@ -263,7 +301,7 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
         </div>
 
         {/* Last lesson */}
-        {!course.completed && course.lastLessonTitle && (
+        {!isCompleted && course.lastLessonTitle && (
           <div className="mt-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
             <p className="text-[11px] text-gray-400 font-medium">
               <span className="font-bold text-gray-600 dark:text-gray-300">Last: </span>
@@ -303,24 +341,30 @@ export default function StudentProgress() {
   const courses    = dashboard?.courses ?? [];
   const weeklyDays = stats?.weeklyActivity.days ?? [];
   const maxMinutes = Math.max(...weeklyDays.map(d => d.minutes), 1);
-  const streak     = stats?.streak.currentStreak ?? 0;
+  const streak     = stats?.streak?.currentStreak ?? 0;
   const completed  = stats?.completedCourses ?? 0;
-  const inProgress = courses.filter(c => !c.completed).length;
-  const avgProgress = Math.round(stats?.avgCompletionPercent ?? 0);
-  const totalTime  = fmtSeconds(stats?.totalTimeSpentThisMonth ?? 0);
+  const inProgress = courses.filter(c => !(c.isCompleted ?? c.completed)).length;
+  const avgProgress = Math.round(Number(stats?.avgCompletionPercent) || 0);
+  // totalTimeSpentThisMonth is in minutes from the API
+  const totalTime  = fmtMinutes(stats?.totalTimeSpentThisMonth ?? 0);
   const weekTotal  = stats?.weeklyActivity.totalThisWeek ?? 0;
   const dailyAvg   = stats?.weeklyActivity.dailyAverage ?? 0;
   const mostActive = stats?.weeklyActivity.mostActiveDay ?? "—";
 
   const filtered = courses
     .filter(c => {
-      if (filter === "active")    return !c.completed;
-      if (filter === "completed") return c.completed;
+      const done = c.isCompleted ?? c.completed ?? false;
+      if (filter === "active")    return !done;
+      if (filter === "completed") return done;
       return true;
     })
     .sort((a, b) => {
-      if (a.completed !== b.completed) return a.completed ? 1 : -1;
-      return b.progressPercent - a.progressPercent;
+      const aDone = a.isCompleted ?? a.completed ?? false;
+      const bDone = b.isCompleted ?? b.completed ?? false;
+      if (aDone !== bDone) return aDone ? 1 : -1;
+      const aPct = a.percentComplete ?? a.progressPercent ?? 0;
+      const bPct = b.percentComplete ?? b.progressPercent ?? 0;
+      return bPct - aPct;
     });
 
   return (
@@ -340,7 +384,7 @@ export default function StudentProgress() {
         className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { icon: Clock,        value: totalTime,          label: "Total Time Spent", sub: "this month",     color: "blue"    },
-          { icon: Flame,        value: `${streak}d`,       label: "Learning Streak",  sub: "keep it going!", color: "amber"   },
+          { icon: Flame,        value: streak > 0 ? `${streak}d` : "0d",  label: "Learning Streak",  sub: streak > 0 ? "keep it going! 🔥" : "start today!", color: "amber"   },
           { icon: CheckCircle2, value: String(completed),  label: "Completed",        sub: "courses",        color: "emerald" },
           { icon: Target,       value: `${avgProgress}%`,  label: "Avg Completion",   sub: "across courses", color: "cyan"    },
         ].map(({ icon: Icon, value, label, sub, color }) => {

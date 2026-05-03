@@ -112,14 +112,20 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
   });
 
   const unenrollMutation = useMutation({
-    mutationFn: (_studentIds: string[]) => {
-      // Note: You'll need to implement adminUnenroll in EnrollmentService
-      // For now, we'll use a placeholder or remove students from enrollments
-      return Promise.resolve([]);
+    mutationFn: async (params: Array<{ studentProfileId: string }>) => {
+      // Call backend to unenroll each student
+      const promises = params.map(({ studentProfileId }) => 
+        EnrollmentService.adminUnenroll(courseId, studentProfileId)
+      );
+      return Promise.all(promises);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["course-enrollments", courseId] });
       qc.invalidateQueries({ queryKey: ["admin-courses"] });
+    },
+    onError: (error: any) => {
+      console.error('Unenroll failed:', error);
+      alert(`Failed to unenroll: ${error.message || 'Unknown error'}.\n\nThe backend needs to implement:\nDELETE /api/enrollments/admin/unenroll\nBody: { courseId, studentId }`);
     },
   });
 
@@ -130,8 +136,8 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
     enrollMutation.mutate([student]);
   };
 
-  const handleUnenroll = (studentIds: string[]) => {
-    unenrollMutation.mutate(studentIds);
+  const handleUnenroll = (studentProfileId: string) => {
+    unenrollMutation.mutate([{ studentProfileId }]);
   };
 
   return (
@@ -168,7 +174,7 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
                     <p className="text-xs text-gray-400 truncate">{student.email}</p>
                   </div>
                   <button
-                    onClick={() => handleUnenroll([student.id])}
+                    onClick={() => handleUnenroll(enrollment.studentId)}
                     disabled={unenrollMutation.isPending}
                     className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors disabled:opacity-50"
                   >

@@ -111,6 +111,26 @@ export default class EnrollmentService {
     return response.json();
   }
 
+  /**
+   * Admin unenroll: Remove a student from a course. ADMIN only.
+   * NOTE: This endpoint needs to be implemented on the backend.
+   * Expected: DELETE /api/enrollments/admin/unenroll
+   * Body: { courseId, studentId }
+   * @param courseId - Course ID
+   * @param studentId - Student profile ID to unenroll
+   */
+  static async adminUnenroll(courseId: string, studentId: string): Promise<unknown> {
+    if (!courseId || !studentId) {
+      throw new Error("Course ID and student ID are required for admin unenrollment");
+    }
+    const response = await APIConfig.fetch("/enrollments/admin/unenroll", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ courseId, studentId }),
+    });
+    return response.json();
+  }
+
   // Instructor/Admin: get all enrollments for a specific student across courses
   static async findByStudent(studentId: string): Promise<unknown> {
     const response = await APIConfig.fetch(`/enrollments/student/${studentId}`);

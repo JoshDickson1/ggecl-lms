@@ -274,12 +274,22 @@ export default function AdminHome() {
                     barSize={32}
                     barGap={4}
                   >
+                    <defs>
+                      <linearGradient id="gradTotalBar" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9} />
+                        <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.6} />
+                      </linearGradient>
+                      <linearGradient id="gradActiveBar" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
+                        <stop offset="100%" stopColor="#34d399" stopOpacity={0.7} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.07)" vertical={false} />
                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                     <Tooltip content={<UserBreakdownTooltip />} />
-                    <Bar dataKey="total"  fill="#3b82f6" radius={[4, 4, 0, 0]} opacity={0.65} />
-                    <Bar dataKey="active" fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.9} />
+                    <Bar dataKey="total"  fill="url(#gradTotalBar)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="active" fill="url(#gradActiveBar)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
                 <div className="flex items-center gap-5 mt-3 text-xs text-gray-400">

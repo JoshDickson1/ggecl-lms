@@ -21,21 +21,21 @@ const PHOTO_SETS: string[][] = [
   ],
   // Slot C — top left small
   [
-    "./A.jpg",  // young woman
+    // "./A.jpg",  // young woman
     "https://images.unsplash.com/photo-1521119989659-a83eee488004?w=300&q=80&fit=crop",  // man portrait
     "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=300&q=80&fit=crop",  // woman portrait
     "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=300&q=80&fit=crop",  // man smiling
   ],
   // Slot D — bottom right small
   [
-    "./A.jpg",  // man beard
+    // "./A.jpg",  // man beard
     "https://images.unsplash.com/photo-1589156280159-27698a70f29e?w=300&q=80&fit=crop",  // woman confident
     "https://images.unsplash.com/photo-1463453091185-61582044d556?w=300&q=80&fit=crop",  // man outdoor
     "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&q=80&fit=crop",  // woman casual
   ],
   // Slot E — bottom left
   [
-    "./A.jpg",  // man young
+    // "./A.jpg",  // man young
     "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&q=80&fit=crop",  // woman stylish
     "https://images.unsplash.com/photo-1548142813-c348350df52b?w=400&q=80&fit=crop",  // woman laughing
     "https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=400&q=80&fit=crop",  // man smiling
