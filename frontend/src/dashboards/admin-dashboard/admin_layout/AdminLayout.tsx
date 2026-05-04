@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { motion } from "framer-motion";
 import { type ReactNode } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, ScrollRestoration } from "react-router-dom";
 import { AdminNavbar } from "./AdminNavbar";
 import { AdminSidebar, AdminSidebarProvider } from "./AdminSidebar";
  
@@ -20,6 +20,7 @@ function Guard({ children }: { children: ReactNode }) {
 export function AdminLayout({ children }: { children?: ReactNode }) {
   return (
     <Guard>
+      <ScrollRestoration />
       <AdminSidebarProvider>
         <div className="min-h-screen bg-[#f8fafc] dark:bg-[#080d18]">
           <div className="fixed inset-0 z-0 pointer-events-none"

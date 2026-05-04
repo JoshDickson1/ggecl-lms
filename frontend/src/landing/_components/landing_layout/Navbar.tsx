@@ -1,7 +1,7 @@
 // Navbar.tsx
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom"; // ✅ react-router-dom v6
-import { Menu, Search, ShoppingCart } from "lucide-react";
+import { Menu, Search, ShoppingCart, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {ModeToggle} from "@/common/mode-toggle";
 import { useCallback } from "react";
@@ -279,6 +279,13 @@ const Navbar = ({ showNav }: { showNav?: boolean }) => {
                     <span className="w-[7px] h-[7px] rounded-full absolute top-0.5 right-0.5 bg-[var(--accent)] shadow-[0_0_0_2px_var(--glass-bg)]" />
                   </Link>
 
+                {/* Docs icon — desktop */}
+                <Link to="/docs"
+                  title="Documentation"
+                  className="v-icon-btn hidden md:flex w-10 h-10 rounded-full items-center justify-center border no-underline">
+                  <BookOpen size={16} />
+                </Link>
+
                 {/* Theme toggle */}
                 <div className=""><ModeToggle /></div>
                 
@@ -332,6 +339,14 @@ const Navbar = ({ showNav }: { showNav?: boolean }) => {
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gradient-to-br from-[#1a6ef7] to-[#0a3ba8] text-white tracking-wider">NEW</span>
                         <span style={{ color: "var(--muted)", opacity: 0.35 }} className="text-[17px]">›</span>
                       </span>
+                    </Link>
+                    <Link to="/docs" onClick={closeMenu}
+                      className="v-m-link flex items-center justify-between px-4 py-[13px] rounded-2xl text-[15.5px] font-medium no-underline border">
+                      <span className="flex items-center gap-2.5">
+                        <BookOpen size={16} style={{ color: "var(--accent)" }} />
+                        Documentation
+                      </span>
+                      <span style={{ color: "var(--muted)", opacity: 0.35 }} className="text-[17px]">›</span>
                     </Link>
                 </nav>
 

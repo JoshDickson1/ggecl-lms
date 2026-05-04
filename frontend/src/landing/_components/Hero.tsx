@@ -151,7 +151,7 @@ export default function Hero() {
           >
             Learn. Connect.
             <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-blue-900 dark:from-blue-900 dark:to-blue-400">
               Thrive.
             </span>
           </motion.h1>
@@ -195,7 +195,7 @@ export default function Hero() {
             <Link
               to="/courses"
               className="group flex items-center gap-2.5 px-7 py-3.5 rounded-2xl text-sm font-bold text-white
-                bg-gradient-to-br from-blue-600 to-indigo-600
+                bg-gradient-to-br from-blue-600 to-blue-900
                 shadow-[0_6px_28px_rgba(59,130,246,0.4)]
                 hover:shadow-[0_8px_40px_rgba(59,130,246,0.55)] hover:-translate-y-0.5
                 transition-all duration-200"

@@ -119,11 +119,17 @@ export default function SingleInstructor() {
   const [showContact, setShowContact] = useState(false);
 
   // Fetch instructor public profile by instructorProfile.id
-  const { data: instructor, isLoading, isError } = useQuery<PublicInstructorProfile>({
+  const { data: instructor, isLoading, isError, error } = useQuery<PublicInstructorProfile>({
     queryKey: ["instructor-public", id],
     queryFn:  () => UserService.findOneInstructorPublic(id!),
     enabled:  !!id,
+    retry: 1, // Only retry once
   });
+
+  // Log error for debugging
+  if (error) {
+    console.error("Failed to fetch instructor:", error);
+  }
 
   // Fetch courses for this instructor directly via instructorId query param
   const { data: coursesData } = useQuery<PublicCoursesResponse>({
@@ -155,7 +161,11 @@ export default function SingleInstructor() {
   const expertise      = profile?.areasOfExpertise ?? [];
   const categories     = profile?.teachingCategories ?? [];
   const tags           = profile?.tags ?? [];
-  const website        = profile?.website;
+  const website        = profile?.website
+    ? profile.website.startsWith("http://") || profile.website.startsWith("https://")
+      ? profile.website
+      : `https://${profile.website}`
+    : undefined;
   const specialization = profile?.specialization ?? categories[0] ?? "Instructor";
   const visibleExpertise = showAllExpertise ? expertise : expertise.slice(0, 5);
   const avatarColor    = AVATAR_COLORS[0];

@@ -11,20 +11,22 @@ import UserService from "@/services/user.service";
 // ─── API Types ────────────────────────────────────────────────────────────────
 
 interface PublicInstructor {
-  id: string;
-  name: string;
-  image: string | null;
-  role: string;
-  createdAt: string;
-  instructorProfile: {
-    bio: string | null;
-    description: string | null;
-    tags: string[];
-    areasOfExpertise: string[];
-    teachingCategories: string[];
-    specialization: string | null;
-    website: string | null;
-  } | null;
+  id: string; // This is instructorProfile.id
+  userId: string;
+  bio: string | null;
+  description: string | null;
+  tags: string[];
+  areasOfExpertise: string[];
+  teachingCategories: string[];
+  specialization: string | null;
+  website: string | null;
+  user: {
+    id: string;
+    name: string;
+    image: string | null;
+    role: string;
+    createdAt: string;
+  };
 }
 
 // ─── Map API → Instructor shape ───────────────────────────────────────────────
@@ -35,30 +37,29 @@ const AVATAR_COLORS = [
   "bg-pink-500",  "bg-teal-500",
 ];
 
-function mapToInstructor(u: PublicInstructor, i: number): Instructor {
-  const p        = u.instructorProfile;
-  const parts    = u.name.trim().split(" ");
+function mapToInstructor(profile: PublicInstructor, i: number): Instructor {
+  const parts    = profile.user.name.trim().split(" ");
   const initials = parts.map(x => x[0]).join("").slice(0, 2).toUpperCase();
 
   return {
-    id:          u.id,
-    name:        u.name,
+    id:          profile.id, // This is instructorProfile.id - correct for linking!
+    name:        profile.user.name,
     avatar:      initials,
     avatarBg:    AVATAR_COLORS[i % AVATAR_COLORS.length],
-    photo:       u.image ?? undefined,
-    title:       p?.specialization ?? p?.teachingCategories?.[0] ?? "Instructor",
-    bio:         p?.bio ?? p?.description ?? "",
+    photo:       profile.user.image ?? undefined,
+    title:       profile.specialization ?? profile.teachingCategories?.[0] ?? "Instructor",
+    bio:         profile.bio ?? profile.description ?? "",
     bio2:        undefined,
     experience:  "",
     experience2: undefined,
-    expertise:   p?.areasOfExpertise ?? [],
-    categoryIds: p?.teachingCategories ?? [],
+    expertise:   profile.areasOfExpertise ?? [],
+    categoryIds: profile.teachingCategories ?? [],
     rating:      0,
     reviews:     0,
     students:    0,
     courses:     0,
     badges:      [],
-    socials:     p?.website ? [{ platform: "website", url: p.website }] : [],
+    socials:     profile.website ? [{ platform: "website", url: profile.website }] : [],
     courseSnippets:  [],
     ratingBreakdown: [
       { star: 5, pct: 0 }, { star: 4, pct: 0 }, { star: 3, pct: 0 },
@@ -163,18 +164,16 @@ export default function AllInstructors() {
   const [sortBy,  setSortBy]  = useState("az");
 
   const { data, isLoading } = useQuery({
-  queryKey: ["instructors-public-all"],
-  queryFn: async () => {
-    const res: any = await UserService.findAllPublic({ role: "INSTRUCTOR" as any });
-
-    if (Array.isArray(res)) return res;
-    if (Array.isArray(res?.data)) return res.data;
-    if (Array.isArray(res?.users)) return res.users;
-
-    console.error("Unexpected API response:", res);
-    return [];
-  },
-});
+    queryKey: ["instructors-public-all"],
+    queryFn: async () => {
+      const res = await UserService.findAllInstructorsPublic({ limit: 100 });
+      // The response is { data: PublicInstructor[], meta: {...} }
+      return res.data || [];
+    },
+    staleTime: 1000 * 60 * 10, // 10 minutes
+    gcTime: 1000 * 60 * 30, // 30 minutes
+    refetchOnWindowFocus: false,
+  });
 
   const allInstructors = useMemo(
     () => (data ?? []).map(mapToInstructor),

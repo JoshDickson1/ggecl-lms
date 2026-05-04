@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import {
-  ArrowRight, Star, Clock, BookOpen, ShoppingCart, Users,
+  ArrowRight, Star, Clock, BookOpen, Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -83,6 +83,7 @@ function mapDtoToCourse(dto: PublicCourseDto, index: number): Course {
     title:         dto.title,
     description:   dto.description,
     thumbnail:     THUMBNAIL_GRADIENTS[index % THUMBNAIL_GRADIENTS.length],
+    img:           dto.img, // Add the actual course image
     icon:          Code,
     price:         dto.price,
     originalPrice: Math.round(dto.price * 1.4 * 100) / 100,
@@ -107,7 +108,7 @@ function mapDtoToCourse(dto: PublicCourseDto, index: number): Course {
       courses:  0,
     },
     instructorName: dto.instructorName
-  };
+  } as Course & { img?: string | null };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -176,13 +177,21 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
 
         {/* Thumbnail */}
         <div className={`relative w-full h-44 bg-gradient-to-br ${course.thumbnail} flex items-center justify-center overflow-hidden`}>
-          <motion.div
-            animate={hovered ? { scale: 1.12, rotate: 6 } : { scale: 1, rotate: 0 }}
-            transition={{ duration: 0.45, ease: "easeInOut" }}
-            className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center"
-          >
-            <Icon className="w-8 h-8 text-white drop-shadow-lg" />
-          </motion.div>
+          {(course as any).img ? (
+            <img 
+              src={(course as any).img} 
+              alt={course.title}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            <motion.div
+              animate={hovered ? { scale: 1.12, rotate: 6 } : { scale: 1, rotate: 0 }}
+              transition={{ duration: 0.45, ease: "easeInOut" }}
+              className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center"
+            >
+              <Icon className="w-8 h-8 text-white drop-shadow-lg" />
+            </motion.div>
+          )}
           {course.badge && (
             <div className="absolute top-3 left-3">
               <CourseBadge badge={course.badge} />
@@ -287,8 +296,7 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
               shadow-[0_4px_14px_rgba(59,130,246,0.35)]
               transition-colors duration-200"
           >
-            <ShoppingCart className="w-3.5 h-3.5" />
-            Add
+            View Course
           </motion.button>
         </Link>
       </motion.div>
@@ -335,7 +343,9 @@ export default function CoursesPreview() {
       const raw = await CoursesService.findAllPublic() as RawApiResponse;
       return extractCourses(raw).slice(0, PREVIEW_COUNT).map(mapDtoToCourse);
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60 * 10, // 10 minutes
+    gcTime: 1000 * 60 * 30, // 30 minutes
+    refetchOnWindowFocus: false,
   });
 
   return (

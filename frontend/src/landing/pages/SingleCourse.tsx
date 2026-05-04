@@ -13,6 +13,7 @@ import ReviewService from "@/services/review.service";
 import CartService from "@/services/cart.service";
 import WishlistService from "@/services/wishlist.service";
 import { useAuth } from "@/context/AuthProvider";
+import { SafeImage } from "@/components/SafeImage";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,19 @@ interface PublicCourse {
   reviewCount: number;
   sections: Section[];
   totalLectures: number;
+}
+
+interface InstructorWithStats {
+  id: string;
+  userId: string;
+  user: {
+    id: string;
+    name: string;
+    image: string | null;
+  };
+  _count?: { courses?: number };
+  averageRating?: number;
+  totalStudents?: number;
 }
 
 interface Review {
@@ -213,6 +227,7 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [added, setAdded] = useState(false);
+  const [shared, setShared] = useState(false);
 
   const { data: wishlist } = useQuery({
     queryKey: ["wishlist"],
@@ -256,8 +271,19 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
     },
   });
 
+  const handleShare = async () => {
+    try {
+      const url = window.location.href;
+      await navigator.clipboard.writeText(url);
+      setShared(true);
+      setTimeout(() => setShared(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy link:", err);
+    }
+  };
+
   const guard = (fn: () => void) => {
-    if (!isAuthenticated || !isStudent) { navigate("/login"); return; }
+    if (!isAuthenticated || !isStudent) { navigate("/signup"); return; }
     fn();
   };
 
@@ -298,7 +324,7 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
                 </motion.span>
               ) : (
                 <motion.span key="add" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="flex items-center gap-2">
-                  <ShoppingCart className="w-4 h-4" /> Add to cart
+                  <ShoppingCart className="w-4 h-4" /> {isAuthenticated && isStudent ? "Add to cart" : "Sign up to add to cart"}
                 </motion.span>
               )}
             </AnimatePresence>
@@ -319,10 +345,21 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
               {wishlisted ? "Wishlisted" : "Wishlist"}
             </motion.button>
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
+              onClick={handleShare}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold
                 border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-300
                 hover:border-blue-300 dark:hover:border-blue-700 transition-all duration-200">
-              <Share2 className="w-4 h-4" /> Share
+              <AnimatePresence mode="wait">
+                {shared ? (
+                  <motion.span key="shared" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" /> Copied!
+                  </motion.span>
+                ) : (
+                  <motion.span key="share" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
+                    <Share2 className="w-4 h-4" /> Share
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </motion.button>
           </div>
 
@@ -404,6 +441,12 @@ export default function SingleCourse() {
     queryKey: ["course-reviews", id],
     queryFn:  () => ReviewService.getCourseReviews(id!, { limit: 5 }) as Promise<ReviewsResponse>,
     enabled:  !!id,
+  });
+
+  const { data: instructor } = useQuery<InstructorWithStats>({
+    queryKey: ["instructor-public", course?.instructorId],
+    queryFn:  () => UserService.getInstructorProfile(course!.instructorId) as Promise<InstructorWithStats>,
+    enabled:  !!course?.instructorId,
   });
 
   console.log('reviews data', reviewsData)
@@ -520,15 +563,40 @@ export default function SingleCourse() {
               {/* Instructor mini */}
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
                 className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center text-sm font-black text-white ring-2 ring-white/30 flex-shrink-0">
-                  IN
-                </div>
+                {instructor?.user.image ? (
+                  <SafeImage
+                    src={instructor.user.image}
+                    alt={course.instructorName}
+                    fallback={
+                      <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center text-sm font-black text-white ring-2 ring-white/30 flex-shrink-0">
+                        {initials(course.instructorName)}
+                      </div>
+                    }
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-white/30 flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center text-sm font-black text-white ring-2 ring-white/30 flex-shrink-0">
+                    {initials(course.instructorName)}
+                  </div>
+                )}
                 <div>
                   <p className="text-white/60 text-xs">Instructor</p>
                   <Link to={`/instructors/${course.instructorId}`}
                     className="text-white font-bold text-sm hover:underline underline-offset-4 decoration-white/50">
                     {course.instructorName}
                   </Link>
+                  {instructor && (
+                    <div className="flex items-center gap-3 mt-0.5 text-white/70 text-xs">
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {fmt(instructor._count?.courses ?? 0)} courses
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
+                        {instructor.averageRating ? instructor.averageRating.toFixed(1) : "New"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             </div>

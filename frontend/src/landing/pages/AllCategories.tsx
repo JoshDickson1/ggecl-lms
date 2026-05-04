@@ -256,12 +256,13 @@ function GridSkeleton() {
 
 // ─── Filter Sidebar ───────────────────────────────────────────────────────────
 
-function FilterSidebar({
-  search, setSearch, sortBy, setSortBy, onClear, hasFilters,
+function FilterContent({
+  search, setSearch, sortBy, setSortBy, onClear, hasFilters, onClose,
 }: {
   search: string; setSearch: (v: string) => void;
   sortBy: string; setSortBy: (v: string) => void;
   onClear: () => void; hasFilters: boolean;
+  onClose?: () => void;
 }) {
   const panelClass = "rounded-2xl p-5 bg-white/70 dark:bg-[#020618] backdrop-blur-xl border border-white/80 dark:border-white/[0.08] shadow-[0_2px_20px_rgba(0,0,0,0.05)]";
   const labelClass = "text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-3";
@@ -273,7 +274,22 @@ function FilterSidebar({
     }`;
 
   return (
-    <aside className="w-full lg:w-72 flex-shrink-0 flex flex-col gap-5">
+    <div className="flex flex-col gap-5">
+      {/* Mobile header */}
+      {onClose && (
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-blue-500" /> Filters
+          </span>
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center
+              text-gray-400 hover:text-gray-700 dark:hover:text-white
+              hover:bg-gray-100 dark:hover:bg-white/[0.08] transition-all">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className={panelClass}>
         <p className={labelClass}>Search</p>
         <div className="relative">
@@ -315,7 +331,91 @@ function FilterSidebar({
           </motion.button>
         )}
       </AnimatePresence>
-    </aside>
+
+      {/* Mobile apply button */}
+      {onClose && (
+        <motion.button
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+          onClick={onClose}
+          className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm
+            shadow-[0_4px_16px_rgba(59,130,246,0.4)] transition-colors">
+          Apply Filters
+        </motion.button>
+      )}
+    </div>
+  );
+}
+
+function FilterSidebar({
+  search, setSearch, sortBy, setSortBy, onClear, hasFilters,
+}: {
+  search: string; setSearch: (v: string) => void;
+  sortBy: string; setSortBy: (v: string) => void;
+  onClear: () => void; hasFilters: boolean;
+}) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  return (
+    <>
+      {/* ── Mobile: toggle button ── */}
+      <div className="lg:hidden w-full">
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold
+            bg-white/70 dark:bg-[#020618] border border-white/80 dark:border-white/[0.08]
+            text-gray-700 dark:text-gray-300 shadow-[0_2px_12px_rgba(0,0,0,0.06)]
+            hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+          <SlidersHorizontal className="w-4 h-4 text-blue-500" />
+          Filters
+          {hasFilters && (
+            <span className="ml-1 w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center">
+              !
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ── Mobile: drawer ── */}
+      <AnimatePresence>
+        {drawerOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setDrawerOpen(false)}
+              className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className="lg:hidden fixed bottom-0 left-0 right-0 z-50
+                bg-gray-50 dark:bg-[#0d1220] rounded-t-[28px]
+                shadow-[0_-8px_40px_rgba(0,0,0,0.2)] p-6 pb-10
+                max-h-[85vh] overflow-y-auto"
+            >
+              {/* Drag handle */}
+              <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-white/20 mx-auto mb-5" />
+              <FilterContent
+                search={search} setSearch={setSearch}
+                sortBy={sortBy} setSortBy={setSortBy}
+                onClear={onClear} hasFilters={hasFilters}
+                onClose={() => setDrawerOpen(false)}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Desktop: static sidebar ── */}
+      <aside className="hidden lg:flex w-72 flex-shrink-0 flex-col">
+        <FilterContent
+          search={search} setSearch={setSearch}
+          sortBy={sortBy} setSortBy={setSortBy}
+          onClear={onClear} hasFilters={hasFilters}
+        />
+      </aside>
+    </>
   );
 }
 

@@ -338,7 +338,9 @@ export default function CategoriesPreview() {
   const { data, isLoading } = useQuery<PublicCoursesResponse>({
     queryKey: ["courses-public-all"],
     queryFn:  () => CoursesService.findAllPublic() as Promise<PublicCoursesResponse>,
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60 * 10, // 10 minutes
+    gcTime: 1000 * 60 * 30, // 30 minutes
+    refetchOnWindowFocus: false,
   });
 
   const categories = deriveCategories(data?.items ?? []);

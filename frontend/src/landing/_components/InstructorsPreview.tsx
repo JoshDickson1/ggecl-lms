@@ -10,20 +10,22 @@ import UserService from "@/services/user.service";
 // ─── API Types ────────────────────────────────────────────────────────────────
 
 interface PublicInstructor {
-  id: string;
-  name: string;
-  image: string | null;
-  role: string;
-  createdAt: string;
-  instructorProfile: {
-    bio: string | null;
-    description: string | null;
-    tags: string[];
-    areasOfExpertise: string[];
-    teachingCategories: string[];
-    specialization: string | null;
-    website: string | null;
-  } | null;
+  id: string; // This is instructorProfile.id
+  userId: string;
+  bio: string | null;
+  description: string | null;
+  tags: string[];
+  areasOfExpertise: string[];
+  teachingCategories: string[];
+  specialization: string | null;
+  website: string | null;
+  user: {
+    id: string;
+    name: string;
+    image: string | null;
+    role: string;
+    createdAt: string;
+  };
 }
 
 // ─── Map API → Instructor shape expected by InstructorCard ───────────────────
@@ -37,9 +39,8 @@ const AVATAR_COLORS = [
   "bg-cyan-500",
 ];
 
-function mapToInstructor(u: PublicInstructor, i: number): Instructor {
-  const profile = u.instructorProfile;
-  const nameParts = u.name.trim().split(" ");
+function mapToInstructor(profile: PublicInstructor, i: number): Instructor {
+  const nameParts = profile.user.name.trim().split(" ");
   const initials = nameParts
     .map((p) => p[0])
     .join("")
@@ -47,30 +48,30 @@ function mapToInstructor(u: PublicInstructor, i: number): Instructor {
     .toUpperCase();
 
   return {
-    id: u.id,
-    name: u.name,
+    id: profile.id, // This is instructorProfile.id - correct for linking!
+    name: profile.user.name,
     avatar: initials,
     avatarBg: AVATAR_COLORS[i % AVATAR_COLORS.length],
-    photo: u.image ?? undefined,
+    photo: profile.user.image ?? undefined,
     title:
-      profile?.specialization ??
-      profile?.teachingCategories?.[0] ??
+      profile.specialization ??
+      profile.teachingCategories?.[0] ??
       "Instructor",
     bio:
-      profile?.bio ??
-      profile?.description ??
+      profile.bio ??
+      profile.description ??
       "Instructor at GGECL LMS.",
     bio2: undefined,
     experience: "",
     experience2: undefined,
-    expertise: profile?.areasOfExpertise ?? [],
-    categoryIds: profile?.teachingCategories ?? [],
+    expertise: profile.areasOfExpertise ?? [],
+    categoryIds: profile.teachingCategories ?? [],
     rating: 0,
     reviews: 0,
     students: 0,
     courses: 0,
     badges: [],
-    socials: profile?.website
+    socials: profile.website
       ? [{ platform: "website", url: profile.website }]
       : [],
     courseSnippets: [],
@@ -112,17 +113,13 @@ export default function InstructorsPreview() {
   const { data = [], isLoading } = useQuery<PublicInstructor[]>({
     queryKey: ["instructors-public-preview"],
     queryFn: async () => {
-      const res = await UserService.findAllPublic({ role: "INSTRUCTOR" as any, limit: 4 });
-
-      // Normalize response properly (THIS was your real bug)
-      if (Array.isArray(res)) return res;
-      if (Array.isArray((res as any)?.data)) return (res as any).data;
-      if (Array.isArray((res as any)?.instructors))
-        return (res as any).instructors;
-
-      return [];
+      const res = await UserService.findAllInstructorsPublic({ limit: 4 });
+      // The response is { data: PublicInstructor[], meta: {...} }
+      return res.data || [];
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60 * 10, // 10 minutes
+    gcTime: 1000 * 60 * 30, // 30 minutes
+    refetchOnWindowFocus: false,
   });
 
   const preview = data.slice(0, 4).map(mapToInstructor);
