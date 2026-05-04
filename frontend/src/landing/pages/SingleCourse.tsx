@@ -12,6 +12,7 @@ import CoursesService from "@/services/course.service";
 import ReviewService from "@/services/review.service";
 import CartService from "@/services/cart.service";
 import WishlistService from "@/services/wishlist.service";
+import UserService from "@/services/user.service";
 import { useAuth } from "@/context/AuthProvider";
 import { SafeImage } from "@/components/SafeImage";
 
@@ -445,7 +446,7 @@ export default function SingleCourse() {
 
   const { data: instructor } = useQuery<InstructorWithStats>({
     queryKey: ["instructor-public", course?.instructorId],
-    queryFn:  () => UserService.getInstructorProfile(course!.instructorId) as Promise<InstructorWithStats>,
+    queryFn:  () => UserService.findOneInstructorPublic(course!.instructorId) as Promise<InstructorWithStats>,
     enabled:  !!course?.instructorId,
   });
 

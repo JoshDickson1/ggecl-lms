@@ -1,5 +1,5 @@
 import "./index.css";
-import { createBrowserRouter, RouterProvider, ScrollRestoration } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthProvider";
 import { DashboardAuthProvider } from "@/hooks/useDashboardUser";
 // ── Layouts ──────────────────────────────────────────────────
