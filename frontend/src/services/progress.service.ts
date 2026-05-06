@@ -18,6 +18,25 @@ export interface TopCourseItem {
   completedAt: string | null;
 }
 
+export interface WatchTimeByCourse {
+  courseId: string;
+  courseTitle: string;
+  totalMinutes: number;
+}
+
+export interface WatchTimeByStudent {
+  studentId: string;
+  studentName: string;
+  totalMinutes: number;
+}
+
+export interface InstructorWatchTimeResponse {
+  totalMinutes: number;
+  period: string;
+  byCourse: WatchTimeByCourse[];
+  byStudent: WatchTimeByStudent[];
+}
+
 // ==================== SERVICE ====================
 
 export default class ProgressService {
@@ -121,9 +140,10 @@ export default class ProgressService {
   /**
    * Get watch time analytics broken down by course and student.
    * INSTRUCTOR (own courses) / ADMIN (all courses).
+   * @param period - Time window: "daily" | "weekly" | "monthly" | "all" (default: "all")
    */
-  static async getInstructorWatchTime(): Promise<unknown> {
-    const response = await APIConfig.fetch("/progress/instructor/watch-time");
+  static async getInstructorWatchTime(period: "daily" | "weekly" | "monthly" | "all" = "all"): Promise<InstructorWatchTimeResponse> {
+    const response = await APIConfig.fetch(`/progress/instructor/watch-time?period=${period}`);
     return response.json();
   }
 }

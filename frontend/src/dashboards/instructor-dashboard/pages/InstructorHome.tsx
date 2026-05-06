@@ -13,6 +13,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import UserService from "@/services/user.service";
 import InstructorDashboardService from "@/services/instructor-dashboard.service";
+import ProgressService, { type InstructorWatchTimeResponse } from "@/services/progress.service";
 import { APIConfig } from "@/lib/api.config";
 import { ApiErrorPage } from "@/components/ui/ApiError";
 import { isValidImageUrl } from "@/lib/utils";
@@ -41,9 +42,9 @@ interface StudentDetail {
   studentAvatar: string | null;
   enrolledCourses: number;
   completedCourses: number;
-  totalProgress: number;
   lastActiveAt: string | null;
 }
+
 
 // ─── Normalizer ───────────────────────────────────────────────────────────────
 
@@ -63,17 +64,15 @@ function normalizeStudents(raw: unknown): StudentDetail[] {
   return list
     .filter(Boolean)
     .map((s: any) => ({
-      // The API may nest the student under different key shapes
-      studentId:       s.studentId    ?? s.id    ?? s.userId    ?? "",
-      studentName:     s.studentName  ?? s.name  ?? s.fullName  ?? "Unknown",
-      studentEmail:    s.studentEmail ?? s.email ?? "",
-      studentAvatar:   s.studentAvatar ?? s.image ?? s.avatar ?? null,
-      enrolledCourses: s.enrolledCourses  ?? s.totalCourses ?? 0,
-      completedCourses:s.completedCourses ?? 0,
-      totalProgress:   s.totalProgress   ?? s.progress ?? 0,
-      lastActiveAt:    s.lastActiveAt    ?? s.lastActive ?? null,
+      studentId:        s.studentId    ?? s.id    ?? s.userId    ?? "",
+      studentName:      s.studentName  ?? s.name  ?? s.fullName  ?? "Unknown",
+      studentEmail:     s.studentEmail ?? s.email ?? "",
+      studentAvatar:    s.studentAvatar ?? s.image ?? s.avatar ?? null,
+      enrolledCourses:  s.enrolledCourses  ?? s.totalCourses ?? 0,
+      completedCourses: s.completedCourses ?? 0,
+      lastActiveAt:     s.lastActiveAt    ?? s.lastActive ?? null,
     }))
-    .filter(s => s.studentId); // drop rows with no ID
+    .filter(s => s.studentId);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -183,7 +182,7 @@ function ActivityTooltip({ active, payload, label }: any) {
 
 // ─── Student Avatar Row ───────────────────────────────────────────────────────
 
-function StudentAvatarRow({ student }: { student: StudentDetail }) {
+function StudentAvatarRow({ student, watchMinutes }: { student: StudentDetail; watchMinutes?: number }) {
   return (
     <Link
       to={`/instructor/students/${student.studentId}`}
@@ -206,30 +205,20 @@ function StudentAvatarRow({ student }: { student: StudentDetail }) {
         }
       </div>
 
-      {/* Name + meta */}
+      {/* Name + watch time */}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold text-gray-800 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
           {student.studentName}
         </p>
-        {student.lastActiveAt && (
-          <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
-            <Clock className="w-2.5 h-2.5" />
-            {timeAgo(student.lastActiveAt)}
-          </p>
-        )}
-      </div>
-
-      {/* Progress pill */}
-      <div className="flex-shrink-0 flex items-center gap-1.5">
-        <div className="w-14 h-1 rounded-full bg-gray-100 dark:bg-white/[0.08] overflow-hidden">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500"
-            style={{ width: `${Math.min(student.totalProgress ?? 0, 100)}%` }}
-          />
-        </div>
-        <span className="text-[10px] font-bold text-gray-400 w-6 text-right">
-          {student.totalProgress ?? 0}%
-        </span>
+        <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
+          <Clock className="w-2.5 h-2.5" />
+          {watchMinutes != null && watchMinutes > 0
+            ? fmtSeconds(watchMinutes * 60)
+            : student.lastActiveAt
+              ? timeAgo(student.lastActiveAt)
+              : "No activity yet"
+          }
+        </p>
       </div>
 
       <ChevronRight className="w-3 h-3 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 flex-shrink-0 transition-colors" />
@@ -264,6 +253,8 @@ export default function InstructorHome() {
     staleTime: 1000 * 60 * 5,
   });
 
+  console.log("watch time", activity)
+
   const { data: activitiesData } = useQuery({
     queryKey: ["instructor-activities"],
     queryFn:  () => InstructorDashboardService.getActivities(5, true),
@@ -282,7 +273,25 @@ export default function InstructorHome() {
   });
   const allStudents = normalizeStudents(allStudentsRaw);
 
+  /** Watch time analytics — used for time spent metrics and per-student watch time */
+  const { data: watchTimeData } = useQuery<InstructorWatchTimeResponse>({
+    queryKey: ["instructor-watch-time"],
+    queryFn:  () => ProgressService.getInstructorWatchTime("all"),
+    staleTime: 1000 * 60 * 5,
+  });
+
   const loading = meLoading || summaryLoading;
+
+  // Per-student watch time map: studentId → totalMinutes
+  const studentWatchMap = Object.fromEntries(
+    (watchTimeData?.byStudent ?? []).map(s => [s.studentId, s.totalMinutes])
+  );
+
+  // Total watch time in seconds from the dedicated endpoint (fallback to activity)
+  const totalWatchSeconds =
+    watchTimeData?.totalMinutes != null
+      ? watchTimeData.totalMinutes * 60
+      : activity?.totalTimeSpentSeconds ?? 0;
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const name           = me?.name ?? "Instructor";
@@ -424,7 +433,7 @@ export default function InstructorHome() {
                 {[
                   { label: "Active Students",   value: fmt(activity.activeStudentsInPeriod ?? 0) },
                   { label: "Lessons Completed", value: fmt(activity.lessonsCompleted ?? 0)       },
-                  { label: "Time Spent",        value: fmtSeconds(activity.totalTimeSpentSeconds) },
+                  { label: "Time Spent",        value: fmtSeconds(totalWatchSeconds)             },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-gray-50 dark:bg-white/[0.03] rounded-xl px-3 py-2.5 text-center">
                     <p className="text-sm font-black text-gray-900 dark:text-white">{value}</p>
@@ -458,7 +467,11 @@ export default function InstructorHome() {
             ) : (
               <div className="space-y-0.5 -mx-1">
                 {allStudents.slice(0, 6).map(student => (
-                  <StudentAvatarRow key={student.studentId} student={student} />
+                  <StudentAvatarRow
+                    key={student.studentId}
+                    student={student}
+                    watchMinutes={studentWatchMap[student.studentId]}
+                  />
                 ))}
                 {allStudents.length > 6 && (
                   <Link to="/instructor/students"
