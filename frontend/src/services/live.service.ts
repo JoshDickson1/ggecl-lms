@@ -15,7 +15,7 @@ export interface EndSessionResponse {
 // ==================== SERVICE ====================
 
 export default class LiveService {
-  private static readonly base = "/api/livekit";
+  private static readonly base = "/livekit";
 
   /**
    * Get a signed LiveKit JWT token to join a session.

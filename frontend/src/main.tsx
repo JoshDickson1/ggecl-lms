@@ -5,6 +5,7 @@ import { ThemeProvider } from "./context/ThemeContext.tsx";
 import { CartProvider } from "./hooks/useCart.tsx";
 import { DashboardAuthProvider } from "./hooks/useDashboardUser.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
+import "@livekit/components-styles";
 import "./index.css";
 import App from "./App.tsx";
 

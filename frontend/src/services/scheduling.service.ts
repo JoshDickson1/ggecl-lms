@@ -2,7 +2,7 @@ import { APIConfig } from "@/lib/api.config";
 
 // ==================== TYPES ====================
 
-export type LiveSessionStatus = "scheduled" | "live" | "ended" | "cancelled";
+export type LiveSessionStatus = "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED";
 
 // ─── REQUEST BODIES ───────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ export interface ListSessionsQuery {
 // ==================== SERVICE ====================
 
 export default class SchedulingService {
-  private static readonly base = "/api/scheduling";
+  private static readonly base = "/scheduling";
 
   /**
    * Schedule a new live session.
