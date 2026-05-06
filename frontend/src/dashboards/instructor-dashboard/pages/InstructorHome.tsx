@@ -241,6 +241,8 @@ export default function InstructorHome() {
     staleTime: 1000 * 60 * 5,
   });
 
+  console.log('summary is', summary)
+
   const { data: recentReviews = [], isLoading: reviewsLoading } = useQuery({
     queryKey: ["instructor-recent-reviews"],
     queryFn:  () => InstructorDashboardService.getRecentReviews(3),
@@ -302,7 +304,7 @@ export default function InstructorHome() {
   );
   const totalStudents =
     studentsPerCourseSum ||
-    summary?.totalStudents?.totalUniqueStudents ||
+    summary?.allStudents?.totalUniqueStudents ||
     allStudents.length ||
     0;
   const totalCourses   = summary?.studentsPerCourse?.length ?? 0;

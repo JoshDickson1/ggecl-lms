@@ -14,6 +14,13 @@ export interface InstructorDashboardQuery {
 
 export interface TotalStudents {
   totalUniqueStudents: number;
+  students?: {
+    studentId: string;
+    userId: string;
+    name: string;
+    image: string | null;
+    enrolledAt: string;
+  }[];
 }
 
 export interface StudentsPerCourseItem {
@@ -155,7 +162,7 @@ export interface ActivitiesResponse {
 // ─── SUMMARY ──────────────────────────────────────────────────────────────────
 
 export interface DashboardSummary {
-  totalStudents: TotalStudents;
+  allStudents: TotalStudents;
   studentsPerCourse: StudentsPerCourseItem[];
   totalRevenue: TotalRevenue;
   revenuePerCourse: RevenuePerCourseItem[];
@@ -177,7 +184,9 @@ export default class InstructorDashboardService {
     const response = await APIConfig.fetch(
       `${this.base}/summary${this.toQueryString(query)}`
     );
-    return response.json();
+    const json = await response.json();
+    // Unwrap if the API wraps the payload under a "data" key
+    return (json?.data ?? json) as DashboardSummary;
   }
 
   /**

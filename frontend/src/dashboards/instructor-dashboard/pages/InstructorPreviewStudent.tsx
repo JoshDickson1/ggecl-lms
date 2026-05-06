@@ -263,7 +263,12 @@ export default function InstructorStudentPreview() {
   }, [enrollments, search, selectedStatus, showAllCourses]);
 
   // ── Stats ────────────────────────────────────────────────────────────────────
-  const totalStudents   = summary?.totalStudents?.totalUniqueStudents ?? 0;
+  const totalStudents   =
+    summary?.allStudents?.totalUniqueStudents ||
+    0;
+  const totalEnrollments = (summary?.studentsPerCourse ?? []).reduce(
+    (sum, c) => sum + (c.studentCount ?? 0), 0
+  );
   const overallCompletion = summary?.completionRate?.overallRate ?? 0;
   const perCourse       = summary?.studentsPerCourse ?? [];
 
@@ -285,10 +290,10 @@ export default function InstructorStudentPreview() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
         className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { icon: Users,        value: totalStudents,                                             label: "Total Students",  color: "bg-gradient-to-br from-blue-500 to-blue-600"     },
-          { icon: BookOpen,     value: courses.length,                                            label: "Courses",         color: "bg-gradient-to-br from-indigo-500 to-violet-600" },
+          { icon: Users,        value: totalStudents,                                             label: "Total Students",    color: "bg-gradient-to-br from-blue-500 to-blue-600"     },
+          { icon: BookOpen,     value: courses.length,                                            label: "Courses",           color: "bg-gradient-to-br from-indigo-500 to-violet-600" },
           { icon: CheckCircle2, value: overallCompletion > 0 ? `${overallCompletion.toFixed(0)}%` : "—", label: "Completion Rate", color: "bg-gradient-to-br from-emerald-500 to-teal-600"  },
-          { icon: Activity,     value: activeCourseId ? enrollments.length : totalStudents,       label: activeCourseId ? "Enrolled" : "All Students",  color: "bg-gradient-to-br from-amber-400 to-orange-500" },
+          { icon: Activity,     value: activeCourseId ? enrollments.length : totalEnrollments,    label: activeCourseId ? "Enrollments" : "All Enrollments", color: "bg-gradient-to-br from-amber-400 to-orange-500" },
         ].map(({ icon: Ic, value, label, color }) => (
           <Card key={label} className="p-4 flex items-center gap-3.5">
             <div className={`w-9 h-9 rounded-xl ${color} flex items-center justify-center flex-shrink-0`}>
