@@ -1,4 +1,5 @@
 // src/landing/_components/InstructorsPreview.tsx
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -6,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { InstructorCard } from "@/landing/_components/InstructorCard";
 import { type Instructor } from "@/data/Instructors";
 import UserService from "@/services/user.service";
+import CoursesService from "@/services/course.service";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -39,7 +41,12 @@ const AVATAR_COLORS = [
   "bg-cyan-500",
 ];
 
-function mapToInstructor(profile: PublicInstructor, i: number): Instructor {
+function mapToInstructor(
+  profile: PublicInstructor,
+  i: number,
+  courseCountMap: Record<string, number>,
+  studentCountMap: Record<string, number>,
+): Instructor {
   const nameParts = profile.user.name.trim().split(" ");
   const initials = nameParts
     .map((p) => p[0])
@@ -68,8 +75,8 @@ function mapToInstructor(profile: PublicInstructor, i: number): Instructor {
     categoryIds: profile.teachingCategories ?? [],
     rating: 0,
     reviews: 0,
-    students: 0,
-    courses: 0,
+    students: studentCountMap[profile.id] ?? 0,
+    courses: courseCountMap[profile.id] ?? 0,
     badges: [],
     socials: profile.website
       ? [{ platform: "website", url: profile.website }]
@@ -117,12 +124,33 @@ export default function InstructorsPreview() {
       // The response is { data: PublicInstructor[], meta: {...} }
       return res.data || [];
     },
-    staleTime: 1000 * 60 * 10, // 10 minutes
-    gcTime: 1000 * 60 * 30, // 30 minutes
+    staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 30,
     refetchOnWindowFocus: false,
   });
 
-  const preview = data.slice(0, 4).map(mapToInstructor);
+  // Fetch all published courses to build per-instructor course count and student count maps
+  const { data: allCoursesData } = useQuery({
+    queryKey: ["courses-public-all-for-count"],
+    queryFn: () => CoursesService.findAllPublic({ limit: 500 }) as Promise<{
+      items: { instructorId: string; _count: { enrollments: number } }[];
+    }>,
+    staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 30,
+    refetchOnWindowFocus: false,
+  });
+
+  const { courseCountMap, studentCountMap } = useMemo(() => {
+    const courseMap: Record<string, number> = {};
+    const studentMap: Record<string, number> = {};
+    for (const course of allCoursesData?.items ?? []) {
+      courseMap[course.instructorId] = (courseMap[course.instructorId] ?? 0) + 1;
+      studentMap[course.instructorId] = (studentMap[course.instructorId] ?? 0) + (course._count?.enrollments ?? 0);
+    }
+    return { courseCountMap: courseMap, studentCountMap: studentMap };
+  }, [allCoursesData]);
+
+  const preview = data.slice(0, 4).map((p, i) => mapToInstructor(p, i, courseCountMap, studentCountMap));
 
   return (
     <section className="relative py-20 overflow-hidden bg-white dark:bg-[#080c17]">

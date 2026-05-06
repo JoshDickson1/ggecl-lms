@@ -134,7 +134,7 @@ export default function SingleInstructor() {
   // Fetch courses for this instructor directly via instructorId query param
   const { data: coursesData } = useQuery<PublicCoursesResponse>({
     queryKey: ["courses-public", "instructor", instructor?.userId],
-    queryFn:  () => CoursesService.findAllPublic({ instructorId: id, limit: 4 }) as Promise<PublicCoursesResponse>,
+    queryFn:  () => CoursesService.findAllPublic({ instructorId: id, limit: 100 }) as Promise<PublicCoursesResponse>,
     enabled:  !!instructor?.userId,
     staleTime: 1000 * 60 * 10,
   });
@@ -173,6 +173,7 @@ export default function SingleInstructor() {
 
   // Courses are already filtered by instructorId from the API
   const instructorCourses = (coursesData?.items ?? []).slice(0, 4);
+  const totalCourseCount  = coursesData?.items?.length ?? 0;
 
   return (
     <div className="font-dm min-h-screen bg-[#f8fafc] dark:bg-[#080c17]">
@@ -416,7 +417,7 @@ export default function SingleInstructor() {
             <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">At a Glance</p>
             <div className="grid grid-cols-2 gap-2.5">
               {[
-              { n: instructorCourses.length.toString(), s: "", l: "Courses"   },
+              { n: totalCourseCount.toString(), s: "", l: "Courses"   },
               { n: specialization,                      s: "", l: "Specialty" },
               ].map(({ n, s, l }) => (
               <div key={l} className="flex flex-col items-center py-3.5 rounded-2xl

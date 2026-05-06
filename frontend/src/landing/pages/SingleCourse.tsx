@@ -438,6 +438,8 @@ export default function SingleCourse() {
     enabled:  !!id,
   });
 
+  console.log("what courses look like", course)
+
   const { data: reviewsData } = useQuery<ReviewsResponse>({
     queryKey: ["course-reviews", id],
     queryFn:  () => ReviewService.getCourseReviews(id!, { limit: 5 }) as Promise<ReviewsResponse>,
@@ -447,6 +449,12 @@ export default function SingleCourse() {
   const { data: instructor } = useQuery<InstructorWithStats>({
     queryKey: ["instructor-public", course?.instructorId],
     queryFn:  () => UserService.findOneInstructorPublic(course!.instructorId) as Promise<InstructorWithStats>,
+    enabled:  !!course?.instructorId,
+  });
+
+  const { data: instructorCoursesData } = useQuery<{ items: unknown[] }>({
+    queryKey: ["courses-public", "instructor", course?.instructorId],
+    queryFn:  () => CoursesService.findAllPublic({ instructorId: course!.instructorId, limit: 100 }) as Promise<{ items: unknown[] }>,
     enabled:  !!course?.instructorId,
   });
 
@@ -530,15 +538,13 @@ export default function SingleCourse() {
               {/* Rating row */}
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
                 className="flex flex-wrap items-center gap-4 mb-6">
-                {course.averageRating > 0 ? (
+                {course.averageRating > 0 && (
                   <div className="flex items-center gap-2">
                     <Stars rating={course.averageRating} size="sm" />
                     <span className="text-amber-300 font-bold text-sm">{course.averageRating.toFixed(1)}</span>
                     <span className="text-white/60 text-sm">({fmt(course.reviewCount)} ratings)</span>
                   </div>
-                ) : (
-                  <span className="text-white/60 text-sm">No ratings yet</span>
-                )}
+                ) }
                 <div className="flex items-center gap-1.5 text-white/70 text-sm">
                   <Users className="w-4 h-4" />{fmt(course._count.enrollments)} students
                 </div>
@@ -590,7 +596,7 @@ export default function SingleCourse() {
                     <div className="flex items-center gap-3 mt-0.5 text-white/70 text-xs">
                       <span className="flex items-center gap-1">
                         <Users className="w-3 h-3" />
-                        {fmt(instructor._count?.courses ?? 0)} courses
+                        {fmt(instructorCoursesData?.items?.length ?? 0)} courses
                       </span>
                       <span className="flex items-center gap-1">
                         <Star className="w-3 h-3 fill-amber-300 text-amber-300" />

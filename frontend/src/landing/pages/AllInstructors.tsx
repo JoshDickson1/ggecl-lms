@@ -7,6 +7,7 @@ import { InstructorCard } from "@/landing/_components/InstructorCard";
 import { type Instructor } from "@/data/Instructors";
 import { PageHeroBg } from "@/landing/pages/SingleCategory";
 import UserService from "@/services/user.service";
+import CoursesService from "@/services/course.service";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -37,7 +38,12 @@ const AVATAR_COLORS = [
   "bg-pink-500",  "bg-teal-500",
 ];
 
-function mapToInstructor(profile: PublicInstructor, i: number): Instructor {
+function mapToInstructor(
+  profile: PublicInstructor,
+  i: number,
+  courseCountMap: Record<string, number>,
+  studentCountMap: Record<string, number>,
+): Instructor {
   const parts    = profile.user.name.trim().split(" ");
   const initials = parts.map(x => x[0]).join("").slice(0, 2).toUpperCase();
 
@@ -56,8 +62,8 @@ function mapToInstructor(profile: PublicInstructor, i: number): Instructor {
     categoryIds: profile.teachingCategories ?? [],
     rating:      0,
     reviews:     0,
-    students:    0,
-    courses:     0,
+    students:    studentCountMap[profile.id] ?? 0,
+    courses:     courseCountMap[profile.id] ?? 0,
     badges:      [],
     socials:     profile.website ? [{ platform: "website", url: profile.website }] : [],
     courseSnippets:  [],
@@ -170,14 +176,35 @@ export default function AllInstructors() {
       // The response is { data: PublicInstructor[], meta: {...} }
       return res.data || [];
     },
-    staleTime: 1000 * 60 * 10, // 10 minutes
-    gcTime: 1000 * 60 * 30, // 30 minutes
+    staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 30,
     refetchOnWindowFocus: false,
   });
 
+  // Fetch all published courses to build per-instructor course count and student count maps
+  const { data: allCoursesData } = useQuery({
+    queryKey: ["courses-public-all-for-count"],
+    queryFn: () => CoursesService.findAllPublic({ limit: 500 }) as Promise<{
+      items: { instructorId: string; _count: { enrollments: number } }[];
+    }>,
+    staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 30,
+    refetchOnWindowFocus: false,
+  });
+
+  const { courseCountMap, studentCountMap } = useMemo(() => {
+    const courseMap: Record<string, number> = {};
+    const studentMap: Record<string, number> = {};
+    for (const course of allCoursesData?.items ?? []) {
+      courseMap[course.instructorId] = (courseMap[course.instructorId] ?? 0) + 1;
+      studentMap[course.instructorId] = (studentMap[course.instructorId] ?? 0) + (course._count?.enrollments ?? 0);
+    }
+    return { courseCountMap: courseMap, studentCountMap: studentMap };
+  }, [allCoursesData]);
+
   const allInstructors = useMemo(
-    () => (data ?? []).map(mapToInstructor),
-    [data]
+    () => (data ?? []).map((p, i) => mapToInstructor(p, i, courseCountMap, studentCountMap)),
+    [data, courseCountMap, studentCountMap]
   );
 
   const hasFilters = search.trim() !== "" || sortBy !== "az";
