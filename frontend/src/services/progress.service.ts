@@ -37,6 +37,21 @@ export interface InstructorWatchTimeResponse {
   byStudent: WatchTimeByStudent[];
 }
 
+export interface InstructorCourseAnalyticsItem {
+  courseId: string;
+  courseTitle: string;
+  courseImg: string | null;
+  courseStatus: string;
+  enrolledCount: number;
+  completedCount: number;
+  completionRate: number;
+  inProgressCount: number;
+  notStartedCount: number;
+  avgCompletionPercent: number;
+  totalWatchMinutes: number;
+  avgWatchMinutesPerStudent: number;
+}
+
 // ==================== SERVICE ====================
 
 export default class ProgressService {
@@ -145,5 +160,18 @@ export default class ProgressService {
   static async getInstructorWatchTime(period: "daily" | "weekly" | "monthly" | "all" = "all"): Promise<InstructorWatchTimeResponse> {
     const response = await APIConfig.fetch(`/progress/instructor/watch-time?period=${period}`);
     return response.json();
+  }
+
+  /**
+   * Get course-wide analytics for the instructor's own courses.
+   * Returns completion rate, in-progress/not-started counts, and watch time per course.
+   * INSTRUCTOR only.
+   */
+  static async getInstructorCourseAnalytics(): Promise<InstructorCourseAnalyticsItem[]> {
+    const response = await APIConfig.fetch("/progress/instructor/courses/analytics");
+    const json = await response.json();
+    if (Array.isArray(json)) return json as InstructorCourseAnalyticsItem[];
+    if (Array.isArray((json as any)?.data)) return (json as any).data as InstructorCourseAnalyticsItem[];
+    return [];
   }
 }

@@ -159,6 +159,65 @@ export interface ActivitiesResponse {
   activities: ActivityItem[];
 }
 
+// ─── STUDENT DASHBOARDS ──────────────────────────────────────────────────────
+
+export interface StudentDashboardWeeklyDay {
+  date: string;
+  label: string;
+  minutes: number;
+}
+
+export interface StudentDashboardWeeklyActivity {
+  days: StudentDashboardWeeklyDay[];
+  totalThisWeek: number;
+  dailyAverage: number;
+  mostActiveDay: string;
+}
+
+export interface StudentDashboardStreak {
+  currentStreak: number;
+  longestStreak: number;
+  totalActiveDays: number;
+  lastActiveDate: string | null;
+}
+
+export interface StudentDashboardStats {
+  totalTimeSpentThisMonth: number;
+  streak: StudentDashboardStreak;
+  completedCourses: number;
+  avgCompletionPercent: number;
+  weeklyActivity: StudentDashboardWeeklyActivity;
+}
+
+export interface StudentDashboardCourse {
+  courseId: string;
+  courseTitle: string;
+  courseImg: string | null;
+  instructor: {
+    id: string;
+    user: { id: string; name: string; image: string | null };
+  };
+  completedLessons: number;
+  totalLessons: number;
+  percentComplete: number;
+  totalTimeSpent: number;
+  isCompleted: boolean;
+  lastActivityAt: string | null;
+  lastLessonId: string | null;
+  lastLessonTitle: string | null;
+}
+
+export interface StudentDashboardItem {
+  student: {
+    studentId: string;
+    studentName: string;
+    studentImage: string | null;
+    studentEmail: string;
+  };
+  stats: StudentDashboardStats;
+  courses: StudentDashboardCourse[];
+}
+
 // ─── SUMMARY ──────────────────────────────────────────────────────────────────
 
 export interface DashboardSummary {
@@ -342,6 +401,20 @@ export default class InstructorDashboardService {
       `${this.base}/notifications?limit=${limit}&onlyUnread=${onlyUnread}`
     );
     return response.json();
+  }
+
+  // ─── STUDENT DASHBOARDS ────────────────────────────────────────────────────
+
+  /**
+   * Full learning dashboards for every unique student enrolled in at least one
+   * of the requesting instructor's courses.
+   */
+  static async getStudentDashboards(): Promise<StudentDashboardItem[]> {
+    const response = await APIConfig.fetch(`/progress/instructor/students/dashboards`);
+    const json = await response.json();
+    if (Array.isArray(json)) return json as StudentDashboardItem[];
+    if (Array.isArray((json as any)?.data)) return (json as any).data as StudentDashboardItem[];
+    return [];
   }
 
   // ─── HELPERS ───────────────────────────────────────────────────────────────

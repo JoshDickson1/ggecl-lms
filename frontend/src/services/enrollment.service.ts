@@ -23,6 +23,28 @@ export interface MyEnrollment {
   };
 }
 
+export interface InstructorStudentEnrollmentsResponse {
+  student: {
+    id: string;
+    userId: string;
+    name: string;
+    image: string | null;
+    totalEnrollments: number;
+  };
+  enrollments: {
+    id: string;
+    enrolledAt: string;
+    course: {
+      id: string;
+      title: string;
+      img: string | null;
+      price: number;
+      level: string;
+      status: string;
+    };
+  }[];
+}
+
 // ==================== SERVICE ====================
 
 export default class EnrollmentService {
@@ -134,6 +156,21 @@ export default class EnrollmentService {
   // Instructor/Admin: get all enrollments for a specific student across courses
   static async findByStudent(studentId: string): Promise<unknown> {
     const response = await APIConfig.fetch(`/enrollments/student/${studentId}`);
+    return response.json();
+  }
+
+  /**
+   * Get a student's enrollments scoped to the instructor's own courses.
+   * Returns student identity (including userId) and course list.
+   * INSTRUCTOR only.
+   * @param studentId - Student profile ID
+   */
+  static async findByStudentForInstructor(
+    studentId: string
+  ): Promise<InstructorStudentEnrollmentsResponse> {
+    const response = await APIConfig.fetch(
+      `/enrollments/instructor/students/${studentId}`
+    );
     return response.json();
   }
 }

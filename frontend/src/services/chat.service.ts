@@ -33,7 +33,7 @@ export interface RoomSummaryItem {
   courseId: string | null;
   totalMessages: number;
   memberCount: number;
-  grade: { score: number; resolvedGrade: number } | null;
+  grade: { score: number; resolvedGrade: number; isGraded: boolean } | null;
 }
 
 export interface PaginatedRooms {
@@ -273,6 +273,58 @@ export default class ChatService {
 
   static async getRoomGrade(roomId: string): Promise<RoomGrade> {
     const res = await APIConfig.fetch(`/chat/rooms/${roomId}/grade`);
+    return res.json();
+  }
+
+  /**
+   * Partially update an existing group grade.
+   * Returns 404 if the room has not been graded yet — use gradeRoom first.
+   * INSTRUCTOR only.
+   * @param roomId  - Room ID
+   * @param payload - Fields to update (all optional)
+   */
+  static async updateRoomGrade(
+    roomId: string,
+    payload: {
+      score?: number;
+      feedback?: string;
+      strengths?: string;
+      improvements?: string;
+      rubricItems?: { label: string; score: number; maxScore: number }[];
+    }
+  ): Promise<RoomGrade> {
+    const res = await APIConfig.fetch(`/chat/rooms/${roomId}/grade`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return res.json();
+  }
+
+  /**
+   * Get all chat rooms for a course, scoped by role.
+   * INSTRUCTOR can only view rooms for courses they own.
+   * @param courseId - Course ID
+   * @param params   - Optional filters: type, isGraded, page, limit
+   */
+  static async getCourseRooms(
+    courseId: string,
+    params?: {
+      type?: RoomType;
+      isGraded?: boolean;
+      page?: number;
+      limit?: number;
+    }
+  ): Promise<PaginatedRooms> {
+    const p = new URLSearchParams();
+    if (params?.type !== undefined)     p.append("type",     params.type);
+    if (params?.isGraded !== undefined) p.append("isGraded", String(params.isGraded));
+    if (params?.page !== undefined)     p.append("page",     String(params.page));
+    if (params?.limit !== undefined)    p.append("limit",    String(params.limit));
+    const qs = p.toString();
+    const res = await APIConfig.fetch(
+      `/chat/courses/${courseId}/rooms${qs ? `?${qs}` : ""}`
+    );
     return res.json();
   }
 }

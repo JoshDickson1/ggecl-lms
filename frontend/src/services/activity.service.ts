@@ -7,6 +7,17 @@ export interface ActivityQuery {
   limit?: number;
 }
 
+export interface SendStudentMessagePayload {
+  studentId: string;
+  courseId: string;
+  message: string;
+}
+
+export interface SendStudentMessageResponse {
+  message: string;
+  recipientCount: number;
+}
+
 // ==================== SERVICE ====================
 
 export default class ActivityService {
@@ -80,6 +91,23 @@ export default class ActivityService {
   static async clearAll(): Promise<unknown> {
     const response = await APIConfig.fetch("/activities/bulk", {
       method: "DELETE",
+    });
+    return response.json();
+  }
+
+  /**
+   * Send a personal message to a single student as a notification.
+   * The course must be owned by the requesting instructor and the student
+   * must be enrolled in it. INSTRUCTOR only.
+   * @param payload - studentId, courseId, and message text
+   */
+  static async sendMessageToStudent(
+    payload: SendStudentMessagePayload
+  ): Promise<SendStudentMessageResponse> {
+    const response = await APIConfig.fetch("/activities/instructor/message/student", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
     return response.json();
   }

@@ -1,4 +1,5 @@
 // src/dashboards/instructor-dashboard/pages/InstructorHome.tsx
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -241,7 +242,6 @@ export default function InstructorHome() {
     staleTime: 1000 * 60 * 5,
   });
 
-  console.log('summary is', summary)
 
   const { data: recentReviews = [], isLoading: reviewsLoading } = useQuery({
     queryKey: ["instructor-recent-reviews"],
@@ -255,7 +255,6 @@ export default function InstructorHome() {
     staleTime: 1000 * 60 * 5,
   });
 
-  console.log("watch time", activity)
 
   const { data: activitiesData } = useQuery({
     queryKey: ["instructor-activities"],
@@ -279,6 +278,13 @@ export default function InstructorHome() {
   const { data: watchTimeData } = useQuery<InstructorWatchTimeResponse>({
     queryKey: ["instructor-watch-time"],
     queryFn:  () => ProgressService.getInstructorWatchTime("all"),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  /** Course analytics — accurate completion rate per course */
+  const { data: courseAnalytics = [] } = useQuery({
+    queryKey: ["instructor-course-analytics"],
+    queryFn:  () => ProgressService.getInstructorCourseAnalytics(),
     staleTime: 1000 * 60 * 5,
   });
 
@@ -310,7 +316,13 @@ export default function InstructorHome() {
   const totalCourses   = summary?.studentsPerCourse?.length ?? 0;
   const avgRating      = Number(summary?.avgReviews?.overallAverage) || 0;
   const totalReviews   = summary?.avgReviews?.totalReviews ?? 0;
-  const completionRate = Number(summary?.completionRate?.overallRate) || 0;
+  // Completion rate: weighted from analytics endpoint (completedCount / enrolledCount)
+  const completionRate = useMemo(() => {
+    if (courseAnalytics.length === 0) return Number(summary?.completionRate?.overallRate) || 0;
+    const totalEnrolled  = courseAnalytics.reduce((s, c) => s + c.enrolledCount, 0);
+    const totalCompleted = courseAnalytics.reduce((s, c) => s + c.completedCount, 0);
+    return totalEnrolled > 0 ? (totalCompleted / totalEnrolled) * 100 : 0;
+  }, [courseAnalytics, summary]);
   const topCourses     = summary?.topCourses ?? [];
   const perCourse      = summary?.studentsPerCourse ?? [];
 
