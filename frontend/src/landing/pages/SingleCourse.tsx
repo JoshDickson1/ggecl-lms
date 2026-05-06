@@ -672,11 +672,19 @@ export default function SingleCourse() {
                 <h2 className="text-xl font-black text-gray-900 dark:text-white">Student Reviews</h2>
                 <div className="flex items-center gap-4">
                   <div className="text-center">
-                    <p className="text-5xl font-black text-gray-900 dark:text-white leading-none">
-                      {course.averageRating > 0 ? course.averageRating.toFixed(1) : "—"}
-                    </p>
-                    {course.averageRating > 0 && <Stars rating={course.averageRating} size="sm" />}
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Course rating</p>
+                    {
+                      course.averageRating !== 0 && (
+                        <>
+                          <p className="text-5xl font-black text-gray-900 dark:text-white leading-none">
+                        {course.averageRating > 0 ? course.averageRating.toFixed(1) : "—"}
+                      </p>
+                      {course.averageRating > 0 && <Stars rating={course.averageRating} size="sm" />}
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Course rating</p>
+                        </>
+                      )
+
+                    }
+                    
                   </div>
                 </div>
               </div>
