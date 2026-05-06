@@ -287,7 +287,15 @@ export default function InstructorHome() {
   // ── Derived values ──────────────────────────────────────────────────────────
   const name           = me?.name ?? "Instructor";
   const image          = me?.image ?? null;
-  const totalStudents  = summary?.totalStudents?.totalUniqueStudents ?? allStudents.length ?? 0;
+  // Sum studentCount across all courses to get total enrollments
+  const studentsPerCourseSum = (summary?.studentsPerCourse ?? []).reduce(
+    (sum, c) => sum + (c.studentCount ?? 0), 0
+  );
+  const totalStudents =
+    studentsPerCourseSum ||
+    summary?.totalStudents?.totalUniqueStudents ||
+    allStudents.length ||
+    0;
   const totalCourses   = summary?.studentsPerCourse?.length ?? 0;
   const avgRating      = Number(summary?.avgReviews?.overallAverage) || 0;
   const totalReviews   = summary?.avgReviews?.totalReviews ?? 0;
@@ -350,7 +358,7 @@ export default function InstructorHome() {
                       <span className="text-gray-300 dark:text-white/20 text-xs">·</span>
                     </>
                   )}
-                  <span className="text-xs text-gray-400">{fmt(totalStudents)} students</span>
+                  <span className="text-xs text-gray-400">{fmt(totalStudents)} enrollments</span>
                   <span className="text-gray-300 dark:text-white/20 text-xs">·</span>
                   <span className="text-xs text-gray-400">{totalCourses} courses</span>
                 </div>
@@ -372,7 +380,7 @@ export default function InstructorHome() {
           {/* KPI strip */}
           <div className="relative mt-5 pt-5 border-t border-gray-100 dark:border-white/[0.06] grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { icon: Users,      label: "Total Students",  value: fmt(totalStudents),                                                            accent: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-100 dark:bg-blue-900/30"    },
+              { icon: Users,      label: "Total Enrollments",  value: fmt(totalStudents),                                                            accent: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-100 dark:bg-blue-900/30"    },
               { icon: BookOpen,   label: "Active Courses",  value: String(totalCourses),                                                          accent: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-100 dark:bg-indigo-900/30" },
               { icon: TrendingUp, label: "Completion Rate", value: completionRate > 0 ? `${(completionRate || 0).toFixed(0)}%` : "—",             accent: "text-violet-600 dark:text-violet-400", bg: "bg-violet-100 dark:bg-violet-900/30" },
               { icon: Award,      label: "Avg Rating",      value: avgRating > 0 ? (avgRating || 0).toFixed(1) : "—",                            accent: "text-amber-600 dark:text-amber-400",  bg: "bg-amber-100 dark:bg-amber-900/30"  },
@@ -429,7 +437,7 @@ export default function InstructorHome() {
             {/* ── Student list ── */}
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
-                Students ({totalStudents})
+                Students ({allStudents.length})
               </p>
               <Link to="/instructor/students"
                 className="text-xs font-semibold text-blue-500 hover:underline flex items-center gap-1">
