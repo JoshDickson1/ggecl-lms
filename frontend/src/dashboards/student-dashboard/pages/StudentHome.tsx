@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import ProgressService from "@/services/progress.service";
 import ActivityService from "@/services/activity.service";
-import EnrollmentService from "@/services/enrollment.service";
+import EnrollmentService, { MyEnrollment } from "@/services/enrollment.service";
 import { useAuth } from "@/context/AuthProvider";
 import { ApiErrorPage } from "@/components/ui/ApiError";
 
@@ -47,16 +47,24 @@ interface DashboardStats {
 
 interface DashboardCourse {
   courseId: string;
-  title: string;
-  img?: string;
-  instructor: { name: string; image?: string | null };
-  progressPercent: number;
+  courseTitle: string;
+  courseImg?: string;
+  instructor?: {
+    id: string;
+    user?: {
+      id: string;
+      name: string;
+      image?: string | null;
+    };
+  };
   completedLessons: number;
   totalLessons: number;
-  lastAccessedAt?: string;
-  lastLessonTitle?: string;
-  completed: boolean;
-  myRating?: number;
+  percentComplete: number;
+  totalTimeSpent?: number;
+  isCompleted: boolean;
+  lastActivityAt?: string;
+  lastLessonId?: string | null;
+  lastLessonTitle?: string | null;
 }
 
 interface DashboardResponse {
@@ -87,27 +95,6 @@ interface ActivityItem {
 interface ActivityResponse {
   data: ActivityItem[];
   meta: { total: number; unreadCount: number };
-}
-
-interface EnrollmentCourse {
-  id: string;
-  title: string;
-  img: string;
-  price: number;
-  level: string;
-  instructorId: string;
-  instructor?: {
-    id: string;
-    name: string;
-    image?: string | null;
-  };
-}
-
-interface Enrollment {
-  id: string;
-  enrolledAt: string;
-  course: EnrollmentCourse;
-  progress?: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -249,9 +236,9 @@ export default function StudentHome() {
     queryFn: () => ActivityService.getFeed({ limit: 5 }) as Promise<ActivityResponse>,
   });
 
-  const { data: enrollments, isLoading: enrollLoading } = useQuery<Enrollment[]>({
+  const { data: enrollments, isLoading: enrollLoading } = useQuery<MyEnrollment[]>({
     queryKey: ["enrollments-mine"],
-    queryFn: () => EnrollmentService.getMine() as Promise<Enrollment[]>,
+    queryFn: () => EnrollmentService.getMine(),
   });
 
   const isLoading = dashLoading || xpLoading || activityLoading || enrollLoading;
@@ -269,33 +256,13 @@ export default function StudentHome() {
   const streak       = stats?.streak.currentStreak ?? 0;
   const completed    = stats?.completedCourses ?? 0;
 
-  // Merge enrollment data with dashboard progress data for complete course info
-  const enrichedCourses = (enrollments ?? []).map(enrollment => {
-    // Find matching progress data from dashboard (which has instructor info)
-    const progressData = courses.find(c => c.courseId === enrollment.course.id);
-    
-    return {
-      courseId: enrollment.course.id,
-      title: enrollment.course.title || progressData?.title || "Untitled Course",
-      img: enrollment.course.img || progressData?.img,
-      instructor: progressData?.instructor || enrollment.course.instructor || { 
-        name: "Instructor",
-        image: null 
-      },
-      progressPercent: progressData?.progressPercent ?? enrollment.progress ?? 0,
-      completedLessons: progressData?.completedLessons ?? 0,
-      totalLessons: progressData?.totalLessons ?? 0,
-      lastAccessedAt: progressData?.lastAccessedAt,
-      lastLessonTitle: progressData?.lastLessonTitle,
-      completed: progressData?.completed ?? false,
-      myRating: progressData?.myRating,
-    };
-  });
-
-  // Top in-progress course for "Continue Learning" - use enriched data
-  const topCourse = enrichedCourses.find(c => !c.completed && c.progressPercent > 0) 
-    ?? enrichedCourses.find(c => !c.completed) 
-    ?? enrichedCourses[0];
+  // Top course for "Continue Learning":
+  // in-progress courses first (closest to 100%), completed sink to bottom — mirrors /top-courses ranking
+  const topCourse =
+    courses.find(c => !c.isCompleted && c.percentComplete > 0) ??
+    courses.find(c => !c.isCompleted) ??
+    courses[0] ??
+    null;
 
   // XP
   const xpTotal     = xp?.totalXp ?? 0;
@@ -306,10 +273,12 @@ export default function StudentHome() {
   const xpPct       = xpSpan > 0 ? Math.round(((xpInto || 0) / xpSpan) * 100) || 0 : 0;
 
   // Activities
-  const activities   = activityRes?.data ?? [];
+  const activities = activityRes?.data ?? [];
 
-  // Enrolled courses (top 3 for "My Courses")
-  const myEnrollments = (enrollments ?? []).slice(0, 3);
+  // My Courses: from enrollments (most recently enrolled), cross-referenced with
+  // dashboard progress for percentComplete / isCompleted
+  const allEnrollments = enrollments ?? [];
+  const myCourses = allEnrollments.slice(0, 3);
 
   // Avatar initials
   const initials = user?.name
@@ -344,7 +313,7 @@ export default function StudentHome() {
               </h1>
               <p className="text-blue-200 text-sm mt-2">
                 {topCourse
-                  ? `You're ${Math.round(100 - (topCourse.progressPercent || 0)) || 0}% away from completing your top course.`
+                  ? `You're ${Math.round(100 - (topCourse.percentComplete || 0)) || 0}% away from completing your top course.`
                   : "Explore courses and start learning today."}
               </p>
 
@@ -372,7 +341,7 @@ export default function StudentHome() {
               </div>
               <div className="flex md:flex-col flex-row gap-2">
                 {[
-                  { label: "Enrolled",   value: enrollments?.length ?? 0 },
+                  { label: "Enrolled",   value: allEnrollments.length },
                   { label: "Completed",  value: completed },
                   { label: "Streak",     value: `${streak}d` },
                 ].map(s => (
@@ -398,12 +367,11 @@ export default function StudentHome() {
             <div className="flex flex-col sm:flex-row gap-5 items-start">
               {/* Course Thumbnail */}
               <div className={`w-full sm:w-44 h-28 rounded-2xl flex-shrink-0 bg-gradient-to-br ${gradientFor(0)} flex items-center justify-center shadow-lg overflow-hidden relative group`}>
-                {topCourse.img ? (
-                  <img src={topCourse.img} alt={topCourse.title} className="w-full h-full object-cover" />
+                {topCourse.courseImg ? (
+                  <img src={topCourse.courseImg} alt={topCourse.courseTitle} className="w-full h-full object-cover" />
                 ) : (
                   <Play className="w-8 h-8 text-white drop-shadow" />
                 )}
-                {/* Play overlay on hover */}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
                     <Play className="w-6 h-6 text-blue-600 ml-0.5" />
@@ -413,37 +381,35 @@ export default function StudentHome() {
 
               {/* Course Info */}
               <div className="flex-1 min-w-0">
-                {/* Course Title - Make it very prominent */}
                 <h3 className="font-black text-gray-900 dark:text-white text-lg leading-tight mb-2">
-                  {topCourse.title || "Untitled Course"}
+                  {topCourse.courseTitle || "Untitled Course"}
                 </h3>
-                
+
                 {/* Instructor info with avatar */}
-                <div className="flex items-center gap-2">
-                  {topCourse.instructor.image ? (
-                    <img 
-                      src={topCourse.instructor.image} 
-                      alt={topCourse.instructor.name}
-                      className="w-6 h-6 rounded-lg object-cover border border-gray-200 dark:border-white/[0.1]"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const parent = e.currentTarget.parentElement!;
-                        const initials = topCourse.instructor.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-                        const avatarDiv = document.createElement('div');
-                        avatarDiv.className = 'w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-[9px] font-black border border-gray-200 dark:border-white/[0.1]';
-                        avatarDiv.textContent = initials;
-                        parent.insertBefore(avatarDiv, parent.firstChild);
-                      }}
-                    />
-                  ) : (
-                    <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-[9px] font-black border border-gray-200 dark:border-white/[0.1]">
-                      {topCourse.instructor.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                {(() => {
+                  const instructorName = topCourse.instructor?.user?.name ?? "Instructor";
+                  const instructorImage = topCourse.instructor?.user?.image ?? null;
+                  const instructorInitials = instructorName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+                  return (
+                    <div className="flex items-center gap-2">
+                      {instructorImage ? (
+                        <img
+                          src={instructorImage}
+                          alt={instructorName}
+                          className="w-6 h-6 rounded-lg object-cover border border-gray-200 dark:border-white/[0.1]"
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-[9px] font-black border border-gray-200 dark:border-white/[0.1]">
+                          {instructorInitials}
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        <span className="font-medium text-gray-700 dark:text-gray-300">{instructorName}</span>
+                      </p>
                     </div>
-                  )}
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">{topCourse.instructor.name}</span>
-                  </p>
-                </div>
+                  );
+                })()}
 
                 {/* Last lesson */}
                 {topCourse.lastLessonTitle && (
@@ -456,10 +422,10 @@ export default function StudentHome() {
                 {/* Progress bar */}
                 <div className="mt-4">
                   <div className="flex justify-between text-xs mb-2">
-                    <span className="text-gray-600 dark:text-gray-400 font-semibold">{Math.round(topCourse.progressPercent || 0)}% complete</span>
+                    <span className="text-gray-600 dark:text-gray-400 font-semibold">{Math.round(topCourse.percentComplete || 0)}% complete</span>
                     <span className="text-gray-500 dark:text-gray-400">{topCourse.completedLessons || 0} of {topCourse.totalLessons || 0} lessons</span>
                   </div>
-                  <ProgressBar pct={Math.round(topCourse.progressPercent || 0)} />
+                  <ProgressBar pct={Math.round(topCourse.percentComplete || 0)} />
                 </div>
               </div>
 
@@ -592,52 +558,53 @@ export default function StudentHome() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-black text-base text-gray-900 dark:text-white">My Courses</h2>
-            <Link to="/student/courses" className="text-xs font-semibold text-blue-500 hover:underline flex items-center gap-1">
-              View all <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
+            <span className="text-[10px] text-gray-400">{allEnrollments.length} enrolled</span>
           </div>
 
-          {myEnrollments.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {myEnrollments.map((enr, i) => {
-                // Find matching progress from dashboard courses
-                const prog = courses.find(c => c.courseId === enr.course.id);
-                const pct  = Math.round(prog?.progressPercent ?? 0);
-                return (
-                  <motion.div
-                    key={enr.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.16 + i * 0.06 }}
+          {myCourses.length > 0 ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {myCourses.map((enr, i) => {
+                  return (
+                    <motion.div
+                      key={enr.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.16 + i * 0.06 }}
+                    >
+                      <Link to={`/student/courses/${enr.course.id}/watch`}>
+                        <Card className="p-4 hover:shadow-md transition-shadow group cursor-pointer">
+                          <div className={`w-full h-20 rounded-xl bg-gradient-to-br ${gradientFor(i)} flex items-center justify-center mb-3 overflow-hidden`}>
+                            {enr.course.img ? (
+                              <img src={enr.course.img} alt={enr.course.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <Play className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
+                            )}
+                          </div>
+                          <h3 className="text-xs font-bold text-gray-900 dark:text-white line-clamp-2 mb-1 group-hover:text-blue-500 transition-colors">
+                            {enr.course.title}
+                          </h3>
+                          <p className="text-[10px] text-gray-400 capitalize">
+                            {enr.course.level.toLowerCase()}
+                          </p>
+                        </Card>
+                      </Link>
+                    </motion.div>
+                  );
+                })}
+              </div>
+              {allEnrollments.length > 3 && (
+                <div className="mt-4 flex justify-center">
+                  <Link
+                    to="/student/courses"
+                    className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                   >
-                    <Link to={`/student/courses/${enr.course.id}/watch`}>
-                      <Card className="p-4 hover:shadow-md transition-shadow group cursor-pointer">
-                        <div className={`w-full h-20 rounded-xl bg-gradient-to-br ${gradientFor(i)} flex items-center justify-center mb-3 overflow-hidden`}>
-                          {enr.course.img ? (
-                            <img src={enr.course.img} alt={enr.course.title} className="w-full h-full object-cover" />
-                          ) : (
-                            <Play className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
-                          )}
-                        </div>
-                        <h3 className="text-xs font-bold text-gray-900 dark:text-white line-clamp-2 mb-1 group-hover:text-blue-500 transition-colors">
-                          {enr.course.title}
-                        </h3>
-                        <p className="text-[10px] text-gray-400 mb-2 capitalize">{enr.course.level.toLowerCase()}</p>
-                        <ProgressBar pct={pct} />
-                        <div className="flex justify-between mt-1.5 text-[10px] text-gray-400">
-                          <span>{pct}%</span>
-                          {pct === 100 && (
-                            <span className="text-emerald-500 font-semibold flex items-center gap-0.5">
-                              <CheckCircle2 className="w-3 h-3" />Done
-                            </span>
-                          )}
-                        </div>
-                      </Card>
-                    </Link>
-                  </motion.div>
-                );
-              })}
-            </div>
+                    View {allEnrollments.length - 3} more course{allEnrollments.length - 3 !== 1 ? "s" : ""}
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              )}
+            </>
           ) : (
             <Card className="p-8 flex flex-col items-center gap-3 text-center">
               <BookOpen className="w-8 h-8 text-blue-400 opacity-40" />

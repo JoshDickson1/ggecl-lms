@@ -6,21 +6,39 @@ import {
   BookOpen, Play, CheckCircle2, TrendingUp,
   Search, X, Filter, BarChart3, AlertCircle,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { type CourseLevel } from "@/services/course.service";
-import EnrollmentService from "@/services/enrollment.service";
+import EnrollmentService, { MyEnrollment } from "@/services/enrollment.service";
 import ProgressService from "@/services/progress.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CourseProgressData {
+  courseId: string;
+  completedLessons: number;
+  totalLessons: number;
+  percentComplete: number;
+  totalTimeSpent: number;
+  isCompleted: boolean;
+  completedAt: string | null;
+  lastActivityAt: string | null;
+  lastLessonId: string | null;
+}
+
+interface CourseProgressResponse {
+  courseProgress: CourseProgressData;
+}
 
 interface MyCourse {
   id: string;
   title: string;
   img: string;
-  progress: number;
   level: CourseLevel | null;
   enrolledAt: string;
-  completedAt: string | null;
+  // progress fields — undefined until the per-course query resolves
+  percentComplete: number | undefined;
+  isCompleted: boolean | undefined;
+  completedAt: string | null | undefined;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -37,7 +55,6 @@ const LEVEL_COLOR: Record<CourseLevel, string> = {
   ADVANCED:     "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800/30",
 };
 
-// Deterministic gradient fallback based on course id
 const GRADIENTS = [
   "from-blue-500 to-indigo-600",
   "from-emerald-500 to-teal-600",
@@ -96,6 +113,8 @@ function CourseSkeleton() {
 
 function CourseCard({ course, index }: { course: MyCourse; index: number }) {
   const gradient = gradientFor(course.id);
+  const pct = course.percentComplete ?? 0;
+  const progressLoaded = course.percentComplete !== undefined;
 
   return (
     <motion.div
@@ -123,7 +142,7 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
             </div>
           )}
 
-          {course.progress === 100 && (
+          {course.isCompleted && (
             <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
               <div className="flex flex-col items-center gap-1">
                 <CheckCircle2 className="w-10 h-10 text-emerald-400 drop-shadow-lg" />
@@ -145,19 +164,26 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
             {course.title}
           </h3>
 
+          {/* Progress — shows a subtle loading state until data arrives */}
           <div className="mb-3">
-            <div className="flex justify-between text-xs mb-1.5">
-              <span className="text-gray-400">{course.progress}% complete</span>
-              {course.completedAt && (
-                <span className="text-emerald-500 font-medium text-[11px]">
-                  Done {new Date(course.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                </span>
-              )}
-            </div>
-            <ProgressBar pct={course.progress} />
+            {progressLoaded ? (
+              <>
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-gray-400">{pct}% complete</span>
+                  {course.completedAt && (
+                    <span className="text-emerald-500 font-medium text-[11px]">
+                      Done {new Date(course.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    </span>
+                  )}
+                </div>
+                <ProgressBar pct={pct} />
+              </>
+            ) : (
+              <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+            )}
           </div>
 
-          {course.progress === 100 ? (
+          {course.isCompleted ? (
             <Link
               to={`/student/courses/${course.id}/watch`}
               className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-200 dark:hover:bg-emerald-950/60 transition-all"
@@ -170,7 +196,7 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
               className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_12px_rgba(59,130,246,0.3)] transition-all"
             >
               <Play className="w-3.5 h-3.5" />
-              {course.progress > 0 ? "Continue Learning" : "Start Learning"}
+              {pct > 0 ? "Continue Learning" : "Start Learning"}
             </Link>
           )}
         </div>
@@ -182,54 +208,62 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function StudentCourses() {
-  const [search, setSearch]     = useState("");
-  const [level, setLevel]       = useState<CourseLevel | "All">("All");
-  const [filter, setFilter]     = useState<"all" | "in-progress" | "not-started" | "completed">("all");
+  const [search, setSearch] = useState("");
+  const [level, setLevel]   = useState<CourseLevel | "All">("All");
+  const [filter, setFilter] = useState<"all" | "in-progress" | "not-started" | "completed">("all");
 
-  // Source of truth: all courses the student is enrolled in
+  // Step 1: fetch enrollments — source of truth for which courses the student has
   const {
     data: enrollments = [],
     isLoading: enrollmentsLoading,
     isError,
-  } = useQuery({
+  } = useQuery<MyEnrollment[]>({
     queryKey: ["my-enrollments"],
     queryFn: () => EnrollmentService.getMine(),
   });
 
-  // Progress data keyed by course id (may not include every enrolled course if
-  // the student hasn't started yet — that's fine, we default progress to 0)
-  const { data: progressData = [], isLoading: progressLoading } = useQuery({
-    queryKey: ["my-course-progress"],
-    queryFn: () => ProgressService.getTopCourses(),
+  // Step 2: fire one progress query per enrolled course, in parallel
+  // Each resolves independently so cards update as data arrives
+  const progressQueries = useQueries({
+    queries: enrollments.map((enr) => ({
+      queryKey: ["course-progress", enr.course.id],
+      queryFn: () =>
+        ProgressService.getCourseProgress(enr.course.id) as Promise<CourseProgressResponse>,
+      enabled: !!enr.course.id,
+    })),
   });
 
-  const isLoading = enrollmentsLoading || progressLoading;
+  // Build a map of courseId → progress for easy lookup
+  const progressMap = useMemo(() => {
+    const map = new Map<string, CourseProgressData>();
+    progressQueries.forEach((q) => {
+      if (q.data) {
+        const p = (q.data as CourseProgressResponse).courseProgress;
+        if (p?.courseId) map.set(p.courseId, p);
+      }
+    });
+    return map;
+  }, [progressQueries]);
 
-  // Merge: enrollments are the source of truth; progress enriches them
+  // Merge enrollments + progress
   const courses: MyCourse[] = useMemo(() => {
-    if (!enrollments.length) return [];
-
-    const progressMap = new Map(
-      progressData.map((p: any) => [p.id, p])
-    );
-
-    return enrollments.map((enrollment) => {
-      const prog = progressMap.get(enrollment.courseId);
+    return enrollments.map((enr) => {
+      const prog = progressMap.get(enr.course.id);
       return {
-        id: enrollment.course.id,
-        title: enrollment.course.title,
-        img: enrollment.course.img,
-        progress: prog?.progress ?? 0,
-        level: (enrollment.course.level as CourseLevel) || null,
-        enrolledAt: enrollment.enrolledAt,
-        completedAt: prog?.completedAt ?? null,
+        id:              enr.course.id,
+        title:           enr.course.title,
+        img:             enr.course.img,
+        level:           (enr.course.level as CourseLevel) || null,
+        enrolledAt:      enr.enrolledAt,
+        percentComplete: prog?.percentComplete,
+        isCompleted:     prog?.isCompleted,
+        completedAt:     prog?.completedAt,
       };
     });
-  }, [enrollments, progressData]);
+  }, [enrollments, progressMap]);
 
   const levels = useMemo(() => {
-    const found = Array.from(new Set(courses.map(c => c.level).filter(Boolean))) as CourseLevel[];
-    return found;
+    return Array.from(new Set(courses.map(c => c.level).filter(Boolean))) as CourseLevel[];
   }, [courses]);
 
   const filtered = useMemo(() => {
@@ -239,20 +273,24 @@ export default function StudentCourses() {
       list = list.filter(c => c.title.toLowerCase().includes(q));
     }
     if (level !== "All") list = list.filter(c => c.level === level);
-    if (filter === "in-progress")  list = list.filter(c => c.progress > 0 && c.progress < 100);
-    if (filter === "not-started")  list = list.filter(c => c.progress === 0);
-    if (filter === "completed")    list = list.filter(c => c.progress === 100);
+    if (filter === "in-progress")  list = list.filter(c => (c.percentComplete ?? 0) > 0 && !c.isCompleted);
+    if (filter === "not-started")  list = list.filter(c => !c.percentComplete);
+    if (filter === "completed")    list = list.filter(c => c.isCompleted);
     return list;
   }, [courses, search, level, filter]);
 
-  const stats = useMemo(() => ({
-    total:      courses.length,
-    inProgress: courses.filter(c => c.progress > 0 && c.progress < 100).length,
-    completed:  courses.filter(c => c.progress === 100).length,
-    avgProgress: courses.length
-      ? Math.round(courses.reduce((a, c) => a + c.progress, 0) / courses.length)
-      : 0,
-  }), [courses]);
+  // Stats — only count courses where progress has loaded
+  const stats = useMemo(() => {
+    const loaded = courses.filter(c => c.percentComplete !== undefined);
+    return {
+      total:       courses.length,
+      inProgress:  loaded.filter(c => (c.percentComplete ?? 0) > 0 && !c.isCompleted).length,
+      completed:   loaded.filter(c => c.isCompleted).length,
+      avgProgress: loaded.length
+        ? Math.round(loaded.reduce((a, c) => a + (c.percentComplete ?? 0), 0) / loaded.length)
+        : 0,
+    };
+  }, [courses]);
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
@@ -266,7 +304,7 @@ export default function StudentCourses() {
           <div>
             <h1 className="text-2xl font-black text-gray-900 dark:text-white">My Courses</h1>
             <p className="text-xs text-gray-400">
-              {isLoading ? "Loading…" : `${stats.total} enrolled`}
+              {enrollmentsLoading ? "Loading…" : `${stats.total} enrolled`}
             </p>
           </div>
         </div>
@@ -282,10 +320,10 @@ export default function StudentCourses() {
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { icon: BookOpen,     value: isLoading ? "—" : stats.total,               label: "Total Enrolled", color: "from-blue-500 to-blue-600"       },
-            { icon: TrendingUp,   value: isLoading ? "—" : stats.inProgress,           label: "In Progress",    color: "from-amber-400 to-orange-500"    },
-            { icon: CheckCircle2, value: isLoading ? "—" : stats.completed,            label: "Completed",      color: "from-emerald-500 to-teal-600"    },
-            { icon: BarChart3,    value: isLoading ? "—" : `${stats.avgProgress}%`,    label: "Avg Progress",   color: "from-violet-500 to-purple-600"   },
+            { icon: BookOpen,     value: enrollmentsLoading ? "—" : stats.total,            label: "Total Enrolled", color: "from-blue-500 to-blue-600"     },
+            { icon: TrendingUp,   value: enrollmentsLoading ? "—" : stats.inProgress,        label: "In Progress",    color: "from-amber-400 to-orange-500"  },
+            { icon: CheckCircle2, value: enrollmentsLoading ? "—" : stats.completed,         label: "Completed",      color: "from-emerald-500 to-teal-600"  },
+            { icon: BarChart3,    value: enrollmentsLoading ? "—" : `${stats.avgProgress}%`, label: "Avg Progress",   color: "from-violet-500 to-purple-600" },
           ].map(({ icon: Ic, value, label, color }) => (
             <Card key={label} className="p-4 flex items-center gap-3">
               <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center flex-shrink-0`}>
@@ -355,7 +393,7 @@ export default function StudentCourses() {
       </motion.div>
 
       {/* Error */}
-      {isError && !isLoading && (
+      {isError && !enrollmentsLoading && (
         <Card className="p-10 text-center">
           <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
           <p className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Couldn't load courses</p>
@@ -364,14 +402,14 @@ export default function StudentCourses() {
       )}
 
       {/* Loading skeletons */}
-      {isLoading && (
+      {enrollmentsLoading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
           {[1, 2, 3, 4, 5, 6].map(i => <CourseSkeleton key={i} />)}
         </div>
       )}
 
       {/* Grid */}
-      {!isLoading && !isError && (
+      {!enrollmentsLoading && !isError && (
         <AnimatePresence mode="popLayout">
           {filtered.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-20 text-center">
