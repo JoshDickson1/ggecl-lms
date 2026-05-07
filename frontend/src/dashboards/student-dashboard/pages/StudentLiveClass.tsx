@@ -15,14 +15,12 @@ import {
   useConnectionState,
   RoomAudioRenderer,
   useChat,
-  useRoomContext,
   isTrackReference,
   type ReceivedChatMessage,
 } from "@livekit/components-react";
 import {
   Track,
   ConnectionState,
-  RoomEvent,
   type Participant,
 } from "livekit-client";
 import LiveService, { type JoinSessionResponse } from "@/services/live.service";

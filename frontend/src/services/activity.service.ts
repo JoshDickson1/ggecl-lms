@@ -2,9 +2,61 @@ import { APIConfig } from "@/lib/api.config";
 
 // ==================== TYPES ====================
 
+export type ActivityType =
+  | "STUDENT_ENROLLED"
+  | "INSTRUCTOR_NEW_ENROLLMENT"
+  | "COURSE_PUBLISHED"
+  | "COURSE_UPDATED"
+  | "COURSE_ARCHIVED"
+  | "CART_ITEM_ADDED"
+  | "WISHLIST_ITEM_ADDED"
+  | "WISHLIST_TO_CART"
+  | "ADMIN_ANNOUNCEMENT"
+  | "LESSON_COMPLETED"
+  | "COURSE_COMPLETED"
+  | "STREAK_MILESTONE"
+  | "ACHIEVEMENT_UNLOCKED"
+  | "USER_WELCOME"
+  | "ADMIN_NEW_USER_JOINED"
+  | "REVIEW_RECEIVED"
+  | "REVIEW_REPLIED"
+  | "CHAT_ADDED_TO_ROOM"
+  | "CHAT_REMOVED_FROM_ROOM"
+  | "CHAT_MENTIONED"
+  | "CHAT_GROUP_GRADED"
+  | "CHAT_GROUP_ADMIN_ASSIGNED"
+  | "INSTRUCTOR_MESSAGE_COURSE"
+  | "INSTRUCTOR_MESSAGE_STUDENT";
+
 export interface ActivityQuery {
-  cursor?: string;
+  page?: number;
   limit?: number;
+  isRead?: boolean;
+  type?: ActivityType;
+}
+
+export interface ActivityItem {
+  id: string;
+  type: ActivityType;
+  title: string;
+  message: string;
+  isRead: boolean;
+  readAt: string | null;
+  courseId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ActivityFeedMeta {
+  total: number;
+  page: number;
+  limit: number;
+  unreadCount: number;
+}
+
+export interface ActivityFeedResponse {
+  data: ActivityItem[];
+  meta: ActivityFeedMeta;
 }
 
 export interface SendStudentMessagePayload {
@@ -26,7 +78,7 @@ export default class ActivityService {
    * Works for all roles.
    * @param query - Optional cursor-based pagination
    */
-  static async getFeed(query?: ActivityQuery): Promise<unknown> {
+  static async getFeed(query?: ActivityQuery): Promise<ActivityFeedResponse> {
     const response = await APIConfig.fetch(
       `/activities${this.toQueryString(query)}`
     );
@@ -118,8 +170,10 @@ export default class ActivityService {
     if (!query) return "";
     const params = new URLSearchParams();
 
-    if (query.cursor)              params.append("cursor", query.cursor);
-    if (query.limit !== undefined) params.append("limit",  String(query.limit));
+    if (query.page !== undefined)   params.append("page",   String(query.page));
+    if (query.limit !== undefined)  params.append("limit",  String(query.limit));
+    if (query.isRead !== undefined) params.append("isRead", String(query.isRead));
+    if (query.type)                 params.append("type",   query.type);
 
     const qs = params.toString();
     return qs ? `?${qs}` : "";

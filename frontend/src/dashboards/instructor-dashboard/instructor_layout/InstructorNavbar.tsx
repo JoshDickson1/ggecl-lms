@@ -14,6 +14,7 @@ import { useDashboardUser, getInitials } from "@/hooks/useDashboardUser";
 import { useInstructorSidebar } from "./InstructorSidebar";
 import { useTheme } from "@/hooks/useTheme";
 import { Sun, Moon } from "lucide-react";
+import ActivityService, { ActivityItem } from "@/services/activity.service";
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -50,15 +51,45 @@ function Breadcrumb() {
   );
 }
 
-const NOTIFS = [
-  { id: 1, text: "New student enrolled: React Bootcamp",      time: "2m ago",  unread: true  },
-  { id: 2, text: "★★★★★ review from Emeka A.",               time: "1h ago",  unread: true  },
-  { id: 3, text: "Payout of $312.00 processed",               time: "2d ago",  unread: false },
-];
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 function NotificationBell() {
   const navigate = useNavigate();
-  const unread = NOTIFS.filter(n => n.unread).length;
+  const [notifs, setNotifs] = useState<ActivityItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    ActivityService.getFeed({ page: 1, limit: 5 })
+      .then((res) => {
+        setNotifs(res.data);
+        setUnreadCount(res.meta.unreadCount);
+      })
+      .catch(() => {/* silently fail — bell stays empty */})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleMarkAllRead = async () => {
+    await ActivityService.markAllAsRead();
+    setNotifs(prev => prev.map(n => ({ ...n, isRead: true })));
+    setUnreadCount(0);
+  };
+
+  const handleMarkRead = async (id: string) => {
+    await ActivityService.markAsRead(id);
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+  };
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -68,27 +99,48 @@ function NotificationBell() {
           border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800/40
           transition-all duration-200">
           <Bell className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-          {unread > 0 && <span className="absolute top-0.5 right-0.5 w-[7px] h-[7px] rounded-full bg-indigo-500 border-2 border-white dark:border-[#080d18]" />}
+          {unreadCount > 0 && <span className="absolute top-0.5 right-0.5 w-[7px] h-[7px] rounded-full bg-indigo-500 border-2 border-white dark:border-[#080d18]" />}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-0 rounded-[18px] border border-gray-100 dark:border-white/[0.07] shadow-[0_16px_48px_rgba(0,0,0,0.14)] bg-white dark:bg-[#0f1623]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/[0.06]">
           <p className="text-xs font-black text-gray-900 dark:text-white">Notifications</p>
-          {unread > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{unread} new</span>}
+          {unreadCount > 0 && (
+            <button
+              onClick={handleMarkAllRead}
+              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              Mark all read
+            </button>
+          )}
         </div>
-        {NOTIFS.map(n => (
-          <div key={n.id} className={`flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-gray-50 dark:border-white/[0.03] last:border-0 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors ${n.unread ? "bg-indigo-50/30 dark:bg-indigo-950/10" : ""}`}>
-            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${n.unread ? "bg-indigo-500" : "bg-transparent"}`} />
+        {loading && (
+          <div className="px-4 py-6 text-center text-[11px] text-gray-400">Loading…</div>
+        )}
+        {!loading && notifs.length === 0 && (
+          <div className="px-4 py-6 text-center text-[11px] text-gray-400">No notifications yet</div>
+        )}
+        {!loading && notifs.map(n => (
+          <div
+            key={n.id}
+            onClick={() => !n.isRead && handleMarkRead(n.id)}
+            className={`flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-gray-50 dark:border-white/[0.03] last:border-0 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors ${!n.isRead ? "bg-indigo-50/30 dark:bg-indigo-950/10" : ""}`}
+          >
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${!n.isRead ? "bg-indigo-500" : "bg-transparent"}`} />
             <div className="flex-1 min-w-0">
-              <p className="text-[11.5px] text-gray-700 dark:text-gray-300 leading-snug">{n.text}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{n.time}</p>
+              <p className="text-[11.5px] font-semibold text-gray-700 dark:text-gray-300 leading-snug">{n.title}</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mt-0.5">{n.message}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{timeAgo(n.createdAt)}</p>
             </div>
           </div>
         ))}
         <div className="px-4 py-2.5">
-          <button 
-            onClick={()=> navigate("/instructor/notifications")}
-          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+          <button
+            onClick={() => navigate("/instructor/notifications")}
+            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            View all
+          </button>
         </div>
       </PopoverContent>
     </Popover>
