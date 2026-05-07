@@ -225,7 +225,7 @@ function ControlsBar({
 
 // ─── Room inner ───────────────────────────────────────────────────────────────
 
-function RoomInner({ session, onLeft }: { session: LiveSession; onLeft: () => void }) {
+function RoomInner({ session: _session, onLeft }: { session: LiveSession; onLeft: () => void }) {
   const connectionState = useConnectionState();
   const participants = useParticipants();
   const [chatOpen, setChatOpen] = useState(false);

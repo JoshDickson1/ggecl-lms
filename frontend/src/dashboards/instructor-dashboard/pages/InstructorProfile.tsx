@@ -207,7 +207,7 @@ export default function InstructorProfile() {
   const linkedin = profile?.linkedin;
   const youtube  = profile?.youtube;
 
-  const totalStudents = summary?.totalStudents?.totalUniqueStudents ?? 0;
+  const totalStudents = summary?.allStudents?.totalUniqueStudents ?? 0;
   const avgRating     = summary?.avgReviews?.overallAverage ?? 0;
   const totalReviews  = summary?.avgReviews?.totalReviews ?? 0;
   const totalCourses  = summary?.studentsPerCourse?.length ?? 0;
