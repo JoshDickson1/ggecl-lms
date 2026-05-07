@@ -246,12 +246,14 @@ function VideoPlayer({
   onProgress,
   onComplete,
   onNearEnd,
+  onPrefetch,
 }: {
   material: CourseMaterial;
   resumeAt?: number;
   onProgress: (p: VideoProgress) => void;
   onComplete: () => void;
-  onNearEnd?: (near: boolean) => void;
+  onNearEnd?: () => void;
+  onPrefetch?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -259,6 +261,8 @@ function VideoPlayer({
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTimeRef = useRef<number>(0);
   const watchedSecondsRef = useRef<number>(0);
+  const nearEndFiredRef = useRef<boolean>(false);
+  const prefetchFiredRef = useRef<boolean>(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -281,6 +285,11 @@ function VideoPlayer({
     setIsPlaying(false); setCurrentTime(0); setDuration(0); setShowResume(false);
     lastTimeRef.current = 0;
     watchedSecondsRef.current = 0;
+    nearEndFiredRef.current = false;
+    prefetchFiredRef.current = false;
+    // Auto-play when src changes — catch rejection silently (browser autoplay policy)
+    const v = videoRef.current;
+    if (v) v.play().catch(() => {});
   }, [material.url]);
 
   useEffect(() => {
@@ -331,7 +340,28 @@ function VideoPlayer({
       setCurrentTime(now);
       if (video.buffered.length > 0)
         setBuffered((video.buffered.end(video.buffered.length - 1) / video.duration) * 100);
-      if (video.duration > 0) onNearEnd?.(now / video.duration >= 0.85);
+      // Fire onPrefetch once when ≤7s remain (video must be >7s) — kicks off API work early
+      if (
+        onPrefetch &&
+        !prefetchFiredRef.current &&
+        video.duration > 7 &&
+        video.duration - now <= 7 &&
+        video.duration - now > 0
+      ) {
+        prefetchFiredRef.current = true;
+        onPrefetch();
+      }
+      // Fire onNearEnd once when ≤5s remain — shows the banner
+      if (
+        onNearEnd &&
+        !nearEndFiredRef.current &&
+        video.duration > 5 &&
+        video.duration - now <= 5 &&
+        video.duration - now > 0
+      ) {
+        nearEndFiredRef.current = true;
+        onNearEnd();
+      }
       if (progressTimer.current) return;
       progressTimer.current = setTimeout(() => {
         progressTimer.current = null;
@@ -401,7 +431,10 @@ function VideoPlayer({
         className="w-full h-full object-contain cursor-pointer"
         src={material.url}
         onClick={togglePlay}
+        onContextMenu={e => e.preventDefault()}
         playsInline
+        autoPlay
+        controlsList="nodownload"
       />
 
       {/* Resume toast */}
@@ -951,14 +984,14 @@ export default function StudentWatchCourse() {
   const [selectedLesson, setSelectedLesson] = useState<CourseLesson | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<CourseMaterial | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-  const [nearEnd, setNearEnd] = useState(false);
   const [lockedAccessMessage, setLockedAccessMessage] = useState<string | null>(null);
   const autoCompletedRef = useRef<Set<string>>(new Set());
 
   const [quizSectionId, setQuizSectionId] = useState<string | null>(null);
   const [previewMaterial, setPreviewMaterial] = useState<CourseMaterial | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [isCompletingLesson, setIsCompletingLesson] = useState(false);
+  const [autoPlayCountdown, setAutoPlayCountdown] = useState<number | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // On mobile, default sidebar closed
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -1085,21 +1118,35 @@ export default function StudentWatchCourse() {
   // ── Navigation helpers ────────────────────────────────────────────────────────
 
   const selectLesson = (lesson: CourseLesson) => {
+    cancelCountdown();
     setSelectedLesson(lesson);
     setQuizSectionId(null);
     setPreviewMaterial(null);
-    setNearEnd(false);
     const vid = lesson.materials?.find(m => m.type === "VIDEO");
     setSelectedMaterial(vid ?? null);
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
   const openQuiz = (sectionId: string) => {
+    cancelCountdown();
     setSelectedMaterial(null);
     setPreviewMaterial(null);
     setQuizSectionId(sectionId);
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
+
+  // Cancel countdown on unmount
+  useEffect(() => () => { if (countdownRef.current) clearInterval(countdownRef.current); }, []);
+
+  // Enter key skips the countdown immediately
+  useEffect(() => {
+    if (autoPlayCountdown === null) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Enter") { e.preventDefault(); navigateToNext(); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [autoPlayCountdown]);
 
   const goNext = () => {
     if (currentIndex < allContent.length - 1) {
@@ -1140,7 +1187,6 @@ export default function StudentWatchCourse() {
         setSelectedLesson(firstVideoLesson);
         setQuizSectionId(null);
         setPreviewMaterial(null);
-        setNearEnd(false);
         setSelectedMaterial(firstVideoLesson.materials?.find(m => m.type === "VIDEO") ?? null);
         setExpandedSections(prev => new Set([...prev, nextSection.id]));
         if (window.innerWidth < 768) setSidebarOpen(false);
@@ -1160,55 +1206,94 @@ export default function StudentWatchCourse() {
     }
   };
 
-  const handleVideoComplete = () => {
-    if (!selectedLesson || autoCompletedRef.current.has(selectedLesson.id)) return;
-    autoCompletedRef.current.add(selectedLesson.id);
-    ProgressService.completeLesson(selectedLesson.id)
-      .then(() => queryClient.refetchQueries({ queryKey: ["course-progress", courseId] }))
-      .catch(e => console.error("Video-end complete failed:", e));
+  const cancelCountdown = () => {
+    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+    setAutoPlayCountdown(null);
+    nextLessonPromiseRef.current = null;
   };
 
-  const handleNextLesson = async () => {
-    setIsCompletingLesson(true);
-    // Always call completeLesson when Next is clicked — backend is idempotent
-    if (selectedLesson) {
-      autoCompletedRef.current.add(selectedLesson.id);
-      try {
-        await ProgressService.completeLesson(selectedLesson.id);
-        // Wait for the progress refetch to finish so the next lesson is unlocked
-        // before we navigate to it
-        await queryClient.refetchQueries({ queryKey: ["course-progress", courseId] });
-      } catch (e) {
-        console.error("Failed to complete lesson:", e);
-        // Don't block navigation on failure
-      }
+  // Ref to hold the in-flight prefetch promise
+  const nextLessonPromiseRef = useRef<Promise<void> | null>(null);
+  const [loadingNext, setLoadingNext] = useState(false);
+
+  // Fires at 7s remaining — complete lesson + refetch progress in background
+  const prefetchNextLesson = () => {
+    if (currentIndex >= allContent.length - 1) return;
+    if (!selectedLesson || autoCompletedRef.current.has(selectedLesson.id)) {
+      // Already completed — just prefetch progress
+      nextLessonPromiseRef.current = queryClient
+        .refetchQueries({ queryKey: ["course-progress", courseId] })
+        .catch(e => console.error("Prefetch progress failed:", e));
+      return;
     }
+    autoCompletedRef.current.add(selectedLesson.id);
+    nextLessonPromiseRef.current = ProgressService.completeLesson(selectedLesson.id)
+      .then(() => queryClient.refetchQueries({ queryKey: ["course-progress", courseId] }))
+      .catch(e => console.error("Prefetch next lesson failed:", e));
+  };
 
-    setIsCompletingLesson(false);
+  // Fires at 5s remaining — shows the 5s countdown banner only, no API calls
+  const startCountdown = () => {
+    if (autoPlayCountdown !== null || currentIndex >= allContent.length - 1) return;
+    const DELAY = 5;
+    setAutoPlayCountdown(DELAY);
+    countdownRef.current = setInterval(() => {
+      setAutoPlayCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+          setTimeout(() => navigateToNext(), 0);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
-    // Last lesson — complete the course and go back
+  // Called when countdown ends or user skips — just navigate, promise is already resolved
+  const navigateToNext = async () => {
+    cancelCountdown();
+    // If prefetch is somehow still in flight (very slow network), wait briefly
+    if (nextLessonPromiseRef.current) {
+      setLoadingNext(true);
+      try { await nextLessonPromiseRef.current; } catch { /* already logged */ }
+      setLoadingNext(false);
+      nextLessonPromiseRef.current = null;
+    }
     if (currentIndex >= allContent.length - 1) {
       if (courseId) ProgressService.completeCourse(courseId).catch(() => {});
       navigate("/student/courses");
       return;
     }
-
-    // Navigate after progress is refreshed — next lesson will be unlocked
     const next = allContent[currentIndex + 1];
     if (next.type === "lesson") {
       setSelectedLesson(next.lesson);
       setQuizSectionId(null);
       setPreviewMaterial(null);
-      setNearEnd(false);
       setSelectedMaterial(next.lesson.materials?.find(m => m.type === "VIDEO") ?? null);
       if (window.innerWidth < 768) setSidebarOpen(false);
     } else {
       setSelectedMaterial(null);
       setPreviewMaterial(null);
-      setNearEnd(false);
       setQuizSectionId(next.sectionId);
       if (window.innerWidth < 768) setSidebarOpen(false);
     }
+  };
+
+  const handleVideoNearEnd = () => startCountdown();
+
+  const handleVideoComplete = () => {
+    // Countdown already running — nothing to do
+    if (autoPlayCountdown !== null) return;
+    // Short video (≤5s) — prefetch hasn't fired yet, do it now then show banner
+    if (!selectedLesson || autoCompletedRef.current.has(selectedLesson.id)) {
+      startCountdown();
+      return;
+    }
+    autoCompletedRef.current.add(selectedLesson.id);
+    nextLessonPromiseRef.current = ProgressService.completeLesson(selectedLesson.id)
+      .then(() => queryClient.refetchQueries({ queryKey: ["course-progress", courseId] }))
+      .catch(e => console.error("Video-end complete failed:", e));
+    startCountdown();
   };
 
   // ── Guards ────────────────────────────────────────────────────────────────────
@@ -1433,46 +1518,72 @@ export default function StudentWatchCourse() {
                     </div>
                   </div>
                 ) : (
-                  <VideoPlayer
-                    material={selectedMaterial}
-                    onProgress={handleVideoProgress}
-                    onComplete={handleVideoComplete}
-                    onNearEnd={setNearEnd}
-                  />
+                  <div className="relative">
+                    <VideoPlayer
+                      material={selectedMaterial}
+                      onProgress={handleVideoProgress}
+                      onComplete={handleVideoComplete}
+                      onNearEnd={handleVideoNearEnd}
+                      onPrefetch={prefetchNextLesson}
+                    />
+                    {/* Loading overlay while next lesson is being fetched */}
+                    <AnimatePresence>
+                      {loadingNext && (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="absolute inset-0 rounded-2xl bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-20"
+                        >
+                          <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+                          <p className="text-sm font-semibold text-white/80">Loading next lesson…</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 )}
 
-                {/* Near-end banner */}
+                {/* Auto-advance countdown banner */}
                 <AnimatePresence>
-                  {nearEnd && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -8 }}
+                  {autoPlayCountdown !== null && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30"
+                      exit={{ opacity: 0, y: 4 }}
+                      onClick={() => navigateToNext()}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl bg-gray-900 dark:bg-white/[0.06] border border-white/10 overflow-hidden relative text-left"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                        <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-                          {currentIndex >= allContent.length - 1
-                            ? "Last lesson — mark as complete!"
-                            : allContent[currentIndex + 1]?.type === "quiz"
-                              ? "Section complete! Time for the quiz."
-                              : "Almost done! Ready for the next lesson?"}
-                        </span>
-                      </div>
+                      <motion.div
+                        className="absolute inset-0 bg-blue-600/20 dark:bg-blue-500/15 origin-left"
+                        initial={{ scaleX: 1 }}
+                        animate={{ scaleX: 0 }}
+                        transition={{ duration: 5, ease: "linear" }}
+                      />
+                      <ChevronRight className="w-4 h-4 text-blue-400 flex-shrink-0 relative z-10" />
+                      <span className="text-sm font-semibold text-white relative z-10">
+                        Next lesson in {autoPlayCountdown}s — press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-xs font-mono">Enter</kbd> to continue now
+                      </span>
                       <button
-                        onClick={handleNextLesson}
-                        disabled={isCompletingLesson}
-                        className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-70 disabled:cursor-not-allowed text-white text-sm font-bold transition-all shadow-lg shadow-emerald-500/20"
+                        onClick={e => { e.stopPropagation(); cancelCountdown(); }}
+                        className="ml-auto relative z-10 text-white/40 hover:text-white/80 transition-colors flex-shrink-0"
                       >
-                        {isCompletingLesson ? (
-                          <><Loader2 className="w-4 h-4 animate-spin" /><span>Saving…</span></>
-                        ) : currentIndex >= allContent.length - 1
-                          ? <><Award className="w-4 h-4" /><span>Complete Course</span></>
-                          : allContent[currentIndex + 1]?.type === "quiz"
-                            ? <><HelpCircle className="w-4 h-4" /><span>Take Quiz</span></>
-                            : <><span>Next Lesson</span><ChevronRight className="w-4 h-4" /></>}
+                        <X className="w-3.5 h-3.5" />
                       </button>
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+
+                {/* Loading overlay while next lesson is being fetched */}
+                <AnimatePresence>
+                  {loadingNext && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 rounded-2xl bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-20"
+                    >
+                      <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+                      <p className="text-sm font-semibold text-white/80">Loading next lesson…</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1491,12 +1602,9 @@ export default function StudentWatchCourse() {
                   </div>
                   <div className="flex items-center gap-2 sm:flex-shrink-0">
                     <button onClick={goPrev} disabled={currentIndex <= 0}
-                      className="flex-1 sm:flex-none sm:w-9 h-9 rounded-xl border border-gray-200 dark:border-white/[0.07] flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-all gap-1.5 text-xs font-semibold sm:text-base">
-                      <ChevronLeft className="w-4 h-4" /><span className="sm:hidden">Prev</span>
-                    </button>
-                    <button onClick={handleNextLesson} disabled={currentIndex >= allContent.length - 1 || isCompletingLesson}
-                      className="flex-1 sm:flex-none sm:w-9 h-9 rounded-xl border border-gray-200 dark:border-white/[0.07] flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-all gap-1.5 text-xs font-semibold sm:text-base">
-                      {isCompletingLesson ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span className="sm:hidden">Next</span><ChevronRight className="w-4 h-4" /></>}
+                      className="flex-1 sm:flex-none h-9 sm:px-3 rounded-xl border border-gray-200 dark:border-white/[0.07] flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-all gap-1.5 text-xs font-semibold">
+                      <ChevronLeft className="w-4 h-4" />
+                      <span className="sm:inline">Prev</span>
                     </button>
                   </div>
                 </div>
