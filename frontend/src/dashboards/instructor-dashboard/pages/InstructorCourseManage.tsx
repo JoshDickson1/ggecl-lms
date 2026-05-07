@@ -340,11 +340,15 @@ function LessonRow({ lesson, courseId, sectionId }: {
   lesson: CourseLesson; courseId: string; sectionId: string;
 }) {
   const qc = useQueryClient();
-  const [expanded, setExpanded]     = useState(false);
-  const [editTitle, setEditTitle]   = useState(false);
-  const [titleDraft, setTitleDraft] = useState(lesson.title);
-  const [uploading, setUploading]   = useState(false);
-  const [preview, setPreview]       = useState<{ items: PreviewItem[]; index: number } | null>(null);
+  const [expanded, setExpanded]               = useState(false);
+  const [editTitle, setEditTitle]             = useState(false);
+  const [titleDraft, setTitleDraft]           = useState(lesson.title);
+  const [editDescription, setEditDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState(lesson.description ?? "");
+  const [uploading, setUploading]             = useState(false);
+  const [uploadProgress, setUploadProgress]   = useState(0);
+  const [removingIds, setRemovingIds]         = useState<Set<string>>(new Set());
+  const [preview, setPreview]                 = useState<{ items: PreviewItem[]; index: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { mutate: removeLesson, isPending: removingLesson } = useMutation({
@@ -357,19 +361,60 @@ function LessonRow({ lesson, courseId, sectionId }: {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }); setEditTitle(false); },
   });
 
+  const { mutate: updateDescription } = useMutation({
+    mutationFn: (description: string) => CoursesService.updateLesson(courseId, sectionId, lesson.id, { description }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }); setEditDescription(false); },
+  });
+
   const { mutate: removeMaterial } = useMutation({
-    mutationFn: (materialId: string) => CoursesService.removeMaterial(courseId, sectionId, lesson.id, materialId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }),
+    mutationFn: (materialId: string) => {
+      setRemovingIds(prev => new Set(prev).add(materialId));
+      return CoursesService.removeMaterial(courseId, sectionId, lesson.id, materialId);
+    },
+    onSuccess: (_, materialId) => {
+      setRemovingIds(prev => { const s = new Set(prev); s.delete(materialId); return s; });
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+    },
+    onError: (_, materialId) => {
+      setRemovingIds(prev => { const s = new Set(prev); s.delete(materialId); return s; });
+    },
   });
 
   // Curriculum = video only
+  const getVideoDuration = (file: File): Promise<number> =>
+    new Promise((resolve) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      const objectUrl = URL.createObjectURL(file);
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(Math.round(video.duration));
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(0);
+      };
+      video.src = objectUrl;
+    });
+
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length) return;
+    const videoFiles = Array.from(files).filter(f => f.type.startsWith("video/"));
+    if (!videoFiles.length) return;
     setUploading(true);
+    setUploadProgress(0);
     try {
-      for (const file of Array.from(files)) {
-        if (!file.type.startsWith("video/")) continue;
-        const url = await StorageService.upload("course-videos", file);
+      let totalDuration = 0;
+      for (let i = 0; i < videoFiles.length; i++) {
+        const file = videoFiles[i];
+        const fileBase = (i / videoFiles.length) * 100;
+        const fileShare = 100 / videoFiles.length;
+        const [url, duration] = await Promise.all([
+          StorageService.uploadWithProgress("course-videos", file, (pct) => {
+            setUploadProgress(Math.round(fileBase + (pct * fileShare) / 100));
+          }),
+          getVideoDuration(file),
+        ]);
         await CoursesService.addMaterial(courseId, sectionId, lesson.id, {
           type:     MaterialType.VIDEO,
           title:    file.name.replace(/\.[^/.]+$/, ""),
@@ -377,10 +422,16 @@ function LessonRow({ lesson, courseId, sectionId }: {
           fileName: file.name,
           size:     file.size,
         });
+        totalDuration += duration;
       }
+      if (totalDuration > 0) {
+        await CoursesService.updateLesson(courseId, sectionId, lesson.id, { duration: totalDuration });
+      }
+      setUploadProgress(100);
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -436,6 +487,47 @@ function LessonRow({ lesson, courseId, sectionId }: {
               initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
               <div className="px-4 pb-4 pt-3 space-y-2">
+                {/* Description */}
+                <div className="group/desc">
+                  {editDescription ? (
+                    <div className="space-y-1.5">
+                      <textarea
+                        autoFocus
+                        value={descriptionDraft}
+                        onChange={e => setDescriptionDraft(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Escape") { setDescriptionDraft(lesson.description ?? ""); setEditDescription(false); }
+                        }}
+                        rows={3}
+                        placeholder="Lesson description…"
+                        className="w-full px-3 py-2 rounded-xl text-xs bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-blue-400 transition-all resize-none"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => updateDescription(descriptionDraft.trim())}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 transition-all flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Save
+                        </button>
+                        <button
+                          onClick={() => { setDescriptionDraft(lesson.description ?? ""); setEditDescription(false); }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-500 hover:text-gray-700 transition-all">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="flex items-start gap-2 cursor-pointer"
+                      onClick={() => setEditDescription(true)}
+                    >
+                      <p className={`flex-1 text-xs leading-relaxed ${lesson.description ? "text-gray-500 dark:text-gray-400" : "text-gray-300 dark:text-gray-600 italic"}`}>
+                        {lesson.description || "Add a description…"}
+                      </p>
+                      <Edit3 className="w-3 h-3 text-gray-300 dark:text-gray-600 opacity-0 group-hover/desc:opacity-100 flex-shrink-0 mt-0.5 transition-opacity" />
+                    </div>
+                  )}
+                </div>
+
                 {videoMaterials.length > 0 ? videoMaterials.map((mat, matIdx) => (
                   <div key={mat.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 dark:border-white/[0.05] group">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
@@ -451,8 +543,12 @@ function LessonRow({ lesson, courseId, sectionId }: {
                       <ZoomIn className="w-3.5 h-3.5" />
                     </button>
                     <button onClick={() => removeMaterial(mat.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all">
-                      <Trash2 className="w-3 h-3" />
+                      disabled={removingIds.has(mat.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all disabled:opacity-100">
+                      {removingIds.has(mat.id)
+                        ? <Loader2 className="w-3 h-3 animate-spin text-red-400" />
+                        : <Trash2 className="w-3 h-3" />
+                      }
                     </button>
                   </div>
                 )) : (
@@ -460,13 +556,29 @@ function LessonRow({ lesson, courseId, sectionId }: {
                 )}
                 <input ref={fileRef} type="file" accept="video/*" multiple className="hidden"
                   onChange={e => handleUpload(e.target.files)} />
-                <button onClick={() => fileRef.current?.click()} disabled={uploading}
-                  className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-gray-500 text-xs font-bold hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400 disabled:opacity-50 transition-all">
-                  {uploading
-                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
-                    : <><Upload className="w-3.5 h-3.5" /> Upload video</>
-                  }
-                </button>
+                {uploading ? (
+                  <div className="w-full px-3 py-2.5 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-900/10 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Uploading…
+                      </span>
+                      <span className="text-xs font-black text-blue-600 dark:text-blue-400">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-blue-100 dark:bg-blue-900/40 overflow-hidden">
+                      <motion.div
+                        className="h-full rounded-full bg-blue-500 dark:bg-blue-400"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${uploadProgress}%` }}
+                        transition={{ ease: "linear", duration: 0.2 }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => fileRef.current?.click()}
+                    className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-gray-500 text-xs font-bold hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400 transition-all">
+                    <Upload className="w-3.5 h-3.5" /> Upload video
+                  </button>
+                )}
               </div>
             </motion.div>
           )}
@@ -491,6 +603,7 @@ function SectionBlock({ section, courseId, index }: {
   const [titleDraft, setTitleDraft]   = useState(section.title);
   const [addingLesson, setAddingLesson] = useState(false);
   const [lessonTitle, setLessonTitle]   = useState("");
+  const [lessonDescription, setLessonDescription] = useState("");
 
   const { mutate: removeSection, isPending: removingSection } = useMutation({
     mutationFn: () => CoursesService.removeSection(courseId, section.id),
@@ -504,11 +617,12 @@ function SectionBlock({ section, courseId, index }: {
 
   const { mutate: addLesson, isPending: addingLessonPending } = useMutation({
     mutationFn: () => CoursesService.createLesson(courseId, section.id, {
-      title:    lessonTitle.trim(),
+      title:       lessonTitle.trim(),
+      ...(lessonDescription.trim() && { description: lessonDescription.trim() }),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
-      setLessonTitle(""); setAddingLesson(false);
+      setLessonTitle(""); setLessonDescription(""); setAddingLesson(false);
     },
   });
 
@@ -564,26 +678,35 @@ function SectionBlock({ section, courseId, index }: {
                 {addingLesson ? (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                    <div className="flex items-center gap-2 mt-2">
-                      <input autoFocus value={lessonTitle}
-                        onChange={e => setLessonTitle(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && lessonTitle.trim()) addLesson();
-                          if (e.key === "Escape") { setAddingLesson(false); setLessonTitle(""); }
-                        }}
-                        placeholder="Lesson title…"
-                        className="flex-1 px-3 py-2 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-blue-400 transition-all"
+                    <div className="flex flex-col gap-2 mt-2">
+                      <div className="flex items-center gap-2">
+                        <input autoFocus value={lessonTitle}
+                          onChange={e => setLessonTitle(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && lessonTitle.trim()) addLesson();
+                            if (e.key === "Escape") { setAddingLesson(false); setLessonTitle(""); setLessonDescription(""); }
+                          }}
+                          placeholder="Lesson title…"
+                          className="flex-1 px-3 py-2 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-blue-400 transition-all"
+                        />
+                        <button onClick={() => lessonTitle.trim() && addLesson()}
+                          disabled={!lessonTitle.trim() || addingLessonPending}
+                          className="px-3 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-all flex items-center gap-1.5">
+                          {addingLessonPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          Add
+                        </button>
+                        <button onClick={() => { setAddingLesson(false); setLessonTitle(""); setLessonDescription(""); }}
+                          className="p-2 rounded-xl text-gray-400 hover:text-gray-600 transition-all">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <textarea
+                        value={lessonDescription}
+                        onChange={e => setLessonDescription(e.target.value)}
+                        placeholder="Description (optional)…"
+                        rows={2}
+                        className="w-full px-3 py-2 rounded-xl text-xs bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-blue-400 transition-all resize-none"
                       />
-                      <button onClick={() => lessonTitle.trim() && addLesson()}
-                        disabled={!lessonTitle.trim() || addingLessonPending}
-                        className="px-3 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-all flex items-center gap-1.5">
-                        {addingLessonPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                        Add
-                      </button>
-                      <button onClick={() => { setAddingLesson(false); setLessonTitle(""); }}
-                        className="p-2 rounded-xl text-gray-400 hover:text-gray-600 transition-all">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   </motion.div>
                 ) : (
@@ -1521,7 +1644,8 @@ export function InstructorSingleCourse() {
     queryKey: ["instructor-course", id],
     queryFn:  () => CoursesService.findOne(id!) as Promise<CourseDetail>,
     enabled:  !!id,
-    staleTime: 1000 * 60 * 3,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
   });
 
   const { mutate: publish, isPending: publishing } = useMutation({
