@@ -155,16 +155,22 @@ function AttendeesStrip() {
 
 // ─── Local self-view PiP ──────────────────────────────────────────────────────
 
-function LocalVideoTile({ initials }: { initials: string }) {
+function LocalVideoTile({
+  initials, onClick, swapped,
+}: {
+  initials: string; onClick: () => void; swapped: boolean;
+}) {
   const { localParticipant, isCameraEnabled, isMicrophoneEnabled } = useLocalParticipant();
   const tracks = useParticipantTracks([Track.Source.Camera], localParticipant.identity);
   const videoTrack = tracks.find(isTrackReference);
 
   return (
-    <div className="relative w-36 aspect-video rounded-xl overflow-hidden bg-[#0d1829] border border-white/[0.12] shadow-2xl">
+    <div
+      onClick={onClick}
+      title={swapped ? "Switch back to students view" : "Switch to self view"}
+      className="relative w-36 aspect-video rounded-xl overflow-hidden bg-[#0d1829] border border-white/[0.12] shadow-2xl cursor-pointer group"
+    >
       {videoTrack ? (
-        // Show the track whenever it exists — don't gate on isCameraEnabled
-        // (the flag lags behind the actual track publication)
         <VideoTrack trackRef={videoTrack} className="w-full h-full object-cover scale-x-[-1]" />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-violet-900/40 to-[#060d18]">
@@ -173,6 +179,12 @@ function LocalVideoTile({ initials }: { initials: string }) {
           </div>
         </div>
       )}
+      {/* Swap hint overlay on hover */}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-black text-white uppercase tracking-wider text-center px-2">
+          {swapped ? "Show students" : "Show self"}
+        </span>
+      </div>
       <div className="absolute bottom-1 left-1 flex gap-1">
         {!isMicrophoneEnabled && (
           <div className="w-4 h-4 rounded-full bg-red-500/80 flex items-center justify-center">
@@ -231,11 +243,115 @@ function RemoteGridTile({ participant }: { participant: Participant }) {
 
 // ─── Main stage ───────────────────────────────────────────────────────────────
 
-function MainStage({ localInitials }: { localInitials: string }) {
+// What to show in the main area when NOT swapped
+function StudentsView() {
   const participants = useParticipants();
-  // Only grab screen-share tracks from all participants
   const screenTracks = useTracks([{ source: Track.Source.ScreenShare, withPlaceholder: false }]);
   const remotes = participants.filter(p => !p.isLocal);
+
+  if (screenTracks.length > 0) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <VideoTrack
+          trackRef={screenTracks[0] as TrackReference}
+          className="max-w-full max-h-full rounded-xl shadow-2xl"
+        />
+      </div>
+    );
+  }
+
+  if (remotes.length > 0) {
+    return (
+      <div className="absolute inset-0 p-4">
+        <div className={`grid gap-3 h-full ${
+          remotes.length === 1 ? "grid-cols-1" :
+          remotes.length <= 4 ? "grid-cols-2" : "grid-cols-3"
+        }`}>
+          {remotes.slice(0, 9).map(p => (
+            <RemoteGridTile key={p.identity} participant={p} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+      <motion.div
+        animate={{ opacity: [1, 0.4, 1] }}
+        transition={{ duration: 2, repeat: Infinity }}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/10 border border-violet-500/20"
+      >
+        <Radio className="w-4 h-4 text-violet-400" />
+        <span className="text-sm font-bold text-violet-300">Waiting for students to join…</span>
+      </motion.div>
+    </div>
+  );
+}
+
+// What to show in the main area when swapped (instructor's own camera fills the stage)
+function SelfView({ initials }: { initials: string }) {
+  const { localParticipant, isCameraEnabled } = useLocalParticipant();
+  const tracks = useParticipantTracks([Track.Source.Camera], localParticipant.identity);
+  const videoTrack = tracks.find(isTrackReference);
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-[#060d18]">
+      {videoTrack ? (
+        <VideoTrack trackRef={videoTrack} className="w-full h-full object-cover scale-x-[-1]" />
+      ) : (
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-24 h-24 rounded-full bg-violet-600 flex items-center justify-center text-white text-3xl font-black">
+            {initials}
+          </div>
+          {!isCameraEnabled && (
+            <span className="text-xs text-white/40 font-semibold">Camera is off</span>
+          )}
+        </div>
+      )}
+      <div className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/50 backdrop-blur-sm">
+        <span className="text-[10px] font-bold text-white/80">You (Instructor)</span>
+      </div>
+    </div>
+  );
+}
+
+// PiP thumbnail of students when swapped
+function StudentsPip({ onClick }: { onClick: () => void }) {
+  const participants = useParticipants();
+  const remotes = participants.filter(p => !p.isLocal);
+  const first = remotes[0];
+
+  return (
+    <div
+      onClick={onClick}
+      title="Switch back to students view"
+      className="relative w-36 aspect-video rounded-xl overflow-hidden bg-[#0d1829] border border-white/[0.12] shadow-2xl cursor-pointer group"
+    >
+      {first ? (
+        <RemoteGridTile participant={first} />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#0a1525] to-[#060d18]">
+          <Users className="w-6 h-6 text-white/20" />
+        </div>
+      )}
+      {/* Swap hint */}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-black text-white uppercase tracking-wider text-center px-2">
+          Show students
+        </span>
+      </div>
+      {remotes.length > 0 && (
+        <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-black/50 text-[8px] font-bold text-white/60">
+          +{remotes.length}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MainStage({ localInitials }: { localInitials: string }) {
+  const [swapped, setSwapped] = useState(false);
 
   return (
     <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-gray-900 via-[#0a1525] to-gray-950">
@@ -243,43 +359,38 @@ function MainStage({ localInitials }: { localInitials: string }) {
       <div className="absolute inset-0 opacity-[0.025]"
         style={{ backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`, backgroundSize: "24px 24px" }} />
 
-      {/* Screen share takes priority */}
-      {screenTracks.length > 0 ? (
-        <div className="absolute inset-0 flex items-center justify-center p-4">
-          <VideoTrack
-            trackRef={screenTracks[0] as TrackReference}
-            className="max-w-full max-h-full rounded-xl shadow-2xl"
-          />
-        </div>
-      ) : remotes.length > 0 ? (
-        // Remote participant grid
-        <div className="absolute inset-0 p-4">
-          <div className={`grid gap-3 h-full ${
-            remotes.length === 1 ? "grid-cols-1" :
-            remotes.length <= 4 ? "grid-cols-2" : "grid-cols-3"
-          }`}>
-            {remotes.slice(0, 9).map(p => (
-              <RemoteGridTile key={p.identity} participant={p} />
-            ))}
-          </div>
-        </div>
-      ) : (
-        // Waiting state
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-          <motion.div
-            animate={{ opacity: [1, 0.4, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/10 border border-violet-500/20"
-          >
-            <Radio className="w-4 h-4 text-violet-400" />
-            <span className="text-sm font-bold text-violet-300">Waiting for students to join…</span>
-          </motion.div>
-        </div>
-      )}
+      {/* Main content */}
+      {swapped ? <SelfView initials={localInitials} /> : <StudentsView />}
 
-      {/* Self-view PiP — small, bottom-right */}
+      {/* PiP — bottom-right, click to swap */}
       <div className="absolute bottom-4 right-4 z-10">
-        <LocalVideoTile initials={localInitials} />
+        <AnimatePresence mode="wait">
+          {swapped ? (
+            <motion.div
+              key="students-pip"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.15 }}
+            >
+              <StudentsPip onClick={() => setSwapped(false)} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="self-pip"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.15 }}
+            >
+              <LocalVideoTile
+                initials={localInitials}
+                swapped={swapped}
+                onClick={() => setSwapped(true)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
