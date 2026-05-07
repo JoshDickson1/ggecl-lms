@@ -1,10 +1,10 @@
 // src/dashboards/student-dashboard/pages/StudentLiveClass.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Radio, AlertCircle, Loader2, PhoneOff,
-  Mic, MicOff, VideoOff, Hand, MessageSquare, Users, X,
+  Mic, MicOff, VideoOff, Hand, MessageSquare, Users, X, Send,
 } from "lucide-react";
 import {
   LiveKitRoom,
@@ -14,11 +14,15 @@ import {
   VideoTrack,
   useConnectionState,
   RoomAudioRenderer,
-  Chat,
+  useChat,
+  useRoomContext,
+  isTrackReference,
+  type ReceivedChatMessage,
 } from "@livekit/components-react";
 import {
   Track,
   ConnectionState,
+  RoomEvent,
   type Participant,
 } from "livekit-client";
 import LiveService, { type JoinSessionResponse } from "@/services/live.service";
@@ -49,7 +53,7 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
 function RemoteTile({ participant, large }: { participant: Participant; large?: boolean }) {
   const tracks = useParticipantTracks([Track.Source.Camera], participant.identity);
   const screenTracks = useParticipantTracks([Track.Source.ScreenShare], participant.identity);
-  const videoTrack = screenTracks[0] ?? tracks[0];
+  const videoTrack = screenTracks.find(isTrackReference) ?? tracks.find(isTrackReference);
   const initials = (participant.name ?? participant.identity)
     .split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   const isMuted = !participant.isMicrophoneEnabled;
@@ -114,11 +118,10 @@ function AttendeesStrip() {
   );
 }
 
-// ─── Main stage — shows instructor / screen share ─────────────────────────────
+// ─── Main stage ───────────────────────────────────────────────────────────────
 
 function MainStage() {
   const participants = useParticipants();
-  // Prioritise non-local participants (instructor) for the main stage
   const remotes = participants.filter(p => !p.isLocal);
   const instructor = remotes[0];
 
@@ -143,7 +146,121 @@ function MainStage() {
   );
 }
 
-// ─── Controls bar (student — mic + hand + chat + leave) ───────────────────────
+// ─── Custom chat panel ────────────────────────────────────────────────────────
+
+function ChatBubble({ msg, isOwn }: { msg: ReceivedChatMessage; isOwn: boolean }) {
+  const name = msg.from?.name ?? msg.from?.identity ?? "Unknown";
+  const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className={`flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
+      {!isOwn && (
+        <span className="text-[10px] font-bold text-white/40 px-1">{name}</span>
+      )}
+      <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed break-words ${
+        isOwn
+          ? "bg-violet-600 text-white rounded-br-sm"
+          : "bg-white/[0.1] text-white/90 rounded-bl-sm border border-white/[0.08]"
+      }`}>
+        {msg.message}
+      </div>
+      <span className="text-[9px] text-white/25 px-1">{time}</span>
+    </div>
+  );
+}
+
+function ChatPanel({ onClose }: { onClose: () => void }) {
+  const { chatMessages, send, isSending } = useChat();
+  const { localParticipant } = useLocalParticipant();
+  const [input, setInput] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages.length]);
+
+  async function handleSend() {
+    const text = input.trim();
+    if (!text || isSending) return;
+    setInput("");
+    await send(text);
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#0d1829]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-[#0a1525]">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-violet-400" />
+          <span className="text-sm font-black text-white">Chat</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/[0.08] transition-all"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
+        {chatMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
+            <MessageSquare className="w-8 h-8 text-white/10" />
+            <p className="text-xs text-white/25 font-semibold">No messages yet</p>
+            <p className="text-[10px] text-white/15">Be the first to say something</p>
+          </div>
+        ) : (
+          chatMessages.map((msg) => (
+            <ChatBubble
+              key={`${msg.timestamp}-${msg.from?.identity}`}
+              msg={msg}
+              isOwn={msg.from?.identity === localParticipant.identity}
+            />
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="flex-shrink-0 p-3 border-t border-white/[0.08] bg-[#0a1525]">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Type a message…"
+            rows={1}
+            className="flex-1 resize-none bg-white/[0.07] border border-white/[0.12] rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:bg-white/[0.09] transition-all max-h-24 overflow-y-auto"
+            style={{ lineHeight: "1.4" }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || isSending}
+            className="flex-shrink-0 w-9 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-95"
+          >
+            {isSending ? (
+              <Loader2 className="w-4 h-4 text-white animate-spin" />
+            ) : (
+              <Send className="w-4 h-4 text-white" />
+            )}
+          </button>
+        </div>
+        <p className="text-[9px] text-white/20 mt-1.5 px-1">Enter to send · Shift+Enter for new line</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Controls bar ─────────────────────────────────────────────────────────────
 
 function ControlBtn({
   onClick, off, danger, active, label, children,
@@ -177,26 +294,31 @@ function ControlsBar({
 }) {
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
   const [handRaised, setHandRaised] = useState(false);
+  const [handPending, setHandPending] = useState(false);
 
   async function toggleMic() {
     await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
   }
 
   async function toggleHand() {
+    if (handPending) return;
     const next = !handRaised;
-    setHandRaised(next);
-    // Publish hand state via participant metadata
-    await localParticipant.setMetadata(JSON.stringify({ handRaised: next }));
+    setHandPending(true);
+    try {
+      await localParticipant.setMetadata(JSON.stringify({ handRaised: next }));
+      setHandRaised(next);
+    } finally {
+      setHandPending(false);
+    }
   }
 
   return (
     <div className="flex-shrink-0 flex items-center justify-center gap-3 px-4 py-3 bg-[#0a1120] border-t border-white/[0.06]">
-      {/* Students join muted — they can unmute themselves */}
       <ControlBtn onClick={toggleMic} off={!isMicrophoneEnabled} label={isMicrophoneEnabled ? "Mute" : "Unmute"}>
         {isMicrophoneEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
       </ControlBtn>
 
-      {/* No camera for students — just a disabled indicator */}
+      {/* No camera for students */}
       <div className="flex flex-col items-center gap-1 opacity-30 cursor-not-allowed">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.06] text-white/30">
           <VideoOff className="w-4 h-4" />
@@ -206,8 +328,15 @@ function ControlsBar({
 
       <div className="w-px h-6 bg-white/[0.08] mx-1" />
 
-      <ControlBtn onClick={toggleHand} active={handRaised} label={handRaised ? "Lower" : "Raise"}>
-        <Hand className="w-4 h-4" />
+      <ControlBtn
+        onClick={toggleHand}
+        active={handRaised}
+        label={handRaised ? "Lower" : "Raise"}
+      >
+        {handPending
+          ? <Loader2 className="w-4 h-4 animate-spin" />
+          : <Hand className="w-4 h-4" />
+        }
       </ControlBtn>
 
       <ControlBtn onClick={onToggleChat} active={chatOpen} label="Chat">
@@ -228,7 +357,8 @@ function ControlsBar({
 function RoomInner({ session: _session, onLeft }: { session: LiveSession; onLeft: () => void }) {
   const connectionState = useConnectionState();
   const participants = useParticipants();
-  const [chatOpen, setChatOpen] = useState(false);
+  // Chat open by default so no messages are missed
+  const [chatOpen, setChatOpen] = useState(true);
 
   return (
     <div className="flex-1 flex overflow-hidden relative">
@@ -247,20 +377,12 @@ function RoomInner({ session: _session, onLeft }: { session: LiveSession; onLeft
         {chatOpen && (
           <motion.div
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 300, opacity: 1 }}
+            animate={{ width: 320, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="flex-shrink-0 border-l border-white/[0.07] bg-[#0a1120] overflow-hidden flex flex-col"
+            className="flex-shrink-0 border-l border-white/[0.08] overflow-hidden"
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
-              <span className="text-xs font-black text-white/60 uppercase tracking-wider">Chat</span>
-              <button onClick={() => setChatOpen(false)} className="text-white/30 hover:text-white/60 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <Chat className="h-full" />
-            </div>
+            <ChatPanel onClose={() => setChatOpen(false)} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -343,7 +465,6 @@ export default function StudentLiveClass() {
   const handleBack = () => navigate("/student/live");
 
   return (
-    // z-50 covers sidebar and navbar completely
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0a1120]">
 
       {/* Header */}
@@ -375,8 +496,8 @@ export default function StudentLiveClass() {
         <LiveKitRoom
           token={tokenData.token}
           serverUrl={tokenData.url}
-          audio={false}   // students join muted by default
-          video={false}   // students have no camera
+          audio={false}
+          video={false}
           onDisconnected={handleBack}
           className="flex-1 flex flex-col overflow-hidden"
         >
