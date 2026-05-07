@@ -10,12 +10,24 @@ export interface UpdateLessonProgressPayload {
 }
 
 export interface TopCourseItem {
-  id: string;
-  title: string;
-  img: string;
-  progress: number;
-  enrolledAt: string;
-  completedAt: string | null;
+  courseId: string;
+  courseTitle: string;
+  courseImg: string;
+  instructor: {
+    id: string;
+    user: {
+      id: string;
+      name: string;
+      image: string | null;
+    };
+  };
+  completedLessons: number;
+  totalLessons: number;
+  percentComplete: number;
+  isCompleted: boolean;
+  lastLessonId: string | null;
+  lastLessonTitle: string | null;
+  lastActivityAt: string | null;
 }
 
 export interface WatchTimeByCourse {

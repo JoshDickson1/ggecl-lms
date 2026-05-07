@@ -10,8 +10,6 @@ export type CourseLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 
 export interface MyEnrollment {
   id: string;
-  courseId: string;
-  studentId: string;
   enrolledAt: string;
   course: {
     id: string;
@@ -20,6 +18,7 @@ export interface MyEnrollment {
     price: number;
     level: CourseLevel;
     instructorId: string;
+    instructorName?: string;
   };
 }
 
