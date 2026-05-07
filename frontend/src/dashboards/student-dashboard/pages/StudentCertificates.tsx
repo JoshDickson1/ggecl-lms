@@ -386,7 +386,7 @@ export default function StudentCertificates() {
   // Map of courseId → completedAt from getTopCourses
   const completedAtMap: Record<string, string | null> = {};
   for (const t of (topRaw ?? [])) {
-    completedAtMap[t.id] = t.completedAt;
+    completedAtMap[t.courseId] = t.isCompleted ? new Date().toISOString() : null;
   }
 
   const earned: Certificate[] = allCourses

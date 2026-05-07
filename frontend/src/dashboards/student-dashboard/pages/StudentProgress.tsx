@@ -216,7 +216,7 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
               <Link
-                to={`/student/courses/${course.courseId}/watch`}
+                to={`/student/courses/${course.courseId}/watch${course.lastLessonId ? `/${course.lastLessonId}` : ""}`}
                 className="text-sm font-black text-gray-900 dark:text-white line-clamp-1
                   hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                 {courseTitle}
@@ -291,7 +291,7 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
               <>
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Continue</span>
                 <Link
-                  to={`/student/courses/${course.courseId}/watch`}
+                  to={`/student/courses/${course.courseId}/watch${course.lastLessonId ? `/${course.lastLessonId}` : ""}`}
                   className="flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
                   Resume <ChevronRight className="w-3 h-3" />
                 </Link>

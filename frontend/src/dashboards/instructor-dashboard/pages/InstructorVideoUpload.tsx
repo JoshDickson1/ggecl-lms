@@ -620,7 +620,7 @@ export default function InstructorVideoUpload() {
         const lesson = await CoursesService.createLesson(
           selectedCourse.id,
           v.sectionId,
-          { title: v.title, position: v.order }
+          { title: v.title }
         ) as { id: string };
         setUploadProgress(p => ({ ...p, [v.id]: 80 }));
         // Attach the video as a material
@@ -661,9 +661,9 @@ export default function InstructorVideoUpload() {
             </p>
           </div>
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            onClick={() => navigate("/instructor/course-materials", { state: { courseId: selectedCourse.id } })}
+          onClick={() => navigate(`/instructor/courses/${selectedCourse.id}/manage`)}
             className="flex items-center gap-2 px-8 py-3.5 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg shadow-blue-200 dark:shadow-blue-900/40 mx-auto transition-all">
-            Continue to Materials <ArrowRight className="w-4 h-4" />
+            Continue to Course Manager <ArrowRight className="w-4 h-4" />
           </motion.button>
         </motion.div>
       </div>

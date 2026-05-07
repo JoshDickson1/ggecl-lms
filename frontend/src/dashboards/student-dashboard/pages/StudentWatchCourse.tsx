@@ -1,15 +1,15 @@
 // src/dashboards/student-dashboard/pages/StudentWatchCourse.tsx
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useParams, useNavigate, useBlocker } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForward,
   Settings, Download, FileText, CheckCircle2, Clock,
   ArrowLeft, Home, List, ChevronDown, Lock,
   PlayCircle, Eye, AlertCircle, Loader2, Star, HelpCircle, Award, XCircle,
-  ChevronLeft, ChevronRight, X, Video, File
+  ChevronLeft, ChevronRight, X, File
 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, {
   type CourseResponse,
   type CourseSection,
@@ -25,6 +25,7 @@ import QuizService, { type Quiz, type QuizAttempt } from "@/services/quiz.servic
 interface VideoProgress {
   currentTime: number;
   duration: number;
+  watchedSeconds: number;
   watched: boolean;
 }
 
@@ -50,8 +51,6 @@ interface CourseProgressDetail {
   totalLessons: number;
   sections: SectionProgressDetail[];
 }
-
-type SidebarTab = "videos" | "files" | "quizzes";
 
 // ==================== HELPERS ====================
 
@@ -126,40 +125,6 @@ function getMaterialIcon(type: string) {
 
 function cn(...classes: (string | boolean | undefined | null)[]) {
   return classes.filter(Boolean).join(" ");
-}
-
-// ==================== CONFIRM LEAVE MODAL ====================
-
-function ConfirmLeaveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.92, y: 16 }}
-        transition={{ duration: 0.18 }}
-        className="relative z-10 w-full max-w-sm rounded-2xl overflow-hidden
-          bg-white dark:bg-white/5 backdrop-blur-2xl
-          border border-white/20 dark:border-white/10
-          shadow-2xl shadow-black/40 p-6 text-center"
-      >
-        <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center mx-auto mb-4">
-          <AlertCircle className="w-6 h-6 text-amber-400" />
-        </div>
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Leave this lesson?</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Your video is still playing. Your progress up to this point has been saved.</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 h-10 rounded-xl border border-gray-200 dark:border-white/10 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
-            Keep watching
-          </button>
-          <button onClick={onConfirm} className="flex-1 h-10 rounded-xl bg-red-500 hover:bg-red-600 text-sm font-semibold text-white transition-all shadow-lg shadow-red-500/25">
-            Leave
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
 }
 
 // ==================== REVIEW MODAL ====================
@@ -292,6 +257,8 @@ function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTimeRef = useRef<number>(0);
+  const watchedSecondsRef = useRef<number>(0);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -312,6 +279,8 @@ function VideoPlayer({
 
   useEffect(() => {
     setIsPlaying(false); setCurrentTime(0); setDuration(0); setShowResume(false);
+    lastTimeRef.current = 0;
+    watchedSecondsRef.current = 0;
   }, [material.url]);
 
   useEffect(() => {
@@ -348,20 +317,36 @@ function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
     const onTime = () => {
-      setCurrentTime(video.currentTime);
+      const now = video.currentTime;
+      // Only accumulate when actually playing (not seeking/paused)
+      if (!video.paused && !video.ended && lastTimeRef.current > 0) {
+        const delta = now - lastTimeRef.current;
+        // Ignore negative deltas (seek backwards) and large jumps (seek forwards)
+        if (delta > 0 && delta < 2) {
+          watchedSecondsRef.current += delta;
+        }
+      }
+      lastTimeRef.current = now;
+
+      setCurrentTime(now);
       if (video.buffered.length > 0)
         setBuffered((video.buffered.end(video.buffered.length - 1) / video.duration) * 100);
-      if (video.duration > 0) onNearEnd?.(video.currentTime / video.duration >= 0.85);
+      if (video.duration > 0) onNearEnd?.(now / video.duration >= 0.85);
       if (progressTimer.current) return;
       progressTimer.current = setTimeout(() => {
         progressTimer.current = null;
-        onProgress({ currentTime: video.currentTime, duration: video.duration, watched: video.currentTime / video.duration > 0.9 });
+        onProgress({
+          currentTime: video.currentTime,
+          duration: video.duration,
+          watchedSeconds: Math.floor(watchedSecondsRef.current),
+          watched: video.currentTime / video.duration > 0.9,
+        });
       }, 5000);
     };
+    const onPlay = () => { lastTimeRef.current = video.currentTime; setIsPlaying(true); };
+    const onPause = () => { lastTimeRef.current = 0; setIsPlaying(false); };
     const onMeta = () => setDuration(video.duration);
-    const onEnd = () => { setIsPlaying(false); onComplete(); };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    const onEnd = () => { lastTimeRef.current = 0; setIsPlaying(false); onComplete(); };
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("loadedmetadata", onMeta);
     video.addEventListener("ended", onEnd);
@@ -406,7 +391,7 @@ function VideoPlayer({
     <div
       ref={containerRef}
       className="relative bg-black rounded-2xl overflow-hidden select-none"
-      style={{ height: "min(70dvh, calc(100vw * 9/16))" }}
+      style={{ height: "min(56dvh, calc(100vw * 9/16))" }}
       onMouseMove={resetHideTimer}
       onMouseLeave={() => { if (hideTimer.current) clearTimeout(hideTimer.current); setShowControls(false); }}
       onMouseEnter={resetHideTimer}
@@ -959,7 +944,7 @@ function LessonItem({ lesson, isCompleted, isLocked, isCurrent, onClick }: {
 // ==================== MAIN COMPONENT ====================
 
 export default function StudentWatchCourse() {
-  const { id: courseId } = useParams<{ id: string }>();
+  const { id: courseId, lessonId: lessonIdParam } = useParams<{ id: string; lessonId?: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -972,14 +957,10 @@ export default function StudentWatchCourse() {
 
   const [quizSectionId, setQuizSectionId] = useState<string | null>(null);
   const [previewMaterial, setPreviewMaterial] = useState<CourseMaterial | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("videos");
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [showLeaveModal, setShowLeaveModal] = useState(false);
-  const [pendingNavDest, setPendingNavDest] = useState<string | null>(null);
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-
+  const [isCompletingLesson, setIsCompletingLesson] = useState(false);
   // On mobile, default sidebar closed
-  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -1004,13 +985,8 @@ export default function StudentWatchCourse() {
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
   const { mutate: saveProgress } = useMutation({
-    mutationFn: ({ lessonId, watchedSeconds, totalSeconds }: { lessonId: string; watchedSeconds: number; totalSeconds: number }) =>
-      ProgressService.updateLessonProgress(lessonId, { watchedSeconds, totalSeconds }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["course-progress", courseId] }),
-  });
-
-  const { mutate: markComplete } = useMutation({
-    mutationFn: (lessonId: string) => ProgressService.completeLesson(lessonId),
+    mutationFn: ({ lessonId, watchedSeconds }: { lessonId: string; watchedSeconds: number }) =>
+      ProgressService.updateLessonProgress(lessonId, { watchedSeconds }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["course-progress", courseId] }),
   });
 
@@ -1020,16 +996,42 @@ export default function StudentWatchCourse() {
   const lockedIds = buildLockedSet(progress);
   const overallProgress = progress?.overallProgress ?? 0;
   const sections = getSectionsAsArray(course?.sections);
-  // Section is locked when its first lesson is locked
-  const sectionLockedIds = new Set(
-    sections.filter(s => s.lessons?.length > 0 && lockedIds.has(s.lessons[0].id)).map(s => s.id)
+
+  // Prefetch quiz existence for every section in parallel — background, no UI spinner
+  const sectionIds = sections.map(s => s.id);
+  const quizPrefetchResults = useQueries({
+    queries: sectionIds.map(sectionId => ({
+      queryKey: ["section-quizzes", sectionId],
+      queryFn: () => QuizService.findAll({ sectionId, limit: 1 }),
+      enabled: !!course?.isEnrolled,
+      staleTime: 5 * 60 * 1000, // 5 min — quiz list rarely changes mid-session
+      retry: false,
+    })),
+  });
+
+  // Build a set of section IDs that are confirmed to have at least one quiz.
+  // While a section's query is still loading we treat it as "has quiz" (safe default)
+  // so we never flash a quiz step and then remove it — we only remove once confirmed empty.
+  const sectionsWithQuiz = new Set(
+    sectionIds.filter((_id, i) => {
+      const result = quizPrefetchResults[i];
+      if (!result || result.isLoading || result.isPending) return true; // unknown → keep
+      if (result.isError) return false; // failed to load → skip
+      return (result.data?.data?.length ?? 0) > 0;
+    })
   );
 
-  // Flat navigable content list (videos, files, quizzes) for prev/next
-  const allContent = sections.flatMap(section => [
-    ...section.lessons.map(l => ({ type: "lesson" as const, lesson: l, sectionId: section.id })),
-    { type: "quiz" as const, sectionId: section.id },
-  ]);
+  // Flat navigable content list — only video lessons + quiz step when section has quizzes
+  const allContent = sections.flatMap(section => {
+    const videoLessons = section.lessons.filter(l => l.materials?.some(m => m.type === "VIDEO"));
+    if (videoLessons.length === 0) return [];
+    return [
+      ...videoLessons.map(l => ({ type: "lesson" as const, lesson: l, sectionId: section.id })),
+      ...(sectionsWithQuiz.has(section.id)
+        ? [{ type: "quiz" as const, sectionId: section.id }]
+        : []),
+    ];
+  });
 
   const currentIndex = allContent.findIndex(c =>
     c.type === "lesson" ? c.lesson.id === selectedLesson?.id : c.sectionId === quizSectionId
@@ -1037,18 +1039,34 @@ export default function StudentWatchCourse() {
 
   // ── Effects ───────────────────────────────────────────────────────────────────
 
+  // On mount: select lesson from URL param, or fall back to first lesson
   useEffect(() => {
-    if (course && !selectedLesson && sections.length > 0) {
-      const first = sections[0];
-      const firstLesson = first?.lessons[0];
-      if (firstLesson) {
-        setSelectedLesson(firstLesson);
-        const vid = firstLesson.materials?.find(m => m.type === "VIDEO");
-        if (vid) setSelectedMaterial(vid);
-        setExpandedSections(new Set([first.id]));
+    if (!course || selectedLesson || sections.length === 0) return;
+
+    let targetLesson: CourseLesson | null = null;
+
+    // 1. Try URL param
+    if (lessonIdParam) {
+      for (const section of sections) {
+        targetLesson = section.lessons.find(l => l.id === lessonIdParam) ?? null;
+        if (targetLesson) break;
       }
     }
-  }, [course, selectedLesson]);
+
+    // 2. Fall back to first video lesson
+    if (!targetLesson) {
+      const firstSection = sections[0];
+      targetLesson = firstSection?.lessons.find(l => l.materials?.some(m => m.type === "VIDEO")) ?? null;
+    }
+
+    if (targetLesson) {
+      setSelectedLesson(targetLesson);
+      const vid = targetLesson.materials?.find(m => m.type === "VIDEO");
+      if (vid) setSelectedMaterial(vid);
+      const section = sections.find(s => s.lessons.some(l => l.id === targetLesson!.id));
+      if (section) setExpandedSections(new Set([section.id]));
+    }
+  }, [course, selectedLesson, sections, lessonIdParam]);
 
   useEffect(() => {
     if (selectedLesson) {
@@ -1057,53 +1075,16 @@ export default function StudentWatchCourse() {
     }
   }, [selectedLesson, course]);
 
+  // Sync lesson ID into the URL so the browser remembers which lesson was active
+  useEffect(() => {
+    if (selectedLesson && courseId && selectedLesson.id !== lessonIdParam) {
+      navigate(`/student/courses/${courseId}/watch/${selectedLesson.id}`, { replace: true });
+    }
+  }, [selectedLesson?.id]);
+
   // ── Navigation helpers ────────────────────────────────────────────────────────
 
-  // Block ALL in-app navigation (back button, router links, programmatic navigate)
-  // useBlocker fires whenever react-router tries to transition away from this page
-  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
-    currentLocation.pathname !== nextLocation.pathname
-  );
-
-  // When the blocker fires, show our custom modal instead of the browser dialog
-  useEffect(() => {
-    if (blocker.state === "blocked") {
-      setShowLeaveModal(true);
-    }
-  }, [blocker.state]);
-
-  const tryNavigate = useCallback((dest: string) => {
-    // Always intercept — show modal first
-    setPendingNavDest(dest);
-    setShowLeaveModal(true);
-  }, []);
-
-  const confirmLeave = () => {
-    setShowLeaveModal(false);
-    // If a router blocker is waiting (back button / link click), proceed through it
-    if (blocker.state === "blocked") {
-      blocker.proceed();
-    } else if (pendingNavDest) {
-      // Manual tryNavigate call (header back/home buttons)
-      navigate(pendingNavDest);
-    }
-    setPendingNavDest(null);
-  };
-
-  const cancelLeave = () => {
-    setShowLeaveModal(false);
-    setPendingNavDest(null);
-    // Tell the blocker to stay on this page
-    if (blocker.state === "blocked") {
-      blocker.reset();
-    }
-  };
-
   const selectLesson = (lesson: CourseLesson) => {
-    if (lockedIds.has(lesson.id)) {
-      setLockedAccessMessage("Complete the previous section to unlock this lesson.");
-      return;
-    }
     setSelectedLesson(lesson);
     setQuizSectionId(null);
     setPreviewMaterial(null);
@@ -1114,24 +1095,9 @@ export default function StudentWatchCourse() {
   };
 
   const openQuiz = (sectionId: string) => {
-    if (sectionLockedIds.has(sectionId)) {
-      setLockedAccessMessage("Complete the previous section first to access this quiz.");
-      return;
-    }
     setSelectedMaterial(null);
     setPreviewMaterial(null);
     setQuizSectionId(sectionId);
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  };
-
-  const openFile = (mat: CourseMaterial, fromLessonId?: string) => {
-    if (fromLessonId && lockedIds.has(fromLessonId)) {
-      setLockedAccessMessage("Complete the video lesson first to access course materials.");
-      return;
-    }
-    setSelectedMaterial(null);
-    setQuizSectionId(null);
-    setPreviewMaterial(mat);
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
@@ -1152,26 +1118,31 @@ export default function StudentWatchCourse() {
   };
 
   const handleQuizNextSection = async () => {
-    const isLastSec = sections.length > 0 && sections[sections.length - 1].id === quizSectionId;
+    const currentSectionIndex = sections.findIndex(s => s.id === quizSectionId);
+    const isLastSec = currentSectionIndex === sections.length - 1;
+
     if (isLastSec && courseId) {
       ProgressService.completeCourse(courseId).catch(() => {});
       navigate("/student/courses");
       return;
     }
-    // Await the refetch so lockedIds is fresh before we navigate
+
+    // Refetch progress so the next section is unlocked
     if (courseId) {
       await queryClient.refetchQueries({ queryKey: ["course-progress", courseId] }).catch(() => {});
     }
-    // Force-navigate — backend unlocked the next section on quiz pass
-    if (currentIndex < allContent.length - 1) {
-      const next = allContent[currentIndex + 1];
-      if (next.type === "lesson") {
-        setSelectedLesson(next.lesson);
+
+    // Navigate to the first video lesson of the next section
+    const nextSection = sections[currentSectionIndex + 1];
+    if (nextSection) {
+      const firstVideoLesson = nextSection.lessons.find(l => l.materials?.some(m => m.type === "VIDEO"));
+      if (firstVideoLesson) {
+        setSelectedLesson(firstVideoLesson);
         setQuizSectionId(null);
         setPreviewMaterial(null);
         setNearEnd(false);
-        setSelectedMaterial(next.lesson.materials?.find(m => m.type === "VIDEO") ?? null);
-        setSidebarTab("videos");
+        setSelectedMaterial(firstVideoLesson.materials?.find(m => m.type === "VIDEO") ?? null);
+        setExpandedSections(prev => new Set([...prev, nextSection.id]));
         if (window.innerWidth < 768) setSidebarOpen(false);
       }
     }
@@ -1179,89 +1150,64 @@ export default function StudentWatchCourse() {
 
   const handleVideoProgress = (vp: VideoProgress) => {
     if (!selectedLesson) return;
-    saveProgress({ lessonId: selectedLesson.id, watchedSeconds: Math.floor(vp.currentTime), totalSeconds: Math.floor(vp.duration) });
-    if (vp.watched && !completedIds.has(selectedLesson.id) && !autoCompletedRef.current.has(selectedLesson.id)) {
+    saveProgress({ lessonId: selectedLesson.id, watchedSeconds: vp.watchedSeconds });
+    // Auto-complete when 90% watched — only once per lesson
+    if (vp.watched && !autoCompletedRef.current.has(selectedLesson.id)) {
       autoCompletedRef.current.add(selectedLesson.id);
-      markComplete(selectedLesson.id);
+      ProgressService.completeLesson(selectedLesson.id)
+        .then(() => queryClient.refetchQueries({ queryKey: ["course-progress", courseId] }))
+        .catch(e => console.error("Auto-complete failed:", e));
     }
   };
 
   const handleVideoComplete = () => {
-    if (selectedLesson && !autoCompletedRef.current.has(selectedLesson.id)) {
-      autoCompletedRef.current.add(selectedLesson.id);
-      markComplete(selectedLesson.id);
-    }
+    if (!selectedLesson || autoCompletedRef.current.has(selectedLesson.id)) return;
+    autoCompletedRef.current.add(selectedLesson.id);
+    ProgressService.completeLesson(selectedLesson.id)
+      .then(() => queryClient.refetchQueries({ queryKey: ["course-progress", courseId] }))
+      .catch(e => console.error("Video-end complete failed:", e));
   };
 
-  const handleNextLesson = () => {
-    if (selectedLesson && !completedIds.has(selectedLesson.id) && !autoCompletedRef.current.has(selectedLesson.id)) {
+  const handleNextLesson = async () => {
+    setIsCompletingLesson(true);
+    // Always call completeLesson when Next is clicked — backend is idempotent
+    if (selectedLesson) {
       autoCompletedRef.current.add(selectedLesson.id);
-      markComplete(selectedLesson.id);
-    }
-    // Force-navigate regardless of current lock state — completing this lesson is what unlocks the next
-    if (currentIndex < allContent.length - 1) {
-      const next = allContent[currentIndex + 1];
-      if (next.type === "lesson") {
-        setSelectedLesson(next.lesson);
-        setQuizSectionId(null);
-        setPreviewMaterial(null);
-        setNearEnd(false);
-        setSelectedMaterial(next.lesson.materials?.find(m => m.type === "VIDEO") ?? null);
-        setSidebarTab("videos");
-        if (window.innerWidth < 768) setSidebarOpen(false);
-      } else {
-        setSelectedMaterial(null);
-        setPreviewMaterial(null);
-        setNearEnd(false);
-        setQuizSectionId(next.sectionId);
-        setSidebarTab("quizzes");
-        if (window.innerWidth < 768) setSidebarOpen(false);
+      try {
+        await ProgressService.completeLesson(selectedLesson.id);
+        // Wait for the progress refetch to finish so the next lesson is unlocked
+        // before we navigate to it
+        await queryClient.refetchQueries({ queryKey: ["course-progress", courseId] });
+      } catch (e) {
+        console.error("Failed to complete lesson:", e);
+        // Don't block navigation on failure
       }
     }
-  };
 
-  const handleTabChange = (tab: SidebarTab) => {
-    setSidebarTab(tab);
-    if (tab === "videos") {
-      setPreviewMaterial(null);
+    setIsCompletingLesson(false);
+
+    // Last lesson — complete the course and go back
+    if (currentIndex >= allContent.length - 1) {
+      if (courseId) ProgressService.completeCourse(courseId).catch(() => {});
+      navigate("/student/courses");
+      return;
+    }
+
+    // Navigate after progress is refreshed — next lesson will be unlocked
+    const next = allContent[currentIndex + 1];
+    if (next.type === "lesson") {
+      setSelectedLesson(next.lesson);
       setQuizSectionId(null);
-      if (selectedLesson) {
-        setSelectedMaterial(selectedLesson.materials?.find(m => m.type === "VIDEO") ?? null);
-      }
-    } else if (tab === "files") {
-      if (selectedLesson) {
-        const files = selectedLesson.materials?.filter(m => m.type !== "VIDEO") ?? [];
-        if (files.length > 0) {
-          setSelectedMaterial(null);
-          setQuizSectionId(null);
-          setPreviewMaterial(files[0]);
-        } else {
-          // Try first file from any lesson in the same section
-          const section = sections.find(s => s.lessons.some(l => l.id === selectedLesson.id));
-          if (section) {
-            for (const lesson of section.lessons) {
-              const sectionFiles = lesson.materials?.filter(m => m.type !== "VIDEO") ?? [];
-              if (sectionFiles.length > 0) {
-                setSelectedMaterial(null);
-                setQuizSectionId(null);
-                setPreviewMaterial(sectionFiles[0]);
-                break;
-              }
-            }
-          }
-        }
-      }
-    } else if (tab === "quizzes") {
-      if (selectedLesson) {
-        const section = sections.find(s => s.lessons.some(l => l.id === selectedLesson.id));
-        if (section && !sectionLockedIds.has(section.id)) {
-          setSelectedMaterial(null);
-          setPreviewMaterial(null);
-          setQuizSectionId(section.id);
-        } else if (section && sectionLockedIds.has(section.id)) {
-          setLockedAccessMessage("Complete the previous section first to access quizzes.");
-        }
-      }
+      setPreviewMaterial(null);
+      setNearEnd(false);
+      setSelectedMaterial(next.lesson.materials?.find(m => m.type === "VIDEO") ?? null);
+      if (window.innerWidth < 768) setSidebarOpen(false);
+    } else {
+      setSelectedMaterial(null);
+      setPreviewMaterial(null);
+      setNearEnd(false);
+      setQuizSectionId(next.sectionId);
+      if (window.innerWidth < 768) setSidebarOpen(false);
     }
   };
 
@@ -1300,21 +1246,7 @@ export default function StudentWatchCourse() {
     <div className="h-full flex flex-col">
       {/* Sidebar header */}
       <div className="p-4 border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0">
-        <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Course Content</h2>
-        {/* Global content tabs */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/[0.05] rounded-xl p-1">
-          {([
-            { key: "videos", icon: <Video className="w-3.5 h-3.5" />, label: "Videos" },
-            { key: "files", icon: <FileText className="w-3.5 h-3.5" />, label: "Files" },
-            { key: "quizzes", icon: <HelpCircle className="w-3.5 h-3.5" />, label: "Quizzes" },
-          ] as { key: SidebarTab; icon: React.ReactNode; label: string }[]).map(tab => (
-            <button key={tab.key} onClick={() => handleTabChange(tab.key)}
-              className={cn("flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                sidebarTab === tab.key ? "bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300")}>
-              {tab.icon}{tab.label}
-            </button>
-          ))}
-        </div>
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white">Course Content</h2>
       </div>
 
       {/* Sections list */}
@@ -1322,118 +1254,45 @@ export default function StudentWatchCourse() {
         {sections.map(section => {
           const sectionComplete = isSectionComplete(section, completedIds);
           const sectionExpanded = expandedSections.has(section.id);
-
-          // Filter content by tab
           const videoLessons = section.lessons.filter(l => l.materials?.some(m => m.type === "VIDEO"));
-          const fileLessons = section.lessons.filter(l => l.materials?.some(m => m.type !== "VIDEO"));
 
-
-          const showSection =
-            (sidebarTab === "videos" && videoLessons.length > 0) ||
-            (sidebarTab === "files" && fileLessons.length > 0) ||
-            sidebarTab === "quizzes";
-
-          if (!showSection) return null;
-
-          const sectionLocked = sectionLockedIds.has(section.id);
+          if (videoLessons.length === 0) return null;
 
           return (
             <div key={section.id} className={cn(
               "rounded-2xl border overflow-hidden transition-all",
-              sectionLocked
-                ? "border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-white/[0.01]"
-                : sectionComplete
-                  ? "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5"
-                  : "border-gray-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.02]"
+              sectionComplete
+                ? "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5"
+                : "border-gray-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.02]"
             )}>
               <button
                 onClick={() => {
-                  if (sectionLocked) {
-                    setLockedAccessMessage("Complete the previous section first to unlock this content.");
-                    return;
-                  }
                   setExpandedSections(prev => { const n = new Set(prev); n.has(section.id) ? n.delete(section.id) : n.add(section.id); return n; });
                 }}
-                className={cn("w-full px-3 py-2.5 flex items-center justify-between transition-colors",
-                  sectionLocked ? "cursor-not-allowed" : "hover:bg-gray-50 dark:hover:bg-white/[0.03]")}
+                className="w-full px-3 py-2.5 flex items-center justify-between transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03]"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  {sectionLocked
-                    ? <Lock className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                    : sectionComplete
-                      ? <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                      : null
+                  {sectionComplete
+                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    : null
                   }
                   <span className={cn("text-sm font-semibold truncate",
-                    sectionLocked ? "text-gray-400 dark:text-gray-500"
-                    : sectionComplete ? "text-emerald-700 dark:text-emerald-400"
+                    sectionComplete ? "text-emerald-700 dark:text-emerald-400"
                     : "text-gray-900 dark:text-white")}>
                     {section.title}
                   </span>
                 </div>
-                <ChevronDown className={cn("w-4 h-4 transition-transform flex-shrink-0",
-                  sectionLocked ? "text-gray-300 dark:text-gray-600" : "text-gray-400",
-                  sectionExpanded && !sectionLocked ? "rotate-180" : "")} />
+                <ChevronDown className={cn("w-4 h-4 transition-transform flex-shrink-0 text-gray-400",
+                  sectionExpanded ? "rotate-180" : "")} />
               </button>
 
               <AnimatePresence>
-                {sectionExpanded && !sectionLocked && (
+                {sectionExpanded && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                     <div className="px-2 pb-2 space-y-1">
-                      {/* Videos tab */}
-                      {sidebarTab === "videos" && videoLessons.map(lesson => (
+                      {videoLessons.map(lesson => (
                         <LessonItem key={lesson.id} lesson={lesson} isCompleted={completedIds.has(lesson.id)} isLocked={lockedIds.has(lesson.id)} isCurrent={selectedLesson?.id === lesson.id} onClick={() => selectLesson(lesson)} />
                       ))}
-
-                      {/* Files tab */}
-                      {sidebarTab === "files" && fileLessons.map(lesson => {
-                        const fileMaterials = lesson.materials?.filter(m => m.type !== "VIDEO") ?? [];
-                        return fileMaterials.map(mat => (
-                          <button key={mat.id} onClick={() => openFile(mat, lesson.id)}
-                            className={cn(
-                              "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all group text-left border",
-                              previewMaterial?.id === mat.id
-                                ? "bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30"
-                                : "border-transparent hover:bg-gray-50 dark:hover:bg-white/[0.04]"
-                            )}>
-                            <div className={cn(
-                              "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
-                              previewMaterial?.id === mat.id
-                                ? "bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400"
-                                : "bg-blue-50 dark:bg-blue-500/10 text-blue-500"
-                            )}>
-                              {getMaterialIcon(mat.type)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">{mat.title}</p>
-                              <p className="text-xs text-gray-400 truncate">{lesson.title}</p>
-                            </div>
-                            <a href={mat.url} download={mat.type !== "LINK" || undefined} target="_blank" rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-400 hover:text-blue-500 transition-all flex-shrink-0">
-                              <Download className="w-3.5 h-3.5" />
-                            </a>
-                          </button>
-                        ));
-                      })}
-
-                      {/* Quizzes tab */}
-                      {sidebarTab === "quizzes" && (
-                        <button onClick={() => openQuiz(section.id)}
-                          className={cn("w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all border",
-                            quizSectionId === section.id
-                              ? "bg-violet-50 dark:bg-violet-500/10 border-violet-200 dark:border-violet-500/30"
-                              : "border-transparent hover:bg-gray-50 dark:hover:bg-white/[0.04]")}>
-                          <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center flex-shrink-0">
-                            <HelpCircle className="w-4 h-4 text-violet-500" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">Section Quiz</p>
-                            <p className="text-xs text-gray-400">Test your knowledge</p>
-                          </div>
-                          {quizSectionId === section.id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />}
-                        </button>
-                      )}
                     </div>
                   </motion.div>
                 )}
@@ -1450,8 +1309,8 @@ export default function StudentWatchCourse() {
       {/* ── Header ── */}
       <header className="flex-shrink-0 bg-white/80 rounded-2xl mb-2 dark:bg-[#0d1525]/80 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/[0.06] z-30">
         <div className="px-4 py-3 flex items-center gap-3">
-          {/* Back button — triggers leave modal if playing */}
-          <button onClick={() => tryNavigate("/student/courses")}
+          {/* Back button */}
+          <button onClick={() => navigate("/student/courses")}
             className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-all flex-shrink-0">
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -1488,12 +1347,21 @@ export default function StudentWatchCourse() {
               <List className="w-4 h-4" />
             </button>
 
-            <button onClick={() => tryNavigate("/student/courses")}
+            <button onClick={() => navigate("/student/courses")}
               className="hidden sm:flex w-8 h-8 rounded-xl items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-all">
               <Home className="w-4 h-4" />
             </button>
           </div>
         </div>
+        {/* Mobile progress strip */}
+        {progress && (
+          <div className="sm:hidden px-4 pb-2 flex items-center gap-2">
+            <div className="flex-1 h-1 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
+              <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${overallProgress}%` }} />
+            </div>
+            <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">{Math.round(overallProgress)}%</span>
+          </div>
+        )}
       </header>
 
       {/* ── Body ── */}
@@ -1512,7 +1380,7 @@ export default function StudentWatchCourse() {
           )}
         </AnimatePresence>
 
-        {/* Mobile drawer */}
+        {/* Mobile drawer — bottom sheet */}
         <AnimatePresence>
           {sidebarOpen && (
             <>
@@ -1522,11 +1390,12 @@ export default function StudentWatchCourse() {
                 onClick={() => setSidebarOpen(false)}
               />
               <motion.div
-                initial={{ x: -320 }} animate={{ x: 0 }} exit={{ x: -320 }}
-                transition={{ duration: 0.25, ease: "easeInOut" }}
-                className="fixed left-0 top-0 bottom-0 w-80 bg-white dark:bg-[#0d1525] z-50 md:hidden shadow-2xl flex flex-col"
+                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+                transition={{ duration: 0.28, ease: "easeInOut" }}
+                className="fixed left-0 right-0 bottom-0 bg-white dark:bg-[#0d1525] z-50 md:hidden shadow-2xl flex flex-col rounded-t-2xl"
+                style={{ maxHeight: "80dvh" }}
               >
-                <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-white/[0.06]">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0">
                   <span className="text-sm font-bold text-gray-900 dark:text-white">Course Content</span>
                   <button onClick={() => setSidebarOpen(false)} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-all">
                     <X className="w-4 h-4" />
@@ -1542,44 +1411,74 @@ export default function StudentWatchCourse() {
 
         {/* ── Main content ── */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
+          <div className="p-3 sm:p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
             {/* Video player */}
             {selectedMaterial?.type === "VIDEO" ? (
               <div className="space-y-3">
-                <VideoPlayer
-                  material={selectedMaterial}
-                  onProgress={handleVideoProgress}
-                  onComplete={handleVideoComplete}
-                  onNearEnd={setNearEnd}
-                />
+                {/* Locked lesson overlay */}
+                {selectedLesson && lockedIds.has(selectedLesson.id) ? (
+                  <div
+                    className="relative bg-black rounded-2xl overflow-hidden flex items-center justify-center"
+                    style={{ height: "min(56dvh, calc(100vw * 9/16))" }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-gray-950" />
+                    <div className="relative z-10 flex flex-col items-center gap-4 text-center px-6">
+                      <div className="w-16 h-16 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
+                        <Lock className="w-7 h-7 text-amber-400" />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold text-base mb-1">Lesson Locked</p>
+                        <p className="text-gray-400 text-sm">Complete the previous lessons to unlock this video.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <VideoPlayer
+                    material={selectedMaterial}
+                    onProgress={handleVideoProgress}
+                    onComplete={handleVideoComplete}
+                    onNearEnd={setNearEnd}
+                  />
+                )}
 
-                {/* Near-end "Next Lesson" banner */}
+                {/* Near-end banner */}
                 <AnimatePresence>
                   {nearEnd && (
                     <motion.div
                       initial={{ opacity: 0, y: -8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
-                      className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30"
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                        <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 truncate">
-                          {currentIndex >= allContent.length - 1 ? "Last lesson — mark as complete!" : "Almost done! Ready for the next lesson?"}
+                        <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                          {currentIndex >= allContent.length - 1
+                            ? "Last lesson — mark as complete!"
+                            : allContent[currentIndex + 1]?.type === "quiz"
+                              ? "Section complete! Time for the quiz."
+                              : "Almost done! Ready for the next lesson?"}
                         </span>
                       </div>
                       <button
-                        onClick={currentIndex >= allContent.length - 1 ? handleVideoComplete : handleNextLesson}
-                        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-lg shadow-emerald-500/20"
+                        onClick={handleNextLesson}
+                        disabled={isCompletingLesson}
+                        className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-70 disabled:cursor-not-allowed text-white text-sm font-bold transition-all shadow-lg shadow-emerald-500/20"
                       >
-                        {currentIndex >= allContent.length - 1 ? "Complete" : <><span>Next</span><ChevronRight className="w-4 h-4" /></>}
+                        {isCompletingLesson ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /><span>Saving…</span></>
+                        ) : currentIndex >= allContent.length - 1
+                          ? <><Award className="w-4 h-4" /><span>Complete Course</span></>
+                          : allContent[currentIndex + 1]?.type === "quiz"
+                            ? <><HelpCircle className="w-4 h-4" /><span>Take Quiz</span></>
+                            : <><span>Next Lesson</span><ChevronRight className="w-4 h-4" /></>}
                       </button>
                     </motion.div>
                   )}
                 </AnimatePresence>
 
                 {/* Lesson metadata + prev/next */}
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     {selectedLesson && (
                       <>
@@ -1590,14 +1489,14 @@ export default function StudentWatchCourse() {
                       </>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 sm:flex-shrink-0">
                     <button onClick={goPrev} disabled={currentIndex <= 0}
-                      className="w-9 h-9 rounded-xl border border-gray-200 dark:border-white/[0.07] flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-all">
-                      <ChevronLeft className="w-4 h-4" />
+                      className="flex-1 sm:flex-none sm:w-9 h-9 rounded-xl border border-gray-200 dark:border-white/[0.07] flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-all gap-1.5 text-xs font-semibold sm:text-base">
+                      <ChevronLeft className="w-4 h-4" /><span className="sm:hidden">Prev</span>
                     </button>
-                    <button onClick={goNext} disabled={currentIndex >= allContent.length - 1}
-                      className="w-9 h-9 rounded-xl border border-gray-200 dark:border-white/[0.07] flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-all">
-                      <ChevronRight className="w-4 h-4" />
+                    <button onClick={handleNextLesson} disabled={currentIndex >= allContent.length - 1 || isCompletingLesson}
+                      className="flex-1 sm:flex-none sm:w-9 h-9 rounded-xl border border-gray-200 dark:border-white/[0.07] flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-all gap-1.5 text-xs font-semibold sm:text-base">
+                      {isCompletingLesson ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span className="sm:hidden">Next</span><ChevronRight className="w-4 h-4" /></>}
                     </button>
                   </div>
                 </div>
@@ -1648,10 +1547,6 @@ export default function StudentWatchCourse() {
       </div>
 
       {/* ── Modals ── */}
-      <AnimatePresence>
-        {showLeaveModal && <ConfirmLeaveModal onConfirm={confirmLeave} onCancel={cancelLeave} />}
-      </AnimatePresence>
-
       <AnimatePresence>
         {lockedAccessMessage && (
           <SectionLockedModal message={lockedAccessMessage} onClose={() => setLockedAccessMessage(null)} />

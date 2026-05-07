@@ -6,7 +6,6 @@ import {
   Video,
   UserCog,
   Info,
-  BookAIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -51,12 +50,6 @@ const NAV_ITEMS: NavItemDef[] = [
   },
 
   {
-    to: "/instructor/course-materials",
-    icon: BookAIcon,
-    label: "Course Materials",
-  },
-
-  { 
     to: "/instructor/discussions",
     icon: MessageSquare,
     label: "Student Discussions",

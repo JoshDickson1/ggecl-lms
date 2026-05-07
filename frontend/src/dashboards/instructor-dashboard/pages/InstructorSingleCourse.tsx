@@ -847,7 +847,7 @@ function SectionBlock({ section, courseId, index }: {
 
   const { mutate: addLesson, isPending: addingLessonPending } = useMutation({
     mutationFn: () => CoursesService.createLesson(courseId, section.id, {
-      title: lessonTitle.trim(), position: section.lessons.length + 1,
+      title: lessonTitle.trim(),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
@@ -951,7 +951,7 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
 
   const { mutate: createSection, isPending: creatingSec } = useMutation({
     mutationFn: () => CoursesService.createSection(courseId, {
-      title: sectionTitle.trim(), position: (course.sections?.length ?? 0) + 1,
+      title: sectionTitle.trim(),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
@@ -1351,7 +1351,7 @@ function MaterialsSectionBlock({ sec, courseId }: {
       for (const file of files) {
         const url    = await StorageService.upload(storageFolderFromFile(file), file);
         const lesson = await CoursesService.createLesson(courseId, sec.sectionId, {
-          title: file.name.replace(/\.[^/.]+$/, ""), position: sec.materials.length + 1,
+          title: file.name.replace(/\.[^/.]+$/, ""),
         }) as { id: string };
         await CoursesService.addMaterial(courseId, sec.sectionId, lesson.id, {
           type: materialTypeFromFile(file), title: file.name, url, fileName: file.name, size: file.size,

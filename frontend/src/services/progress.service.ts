@@ -3,10 +3,8 @@ import { APIConfig } from "@/lib/api.config";
 // ==================== TYPES ====================
 
 export interface UpdateLessonProgressPayload {
-  /** Current playback position in seconds */
+  /** Current playback position in seconds (total seconds watched so far) */
   watchedSeconds: number;
-  /** Total duration of the lesson in seconds */
-  totalSeconds: number;
 }
 
 export interface TopCourseItem {
@@ -131,7 +129,7 @@ export default class ProgressService {
     const response = await APIConfig.fetch(`/progress/lessons/${lessonId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ watchedSeconds: payload.watchedSeconds }),
     });
     return response.json();
   }

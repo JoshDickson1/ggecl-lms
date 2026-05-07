@@ -39,6 +39,7 @@ interface MyCourse {
   percentComplete: number | undefined;
   isCompleted: boolean | undefined;
   completedAt: string | null | undefined;
+  lastLessonId: string | null | undefined;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -185,14 +186,14 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
 
           {course.isCompleted ? (
             <Link
-              to={`/student/courses/${course.id}/watch`}
+              to={`/student/courses/${course.id}/watch${course.lastLessonId ? `/${course.lastLessonId}` : ""}`}
               className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-200 dark:hover:bg-emerald-950/60 transition-all"
             >
               <CheckCircle2 className="w-3.5 h-3.5" /> Review Course
             </Link>
           ) : (
             <Link
-              to={`/student/courses/${course.id}/watch`}
+              to={`/student/courses/${course.id}/watch${course.lastLessonId ? `/${course.lastLessonId}` : ""}`}
               className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_12px_rgba(59,130,246,0.3)] transition-all"
             >
               <Play className="w-3.5 h-3.5" />
@@ -258,6 +259,7 @@ export default function StudentCourses() {
         percentComplete: prog?.percentComplete,
         isCompleted:     prog?.isCompleted,
         completedAt:     prog?.completedAt,
+        lastLessonId:    prog?.lastLessonId,
       };
     });
   }, [enrollments, progressMap]);

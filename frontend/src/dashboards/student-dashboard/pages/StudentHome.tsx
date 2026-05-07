@@ -431,7 +431,7 @@ export default function StudentHome() {
 
               {/* Resume button */}
               <Link
-                to={`/student/courses/${topCourse.courseId}/watch`}
+                to={`/student/courses/${topCourse.courseId}/watch${topCourse.lastLessonId ? `/${topCourse.lastLessonId}` : ""}`}
                 className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg hover:shadow-xl transition-all"
               >
                 <Play className="w-4 h-4" />Resume

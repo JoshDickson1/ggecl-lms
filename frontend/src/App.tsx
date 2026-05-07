@@ -74,7 +74,6 @@ import InstructorChat             from "./dashboards/instructor-dashboard/pages/
 import InstructorCourses          from "./dashboards/instructor-dashboard/pages/InstructorCourses";
 import { InstructorSingleCourse } from "./dashboards/instructor-dashboard/pages/InstructorSingleCourse";
 import InstructorSearch           from "./dashboards/instructor-dashboard/pages/InstructorSearch";
-import InstructorCourseMaterials  from "./dashboards/instructor-dashboard/pages/InstructorCourseMaterials";
 import InstructorCourseManage    from "./dashboards/instructor-dashboard/pages/InstructorCourseManage";
 import InstructorSupport          from "./dashboards/instructor-dashboard/pages/InstructorSupport";
 import InstructorUploadVideo      from "./dashboards/instructor-dashboard/pages/InstructorVideoUpload";
@@ -230,8 +229,6 @@ const router = createBrowserRouter([
           { path: "courses/:id",                  element: <InstructorSingleCourse /> },
           { path: "courses/:id/manage",           element: <InstructorCourseManage /> },
           { path: "upload-video",                 element: <InstructorUploadVideo /> },
-          { path: "course-materials/:id",          element: <InstructorCourseMaterials /> },
-          { path: "course-materials",              element: <InstructorCourseMaterials /> },
           { path: "course-video-upload",          element: <InstructorUploadVideo /> },
           { path: "search",                       element: <InstructorSearch /> },
           { path: "students",                       element: <InstructorStudentPreview /> },
@@ -267,7 +264,8 @@ const router = createBrowserRouter([
           { path: "wishlist",                     element: <StudentWishlist /> },
           { path: "courses",                      element: <StudentCourses /> },
           { path: "courses/:id",                  element: <StudentSingleCourse /> },
-          { path: "courses/:id/watch",            element: <StudentWatchCourse /> },
+          { path: "courses/:id/watch",                element: <StudentWatchCourse /> },
+          { path: "courses/:id/watch/:lessonId",      element: <StudentWatchCourse /> },
           { path: "explore",                      element: <StudentExploreCourses /> },
           { path: "instructors/:id",              element: <StudentSingleInstructor /> },
           { path: "cart",                         element: <StudentCart /> },

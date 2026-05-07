@@ -505,7 +505,6 @@ function SectionBlock({ section, courseId, index }: {
   const { mutate: addLesson, isPending: addingLessonPending } = useMutation({
     mutationFn: () => CoursesService.createLesson(courseId, section.id, {
       title:    lessonTitle.trim(),
-      position: section.lessons.length + 1,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
@@ -612,8 +611,7 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
 
   const { mutate: createSection, isPending: creatingSec } = useMutation({
     mutationFn: () => CoursesService.createSection(courseId, {
-      title:    sectionTitle.trim(),
-      position: (course.sections?.length ?? 0) + 1,
+      title: sectionTitle.trim(),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });

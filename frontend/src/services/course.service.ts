@@ -163,7 +163,7 @@ export interface CourseResponse {
 export interface CourseSection {
   id: string;
   title: string;
-  position: number;
+  position?: number;
   lessons: CourseLesson[];
 }
 
@@ -171,7 +171,7 @@ export interface CourseLesson {
   id: string;
   title: string;
   description?: string;
-  position: number;
+  position?: number;
   duration?: number;
   isPreview?: boolean;
   materials?: CourseMaterial[];
@@ -191,14 +191,12 @@ export interface CourseMaterial {
 
 export interface CreateSectionPayload {
   title: string;
-  position: number;
 }
 
 export type UpdateSectionPayload = Partial<CreateSectionPayload>;
 
 export interface CreateLessonPayload {
   title: string;
-  position: number;
   description?: string;
   duration?: number;
   isPreview?: boolean;
@@ -220,7 +218,6 @@ export interface CreateMaterialPayload extends AddMaterialPayload {
   lessonId?: string;
   // If lessonId is not provided, create a new lesson
   lessonTitle?: string;
-  lessonPosition?: number;
   lessonDescription?: string;
   lessonDuration?: number;
   lessonIsPreview?: boolean;
@@ -604,7 +601,6 @@ export default class CoursesService {
       lesson = await this.createLesson(courseId, sectionId, {
         title: payload.lessonTitle || payload.title,
         description: payload.lessonDescription || '',
-        position: payload.lessonPosition || 1,
         duration: payload.lessonDuration,
         isPreview: payload.lessonIsPreview || false,
       });
