@@ -4,12 +4,27 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Play, CheckCircle2, TrendingUp,
-  Search, X, Filter, BarChart3, AlertCircle,
+  Search, X, Filter, BarChart3, AlertCircle, Award,
 } from "lucide-react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { type CourseLevel } from "@/services/course.service";
 import EnrollmentService, { MyEnrollment } from "@/services/enrollment.service";
 import ProgressService from "@/services/progress.service";
+
+// ─── Dashboard types (shared with StudentProgress) ───────────────────────────
+
+interface DashboardStats {
+  completedCourses: number;
+  avgCompletionPercent: number;
+  totalTimeSpentThisMonth: number;
+  streak: { currentStreak: number };
+  weeklyActivity: { totalThisWeek: number; dailyAverage: number; mostActiveDay: string | null; days: unknown[] };
+}
+
+interface DashboardResponse {
+  stats: DashboardStats;
+  courses: { courseId: string; isCompleted?: boolean; completed?: boolean }[];
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +120,7 @@ function CourseSkeleton() {
         <div className="h-4 w-2/3 rounded-lg bg-gray-100 dark:bg-white/[0.06]" />
         <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.06]" />
         <div className="h-9 w-full rounded-xl bg-gray-100 dark:bg-white/[0.06]" />
+        <div className="h-8 w-full rounded-xl bg-gray-100 dark:bg-white/[0.06]" />
       </div>
     </Card>
   );
@@ -124,10 +140,11 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ delay: index * 0.04, duration: 0.3 }}
       layout
+      className="h-full"
     >
-      <Card className="overflow-hidden group hover:shadow-md transition-shadow">
+      <Card className="overflow-hidden group hover:shadow-md transition-shadow h-full flex flex-col">
         {/* Thumbnail */}
-        <div className="relative h-40 overflow-hidden bg-gray-100 dark:bg-white/[0.04]">
+        <div className="relative h-40 flex-shrink-0 overflow-hidden bg-gray-100 dark:bg-white/[0.04]">
           {course.img ? (
             <img
               src={course.img}
@@ -159,14 +176,14 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
           )}
         </div>
 
-        {/* Body */}
-        <div className="p-5">
+        {/* Body — flex-col + flex-1 so all cards stretch to the same height */}
+        <div className="p-5 flex flex-col flex-1">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white line-clamp-2 mb-3 group-hover:text-blue-500 transition-colors">
             {course.title}
           </h3>
 
-          {/* Progress — shows a subtle loading state until data arrives */}
-          <div className="mb-3">
+          {/* Progress */}
+          <div className="mb-4">
             {progressLoaded ? (
               <>
                 <div className="flex justify-between text-xs mb-1.5">
@@ -184,14 +201,9 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
             )}
           </div>
 
-          {course.isCompleted ? (
-            <Link
-              to={`/student/courses/${course.id}/watch${course.lastLessonId ? `/${course.lastLessonId}` : ""}`}
-              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-200 dark:hover:bg-emerald-950/60 transition-all"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" /> Review Course
-            </Link>
-          ) : (
+          {/* Buttons — pushed to the bottom of the card */}
+          <div className="mt-auto flex flex-col gap-2">
+            {/* Primary CTA — always present */}
             <Link
               to={`/student/courses/${course.id}/watch${course.lastLessonId ? `/${course.lastLessonId}` : ""}`}
               className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_12px_rgba(59,130,246,0.3)] transition-all"
@@ -199,7 +211,17 @@ function CourseCard({ course, index }: { course: MyCourse; index: number }) {
               <Play className="w-3.5 h-3.5" />
               {pct > 0 ? "Continue Learning" : "Start Learning"}
             </Link>
-          )}
+
+            {/* Get Certificate — only shown when completed */}
+            {course.isCompleted && (
+              <Link
+                to="/student/certificates"
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-all"
+              >
+                <Award className="w-3.5 h-3.5" /> Get Certificate
+              </Link>
+            )}
+          </div>
         </div>
       </Card>
     </motion.div>
@@ -223,7 +245,13 @@ export default function StudentCourses() {
     queryFn: () => EnrollmentService.getMine(),
   });
 
-  // Step 2: fire one progress query per enrolled course, in parallel
+  // Step 2: reuse the same dashboard cache as StudentProgress for aggregate stats
+  const { data: dashboard } = useQuery<DashboardResponse>({
+    queryKey: ["progress-dashboard"],
+    queryFn: () => ProgressService.getDashboard() as Promise<DashboardResponse>,
+  });
+
+  // Step 3: fire one progress query per enrolled course, in parallel
   // Each resolves independently so cards update as data arrives
   const progressQueries = useQueries({
     queries: enrollments.map((enr) => ({
@@ -281,18 +309,23 @@ export default function StudentCourses() {
     return list;
   }, [courses, search, level, filter]);
 
-  // Stats — only count courses where progress has loaded
+  // Stats — completed + avgProgress come from the shared dashboard cache (same
+  // key as StudentProgress), so no extra network request when navigating between pages.
+  // inProgress is derived locally since the dashboard courses list may lag enrollments.
   const stats = useMemo(() => {
     const loaded = courses.filter(c => c.percentComplete !== undefined);
+    const dashStats = dashboard?.stats;
     return {
       total:       courses.length,
       inProgress:  loaded.filter(c => (c.percentComplete ?? 0) > 0 && !c.isCompleted).length,
-      completed:   loaded.filter(c => c.isCompleted).length,
-      avgProgress: loaded.length
-        ? Math.round(loaded.reduce((a, c) => a + (c.percentComplete ?? 0), 0) / loaded.length)
-        : 0,
+      completed:   dashStats?.completedCourses ?? loaded.filter(c => c.isCompleted).length,
+      avgProgress: dashStats
+        ? Math.round(Number(dashStats.avgCompletionPercent) || 0)
+        : loaded.length
+          ? Math.round(loaded.reduce((a, c) => a + (c.percentComplete ?? 0), 0) / loaded.length)
+          : 0,
     };
-  }, [courses]);
+  }, [courses, dashboard]);
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
@@ -436,7 +469,7 @@ export default function StudentCourses() {
               )}
             </motion.div>
           ) : (
-            <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+            <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
               <AnimatePresence mode="popLayout">
                 {filtered.map((course, i) => (
                   <CourseCard key={course.id} course={course} index={i} />
