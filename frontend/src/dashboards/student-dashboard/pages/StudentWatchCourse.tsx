@@ -439,6 +439,7 @@ function VideoPlayer({
       onMouseMove={resetHideTimer}
       onMouseLeave={() => { if (hideTimer.current) clearTimeout(hideTimer.current); setShowControls(false); }}
       onMouseEnter={resetHideTimer}
+      onTouchStart={resetHideTimer}
     >
       <video
         ref={videoRef}
@@ -465,7 +466,7 @@ function VideoPlayer({
         )}
       </AnimatePresence>
 
-      {/* Controls overlay — only gradient + controls when visible */}
+      {/* Controls overlay gradient */}
       <motion.div
         animate={{ opacity: controlsVisible ? 1 : 0 }}
         transition={{ duration: 0.3 }}
@@ -473,13 +474,13 @@ function VideoPlayer({
         style={{ background: controlsVisible ? "linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 40%, rgba(0,0,0,0.2) 100%)" : "none" }}
       />
 
-      {/* Center play button */}
+      {/* Center play button — desktop only */}
       <AnimatePresence>
         {controlsVisible && (
           <motion.button
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={togglePlay}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-all pointer-events-auto"
+            className="hidden sm:flex absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm items-center justify-center hover:bg-white/30 transition-all pointer-events-auto"
           >
             {isPlaying ? <Pause className="w-8 h-8 text-white" /> : <Play className="w-8 h-8 text-white ml-1" />}
           </motion.button>
@@ -491,10 +492,10 @@ function VideoPlayer({
         {controlsVisible && (
           <motion.div
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-            className="absolute bottom-0 left-0 right-0 px-4 pb-4 pt-8 pointer-events-auto"
+            className="absolute bottom-0 left-0 right-0 px-3 sm:px-4 pb-3 sm:pb-4 pt-8 pointer-events-auto"
           >
             {/* Seek bar */}
-            <div className="relative mb-3 group/seek h-4 flex items-center">
+            <div className="relative mb-2 sm:mb-3 group/seek h-4 flex items-center">
               <div className="absolute inset-y-[6px] left-0 rounded-full bg-white/20 pointer-events-none" style={{ width: `${buffered}%` }} />
               <input
                 type="range" min="0" max={duration || 0} step="0.1" value={currentTime}
@@ -504,7 +505,69 @@ function VideoPlayer({
               />
             </div>
 
-            <div className="flex items-center justify-between gap-3">
+            {/* ── Mobile controls row ── */}
+            <div className="flex sm:hidden items-center justify-between gap-2">
+              <div className="flex items-center gap-1">
+                {/* skip back */}
+                <button onClick={() => { const v = videoRef.current; if (v) v.currentTime = Math.max(0, v.currentTime - 10); }} className="p-2 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10">
+                  <SkipBack className="w-4 h-4" />
+                </button>
+                {/* play/pause */}
+                <button onClick={togglePlay} className="p-2 text-white hover:text-white transition-colors rounded-lg hover:bg-white/10">
+                  {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                </button>
+                {/* skip forward */}
+                <button onClick={() => { const v = videoRef.current; if (v) v.currentTime = Math.min(v.duration, v.currentTime + 10); }} className="p-2 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10">
+                  <SkipForward className="w-4 h-4" />
+                </button>
+                {/* time */}
+                <span className="text-xs text-white/60 font-mono tabular-nums ml-0.5">
+                  {formatDuration(currentTime)} / {formatDuration(duration)}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {/* mute */}
+                <button onClick={toggleMute} className="p-2 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10">
+                  {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                </button>
+                {/* settings menu — speed + fullscreen collapsed */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowSpeed(p => !p)}
+                    className="p-2 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </button>
+                  <AnimatePresence>
+                    {showSpeed && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 4, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                        className="absolute bottom-full right-0 mb-2 bg-gray-950/95 border border-white/10 rounded-xl overflow-hidden shadow-2xl min-w-[110px] z-30"
+                      >
+                        <p className="px-3 pt-2 pb-1 text-[10px] font-bold text-white/40 uppercase tracking-wider">Speed</p>
+                        {[0.5, 0.75, 1, 1.25, 1.5, 2].map(r => (
+                          <button key={r} onClick={() => changeRate(r)}
+                            className={cn("flex items-center justify-between w-full px-3 py-2 text-xs transition-colors hover:bg-white/10", playbackRate === r ? "text-blue-400 font-bold" : "text-white/70")}>
+                            {r}x {playbackRate === r && <CheckCircle2 className="w-3 h-3" />}
+                          </button>
+                        ))}
+                        <div className="border-t border-white/10 mt-1">
+                          <button onClick={() => { toggleFullscreen(); setShowSpeed(false); }}
+                            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/10 transition-colors">
+                            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                            {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Desktop controls row ── */}
+            <div className="hidden sm:flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5">
                 <button onClick={() => { const v = videoRef.current; if (v) v.currentTime = Math.max(0, v.currentTime - 10); }} className="p-1.5 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10">
                   <SkipBack className="w-4 h-4" />
@@ -1397,8 +1460,8 @@ export default function StudentWatchCourse() {
 
   const sidebarContent = (
     <div className="h-full flex flex-col">
-      {/* Sidebar header */}
-      <div className="p-4 border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0">
+      {/* Sidebar header — desktop only; mobile drawer has its own header */}
+      <div className="hidden md:block p-4 border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0">
         <h2 className="text-sm font-bold text-gray-900 dark:text-white">Course Content</h2>
       </div>
 
