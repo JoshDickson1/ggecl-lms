@@ -1,18 +1,35 @@
 // src/dashboards/instructor-dashboard/pages/InstructorSingleCourse.tsx
 // Route: /instructor/courses/:id
 
-import { useState, useRef } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { Link, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, BookOpen, Edit3, Trash2, Plus, Upload,
   ChevronDown, Loader2, CheckCircle2, Globe, DollarSign,
   Film, FileText, Paperclip, X, Save, Tag, Layers, AlertTriangle, Check, Image as ImageIcon,
-  Users, Star, TrendingUp, Video, ListChecks, HelpCircle,
-  Eye, EyeOff, Circle, Music, ExternalLink,
-  ZoomIn, ChevronLeft, ChevronRight,
+  Users, Star, TrendingUp, ListChecks, HelpCircle,
+  Eye, EyeOff, Music, ExternalLink,
+  ZoomIn, ChevronLeft, ChevronRight, GripVertical,
 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import CoursesService, { CourseLevel, MaterialType } from "@/services/course.service";
 import StorageService from "@/services/storage.service";
 import QuizService, { type CreateQuizPayload } from "@/services/quiz.service";
@@ -24,7 +41,8 @@ interface CourseMaterial {
   id: string;
   type: string;
   title: string;
-  url: string;
+  url: string | undefined;
+  note: string | undefined;
   fileName: string | null;
   size: number | null;
 }
@@ -178,6 +196,7 @@ const MATERIAL_ICONS: Record<string, { icon: React.ReactNode; color: string; bg:
   PDF:   { icon: <FileText className="w-3.5 h-3.5" />,     color: "text-sky-600 dark:text-sky-400",         bg: "bg-sky-100 dark:bg-sky-900/30" },
   AUDIO: { icon: <Music className="w-3.5 h-3.5" />,        color: "text-violet-600 dark:text-violet-400",   bg: "bg-violet-100 dark:bg-violet-900/30" },
   LINK:  { icon: <Globe className="w-3.5 h-3.5" />,        color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/30" },
+  TEXT:  { icon: <FileText className="w-3.5 h-3.5" />,     color: "text-indigo-600 dark:text-indigo-400",   bg: "bg-indigo-100 dark:bg-indigo-900/30" },
   QUIZ:  { icon: <ListChecks className="w-3.5 h-3.5" />,   color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-100 dark:bg-amber-900/30" },
   OTHER: { icon: <Paperclip className="w-3.5 h-3.5" />,    color: "text-gray-500 dark:text-gray-400",       bg: "bg-gray-100 dark:bg-white/[0.06]" },
 };
@@ -336,8 +355,8 @@ function FilePreviewModal({
 
 // ─── Lesson Row (Curriculum — videos only) ────────────────────────────────────
 
-function LessonRow({ lesson, courseId, sectionId }: {
-  lesson: CourseLesson; courseId: string; sectionId: string;
+function LessonRow({ lesson, courseId, sectionId, isDragOverlay = false }: {
+  lesson: CourseLesson; courseId: string; sectionId: string; isDragOverlay?: boolean;
 }) {
   const qc = useQueryClient();
   const [expanded, setExpanded]               = useState(false);
@@ -350,6 +369,15 @@ function LessonRow({ lesson, courseId, sectionId }: {
   const [removingIds, setRemovingIds]         = useState<Set<string>>(new Set());
   const [preview, setPreview]                 = useState<{ items: PreviewItem[]; index: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: lesson.id, disabled: isDragOverlay });
 
   const { mutate: removeLesson, isPending: removingLesson } = useMutation({
     mutationFn: () => CoursesService.removeLesson(courseId, sectionId, lesson.id),
@@ -436,14 +464,34 @@ function LessonRow({ lesson, courseId, sectionId }: {
   };
 
   const videoMaterials = lesson.materials.filter(m => m.type === "VIDEO");
-  const previewItems: PreviewItem[] = videoMaterials.map(m => ({
-    url: m.url, title: m.title, fileType: "video",
+  const previewItems: PreviewItem[] = videoMaterials.filter(m => m.url).map(m => ({
+    url: m.url!, title: m.title, fileType: "video",
   }));
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
 
   return (
     <>
-      <div className="rounded-xl border border-gray-100 dark:border-white/[0.06] overflow-hidden">
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="rounded-xl border border-gray-100 dark:border-white/[0.06] overflow-hidden"
+      >
         <div className="flex items-center gap-2.5 px-4 py-3 bg-gray-50/60 dark:bg-white/[0.02]">
+          {/* Drag handle */}
+          <button
+            {...attributes}
+            {...listeners}
+            className="flex-shrink-0 p-0.5 rounded text-gray-300 dark:text-white/20 hover:text-gray-500 dark:hover:text-white/40 cursor-grab active:cursor-grabbing touch-none transition-colors"
+            tabIndex={-1}
+            aria-label="Drag to reorder lesson"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
           <button onClick={() => setExpanded(p => !p)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
             <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
               <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
@@ -549,8 +597,7 @@ function LessonRow({ lesson, courseId, sectionId }: {
                         ? <Loader2 className="w-3 h-3 animate-spin text-red-400" />
                         : <Trash2 className="w-3 h-3" />
                       }
-                    </button>
-                  </div>
+                    </button>                  </div>
                 )) : (
                   <p className="text-xs text-gray-400 italic py-1">No videos yet.</p>
                 )}
@@ -594,8 +641,14 @@ function LessonRow({ lesson, courseId, sectionId }: {
 
 // ─── Section Block (Curriculum) ───────────────────────────────────────────────
 
-function SectionBlock({ section, courseId, index }: {
-  section: CourseSection; courseId: string; index: number;
+function SectionBlock({
+  section, courseId, index, onLessonsReordered, isDragOverlay = false,
+}: {
+  section: CourseSection;
+  courseId: string;
+  index: number;
+  onLessonsReordered: (sectionId: string, newLessons: CourseLesson[]) => void;
+  isDragOverlay?: boolean;
 }) {
   const qc = useQueryClient();
   const [expanded, setExpanded]       = useState(true);
@@ -604,6 +657,28 @@ function SectionBlock({ section, courseId, index }: {
   const [addingLesson, setAddingLesson] = useState(false);
   const [lessonTitle, setLessonTitle]   = useState("");
   const [lessonDescription, setLessonDescription] = useState("");
+  // Local optimistic lesson order for this section
+  const [localLessons, setLocalLessons] = useState<CourseLesson[]>(section.lessons);
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
+  const [reorderingLessons, setReorderingLessons] = useState(false);
+
+  // Sync when server data changes
+  useEffect(() => {
+    setLocalLessons(section.lessons);
+  }, [section.lessons]);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: section.id, disabled: isDragOverlay });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
 
   const { mutate: removeSection, isPending: removingSection } = useMutation({
     mutationFn: () => CoursesService.removeSection(courseId, section.id),
@@ -626,11 +701,65 @@ function SectionBlock({ section, courseId, index }: {
     },
   });
 
+  const handleLessonDragStart = (event: DragStartEvent) => {
+    setActiveLessonId(event.active.id as string);
+  };
+
+  const handleLessonDragEnd = async (event: DragEndEvent) => {
+    setActiveLessonId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = localLessons.findIndex(l => l.id === active.id);
+    const newIndex = localLessons.findIndex(l => l.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(localLessons, oldIndex, newIndex);
+    setLocalLessons(reordered);
+    onLessonsReordered(section.id, reordered);
+
+    setReorderingLessons(true);
+    try {
+      await CoursesService.reorderLessons(courseId, section.id, reordered.map(l => l.id));
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+    } catch {
+      // Revert on failure
+      setLocalLessons(section.lessons);
+      onLessonsReordered(section.id, section.lessons);
+    } finally {
+      setReorderingLessons(false);
+    }
+  };
+
+  const activeLesson = activeLessonId ? localLessons.find(l => l.id === activeLessonId) : null;
+
+  const sectionStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
   return (
-    <div className="rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0f1623]">
-      <div className="flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors select-none"
-        onClick={() => setExpanded(p => !p)}>
-        <div className="w-7 h-7 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+    <div
+      ref={setNodeRef}
+      style={sectionStyle}
+      className="rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0f1623]"
+    >
+      <div className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors select-none">
+        {/* Section drag handle */}
+        <button
+          {...attributes}
+          {...listeners}
+          className="flex-shrink-0 p-0.5 rounded text-gray-300 dark:text-white/20 hover:text-gray-500 dark:hover:text-white/40 cursor-grab active:cursor-grabbing touch-none transition-colors"
+          tabIndex={-1}
+          aria-label="Drag to reorder section"
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+        <div
+          className="w-7 h-7 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 cursor-pointer"
+          onClick={() => setExpanded(p => !p)}
+        >
           <span className="text-xs font-black text-blue-600 dark:text-blue-400">{index + 1}</span>
         </div>
         <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()}>
@@ -645,23 +774,24 @@ function SectionBlock({ section, courseId, index }: {
               className="w-full text-sm font-black bg-transparent text-gray-900 dark:text-white focus:outline-none border-b border-blue-400"
             />
           ) : (
-            <div className="flex items-center gap-2 group/title">
+            <div className="flex items-center gap-2 group/title cursor-pointer" onClick={() => setExpanded(p => !p)}>
               <h3 className="text-sm font-black text-gray-900 dark:text-white truncate">{section.title}</h3>
-              <button onClick={() => setEditTitle(true)}
+              <button onClick={e => { e.stopPropagation(); setEditTitle(true); }}
                 className="opacity-0 group-hover/title:opacity-100 p-1 text-gray-400 hover:text-blue-500 transition-all">
                 <Edit3 className="w-3 h-3" />
               </button>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-          <span className="text-[10px] text-gray-400">{section.lessons.length} lessons</span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-[10px] text-gray-400">{localLessons.length} lessons</span>
+          {reorderingLessons && <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />}
           <button onClick={() => removeSection()} disabled={removingSection}
             className="p-1.5 rounded-lg text-gray-300 dark:text-white/20 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
             {removingSection ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
           </button>
         </div>
-        <motion.div animate={{ rotate: expanded ? 0 : -90 }} transition={{ duration: 0.2 }}>
+        <motion.div animate={{ rotate: expanded ? 0 : -90 }} transition={{ duration: 0.2 }} className="cursor-pointer" onClick={() => setExpanded(p => !p)}>
           <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
         </motion.div>
       </div>
@@ -671,9 +801,23 @@ function SectionBlock({ section, courseId, index }: {
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
             <div className="px-5 pb-4 pt-1 space-y-2 border-t border-gray-100 dark:border-white/[0.06]">
-              {section.lessons.map(lesson => (
-                <LessonRow key={lesson.id} lesson={lesson} courseId={courseId} sectionId={section.id} />
-              ))}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleLessonDragStart}
+                onDragEnd={handleLessonDragEnd}
+              >
+                <SortableContext items={localLessons.map(l => l.id)} strategy={verticalListSortingStrategy}>
+                  {localLessons.map(lesson => (
+                    <LessonRow key={lesson.id} lesson={lesson} courseId={courseId} sectionId={section.id} />
+                  ))}
+                </SortableContext>
+                <DragOverlay>
+                  {activeLesson && (
+                    <LessonRow lesson={activeLesson} courseId={courseId} sectionId={section.id} isDragOverlay />
+                  )}
+                </DragOverlay>
+              </DndContext>
               <AnimatePresence>
                 {addingLesson ? (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
@@ -728,35 +872,85 @@ function SectionBlock({ section, courseId, index }: {
 
 function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: string }) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const [addingSection, setAddingSection] = useState(false);
   const [sectionTitle, setSectionTitle]   = useState("");
+  // Local optimistic section order
+  const [localSections, setLocalSections] = useState<CourseSection[]>(course.sections ?? []);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [reorderingSections, setReorderingSections] = useState(false);
+
+  // Sync when server data changes
+  useEffect(() => {
+    setLocalSections(course.sections ?? []);
+  }, [course.sections]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
 
   const { mutate: createSection, isPending: creatingSec } = useMutation({
-    mutationFn: () => CoursesService.createSection(courseId, {
-      title: sectionTitle.trim(),
-    }),
+    mutationFn: () => CoursesService.createSection(courseId, { title: sectionTitle.trim() }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
       setSectionTitle(""); setAddingSection(false);
     },
   });
 
-  const totalLessons = (course.sections ?? []).reduce((a, s) => a + s.lessons.length, 0);
-  const totalVideos  = (course.sections ?? []).reduce((a, s) =>
+  const handleSectionDragStart = (event: DragStartEvent) => {
+    setActiveSectionId(event.active.id as string);
+  };
+
+  const handleSectionDragEnd = async (event: DragEndEvent) => {
+    setActiveSectionId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = localSections.findIndex(s => s.id === active.id);
+    const newIndex = localSections.findIndex(s => s.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(localSections, oldIndex, newIndex);
+    setLocalSections(reordered);
+
+    setReorderingSections(true);
+    try {
+      await CoursesService.reorderSections(courseId, reordered.map(s => s.id));
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+    } catch {
+      // Revert on failure
+      setLocalSections(course.sections ?? []);
+    } finally {
+      setReorderingSections(false);
+    }
+  };
+
+  // Called by SectionBlock when lessons are reordered optimistically
+  const handleLessonsReordered = (sectionId: string, newLessons: CourseLesson[]) => {
+    setLocalSections(prev =>
+      prev.map(s => s.id === sectionId ? { ...s, lessons: newLessons } : s),
+    );
+  };
+
+  const activeSection = activeSectionId ? localSections.find(s => s.id === activeSectionId) : null;
+
+  const totalLessons = localSections.reduce((a, s) => a + s.lessons.length, 0);
+  const totalVideos  = localSections.reduce((a, s) =>
     a + s.lessons.reduce((b, l) => b + l.materials.filter(m => m.type === "VIDEO").length, 0), 0);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <p className="text-xs text-gray-400">
-          {course.sections?.length ?? 0} sections · {totalLessons} lessons · {totalVideos} videos
-        </p>
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate(`/instructor/upload-video`)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all">
-            <Video className="w-3.5 h-3.5" /> Bulk Upload
-          </button>
+          <p className="text-xs text-gray-400">
+            {localSections.length} sections · {totalLessons} lessons · {totalVideos} videos
+          </p>
+          {reorderingSections && (
+            <span className="flex items-center gap-1 text-[10px] text-blue-500">
+              <Loader2 className="w-3 h-3 animate-spin" /> Saving order…
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
           {!addingSection && (
             <button onClick={() => setAddingSection(true)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all">
@@ -800,16 +994,44 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
         )}
       </AnimatePresence>
 
-      {(course.sections ?? []).length > 0 ? (
-        <div className="space-y-3">
-          {course.sections.map((section, i) => (
-            <SectionBlock key={section.id} section={section} courseId={courseId} index={i} />
-          ))}
+      {localSections.length > 0 ? (
+        <>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleSectionDragStart}
+            onDragEnd={handleSectionDragEnd}
+          >
+            <SortableContext items={localSections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {localSections.map((section, i) => (
+                  <SectionBlock
+                    key={section.id}
+                    section={section}
+                    courseId={courseId}
+                    index={i}
+                    onLessonsReordered={handleLessonsReordered}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+            <DragOverlay>
+              {activeSection && (
+                <SectionBlock
+                  section={activeSection}
+                  courseId={courseId}
+                  index={localSections.findIndex(s => s.id === activeSection.id)}
+                  onLessonsReordered={() => {}}
+                  isDragOverlay
+                />
+              )}
+            </DragOverlay>
+          </DndContext>
           <button onClick={() => setAddingSection(true)}
             className="w-full py-3 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-white/25 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/10 flex items-center justify-center gap-2 text-sm font-bold transition-all">
             <Plus className="w-4 h-4" /> Add Another Section
           </button>
-        </div>
+        </>
       ) : (
         <div className="flex flex-col items-center gap-4 py-16 text-center">
           <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center">
@@ -832,8 +1054,8 @@ function CurriculumTab({ course, courseId }: { course: CourseDetail; courseId: s
 // ─── Quiz Editor Modal ────────────────────────────────────────────────────────
 
 function QuizEditorModal({
-  quiz, onSave, onClose, isSaving = false,
-}: { quiz: InlineQuiz | null; onClose: () => void; onSave: (q: InlineQuiz) => void; isSaving?: boolean }) {
+  quiz, onSave, onClose, isSaving = false, error = null,
+}: { quiz: InlineQuiz | null; onClose: () => void; onSave: (q: InlineQuiz) => void; isSaving?: boolean; error?: string | null }) {
   const [title, setTitle]         = useState(quiz?.title ?? "");
   const [passMark, setPassMark]   = useState(quiz?.passMark ?? 70);
   const [questions, setQuestions] = useState<QuizQuestion[]>(quiz?.questions ?? []);
@@ -950,28 +1172,36 @@ function QuizEditorModal({
             )}
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-white/[0.07]">
-            <button onClick={() => setIsPublished(p => !p)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
-                isPublished
-                  ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700"
-                  : "border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-white/30"
-              }`}>
-              {isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              {isPublished ? "Published" : "Draft"}
-            </button>
-            <button onClick={handleSave} disabled={!title.trim() || questions.length === 0 || isSaving}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 transition-all">
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" /> Save Quiz
-                </>
-              )}
-            </button>
+          <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-white/[0.07]">
+            {error && (
+              <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-red-50 dark:bg-red-500/[0.08] border border-red-200 dark:border-red-500/20">
+                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">{error}</p>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <button onClick={() => setIsPublished(p => !p)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                  isPublished
+                    ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700"
+                    : "border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-white/30"
+                }`}>
+                {isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                {isPublished ? "Published" : "Draft"}
+              </button>
+              <button onClick={handleSave} disabled={!title.trim() || questions.length === 0 || isSaving}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-30 transition-all">
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" /> Save Quiz
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </motion.div>
@@ -979,46 +1209,186 @@ function QuizEditorModal({
   );
 }
 
-// ─── Materials Section Block ──────────────────────────────────────────────────
+// ─── Text Tab ─────────────────────────────────────────────────────────────────
 
-interface MaterialsSectionState {
-  sectionId:    string;
-  sectionTitle: string;
-  position:     number;
-  lessons:      CourseLesson[];
-  quizzes:      InlineQuiz[];
+function TextTab({ course, courseId }: { course: CourseDetail; courseId: string }) {
+  const qc = useQueryClient();
+
+  // Per-lesson text editor state
+  const [editing, setEditing] = useState<Record<string, { title: string; content: string; saving: boolean }>>({});
+
+  const allLessons = (course.sections ?? []).flatMap(s =>
+    s.lessons.map(l => ({ ...l, sectionId: s.id, sectionTitle: s.title }))
+  );
+
+  const startEdit = (lessonId: string, existingMat?: CourseMaterial) => {
+    setEditing(p => ({
+      ...p,
+      [lessonId]: {
+        title:   existingMat?.title   ?? "Text Content",
+        content: existingMat?.note    ?? "",
+        saving:  false,
+      },
+    }));
+  };
+
+  const cancelEdit = (lessonId: string) =>
+    setEditing(p => { const n = { ...p }; delete n[lessonId]; return n; });
+
+  const saveText = async (lessonId: string, sectionId: string, existingMatId?: string) => {
+    const draft = editing[lessonId];
+    if (!draft || !draft.content.trim()) return;
+    setEditing(p => ({ ...p, [lessonId]: { ...p[lessonId], saving: true } }));
+    try {
+      if (existingMatId) {
+        // Delete old and re-add (PATCH not supported for materials)
+        await CoursesService.removeMaterial(courseId, sectionId, lessonId, existingMatId);
+      }
+      await CoursesService.addMaterial(courseId, sectionId, lessonId, {
+        type:  MaterialType.TEXT,
+        title: draft.title.trim() || "Text Content",
+        note:  draft.content.trim(),
+      });
+      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+      cancelEdit(lessonId);
+    } finally {
+      setEditing(p => p[lessonId] ? { ...p, [lessonId]: { ...p[lessonId], saving: false } } : p);
+    }
+  };
+
+  const deleteText = async (lessonId: string, sectionId: string, matId: string) => {
+    await CoursesService.removeMaterial(courseId, sectionId, lessonId, matId);
+    qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
+  };
+
+  if (allLessons.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center">
+          <FileText className="w-7 h-7 text-gray-300 dark:text-gray-600" />
+        </div>
+        <div>
+          <p className="font-bold text-gray-500 dark:text-gray-400">No lessons yet</p>
+          <p className="text-sm text-gray-400 mt-1">Add lessons in the Video tab first, then attach text content here.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {allLessons.map(lesson => {
+        const textMat  = lesson.materials.find(m => m.type === "TEXT");
+        const draft    = editing[lesson.id];
+        const isEditing = !!draft;
+
+        return (
+          <div key={lesson.id} className="rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0f1623]">
+            {/* Lesson header */}
+            <div className="flex items-center gap-3 px-5 py-3.5 bg-gray-50/60 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/[0.06]">
+              <div className="w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0">
+                <FileText className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{lesson.title}</p>
+                <p className="text-[10px] text-gray-400">{lesson.sectionTitle}</p>
+              </div>
+              {!isEditing && (
+                <button
+                  onClick={() => startEdit(lesson.id, textMat ?? undefined)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-all">
+                  <Edit3 className="w-3 h-3" />
+                  {textMat ? "Edit" : "Add Text"}
+                </button>
+              )}
+            </div>
+
+            <div className="px-5 py-4">
+              {isEditing ? (
+                <div className="space-y-3">
+                  <input
+                    value={draft.title}
+                    onChange={e => setEditing(p => ({ ...p, [lesson.id]: { ...p[lesson.id], title: e.target.value } }))}
+                    placeholder="Content title…"
+                    className="w-full px-3 py-2 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-indigo-400 transition-all"
+                  />
+                  <textarea
+                    autoFocus
+                    value={draft.content}
+                    onChange={e => setEditing(p => ({ ...p, [lesson.id]: { ...p[lesson.id], content: e.target.value } }))}
+                    rows={8}
+                    placeholder="Write your lesson text or markdown content here…"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-indigo-400 transition-all resize-y font-mono leading-relaxed"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => saveText(lesson.id, lesson.sectionId, textMat?.id)}
+                      disabled={!draft.content.trim() || draft.saving}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 transition-all">
+                      {draft.saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      {draft.saving ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      onClick={() => cancelEdit(lesson.id)}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-all">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : textMat ? (
+                <div className="group/text space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">{textMat.title}</p>
+                    <button
+                      onClick={() => deleteText(lesson.id, lesson.sectionId, textMat.id)}
+                      className="opacity-0 group-hover/text:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all flex-shrink-0">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <pre className="text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap leading-relaxed bg-gray-50 dark:bg-white/[0.03] rounded-xl px-3 py-2.5 border border-gray-100 dark:border-white/[0.05] max-h-40 overflow-y-auto font-mono">
+                    {textMat.note}
+                  </pre>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No text content yet. Click "Add Text" to write content for this lesson.</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
-function MaterialsSectionBlock({
-  sec, courseId, onQuizzesChange,
-}: {
-  sec: MaterialsSectionState;
-  courseId: string;
-  onQuizzesChange: (sectionId: string, quizzes: InlineQuiz[]) => void;
-}) {
+// ─── File Tab ─────────────────────────────────────────────────────────────────
+
+function FileTab({ course, courseId }: { course: CourseDetail; courseId: string }) {
   const qc = useQueryClient();
-  const [expanded, setExpanded]       = useState(true);
-  const [subTab, setSubTab]           = useState<"files" | "quizzes">("files");
-  const [editingQuiz, setEditingQuiz] = useState<InlineQuiz | null | "new">(null);
+  // Per-lesson upload state: uploading flag + progress percentage
+  const [uploadState, setUploadState] = useState<Record<string, { uploading: boolean; progress: number }>>({});
   const [preview, setPreview]         = useState<{ items: PreviewItem[]; index: number } | null>(null);
-  const [uploading, setUploading]     = useState<Record<string, boolean>>({});
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const allNonVideo = sec.lessons.flatMap(l => l.materials.filter(m => m.type !== "VIDEO"));
+  const allLessons = (course.sections ?? []).flatMap(s =>
+    s.lessons.map(l => ({ ...l, sectionId: s.id, sectionTitle: s.title }))
+  );
 
-  const SUB_TABS = [
-    { id: "files"   as const, label: "Files",   count: allNonVideo.length },
-    { id: "quizzes" as const, label: "Quizzes", count: sec.quizzes.length },
-  ];
-
-  const handleUpload = async (lessonId: string, files: File[]) => {
+  const handleUpload = async (lessonId: string, sectionId: string, files: File[]) => {
     const validFiles = files.filter(f => !f.type.startsWith("video/"));
     if (!validFiles.length) return;
-    setUploading(p => ({ ...p, [lessonId]: true }));
+    setUploadState(p => ({ ...p, [lessonId]: { uploading: true, progress: 0 } }));
     try {
-      for (const file of validFiles) {
-        const url = await StorageService.upload("assignments", file);
-        await CoursesService.addMaterial(courseId, sec.sectionId, lessonId, {
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        const fileBase  = (i / validFiles.length) * 100;
+        const fileShare = 100 / validFiles.length;
+        const url = await StorageService.uploadWithProgress("assignments", file, (pct) => {
+          setUploadState(p => ({
+            ...p,
+            [lessonId]: { uploading: true, progress: Math.round(fileBase + (pct * fileShare) / 100) },
+          }));
+        });
+        await CoursesService.addMaterial(courseId, sectionId, lessonId, {
           type:     materialTypeFromFile(file),
           title:    file.name.replace(/\.[^/.]+$/, ""),
           url,
@@ -1026,312 +1396,185 @@ function MaterialsSectionBlock({
           size:     file.size,
         });
       }
+      setUploadState(p => ({ ...p, [lessonId]: { uploading: true, progress: 100 } }));
       qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
     } finally {
-      setUploading(p => ({ ...p, [lessonId]: false }));
+      setUploadState(p => ({ ...p, [lessonId]: { uploading: false, progress: 0 } }));
     }
   };
 
-  const handleDelete = async (lessonId: string, materialId: string) => {
-    await CoursesService.removeMaterial(courseId, sec.sectionId, lessonId, materialId);
-    qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
-  };
-
-  const { mutate: saveQuizMutation, isPending: savingQuiz } = useMutation({
-    mutationFn: async (quiz: InlineQuiz) => {
-      // Transform local quiz format to API format
-      const payload: CreateQuizPayload = {
-        title: quiz.title,
-        sectionId: sec.sectionId,
-        passMark: quiz.passMark,
-        questions: quiz.questions.map((q) => ({
-          text: q.question,
-          options: q.options.map((opt) => ({
-            text: opt.text,
-            isCorrect: opt.id === q.correctOptionId,
-          })),
-        })),
-      };
-
-      // Check if quiz exists (has a backend ID that's not a temp ID)
-      const isNewQuiz = !quiz.id || quiz.id.startsWith('q-');
-      
-      if (isNewQuiz) {
-        // Create new quiz
-        return await QuizService.create(payload);
-      } else {
-        // Update existing quiz (only title and passMark can be updated)
-        await QuizService.update(quiz.id, {
-          title: quiz.title,
-          passMark: quiz.passMark,
-        });
-        // Note: To update questions, backend requires delete and recreate
-        return quiz;
-      }
-    },
-    onSuccess: () => {
-      // Refresh course data to get updated quizzes
-      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
-      setEditingQuiz(null);
-    },
-    onError: (error: Error) => {
-      alert(`Failed to save quiz: ${error.message}`);
-    },
-  });
-
-  const saveQuiz = (quiz: InlineQuiz) => {
-    saveQuizMutation(quiz);
-  };
-
-  const { mutate: deleteQuizMutation } = useMutation({
-    mutationFn: (quizId: string) => {
-      // Only delete if it's a backend quiz (not a temp local ID)
-      if (quizId.startsWith('q-')) {
-        // Local quiz, just remove from state
-        return Promise.resolve();
-      }
-      return QuizService.remove(quizId);
-    },
-    onSuccess: (_, quizId) => {
-      // Update local state
-      onQuizzesChange(sec.sectionId, sec.quizzes.filter(q => q.id !== quizId));
-      // Refresh course data
-      qc.invalidateQueries({ queryKey: ["instructor-course", courseId] });
-    },
-    onError: (error: Error) => {
-      alert(`Failed to delete quiz: ${error.message}`);
-    },
+  const { mutate: deleteMaterial } = useMutation({
+    mutationFn: ({ lessonId, sectionId, materialId }: { lessonId: string; sectionId: string; materialId: string }) =>
+      CoursesService.removeMaterial(courseId, sectionId, lessonId, materialId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["instructor-course", courseId] }),
   });
 
   const buildPreviewItems = (mats: CourseMaterial[]): PreviewItem[] =>
-    mats.filter(m => m.type !== "VIDEO").map(m => ({
-      url:      m.url,
+    mats.filter(m => m.type !== "VIDEO" && m.type !== "TEXT" && m.url).map(m => ({
+      url:      m.url!,
       title:    m.title,
       fileType: resolvePreviewType(m.type, m.fileName),
     }));
 
-  return (
-    <>
-      <div className="rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0f1623]">
-        {/* Section header */}
-        <div className="flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-gray-50/60 dark:hover:bg-white/[0.02] transition-colors select-none"
-          onClick={() => setExpanded(p => !p)}>
-          <div className="w-7 h-7 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-black text-blue-600 dark:text-blue-400">{sec.position}</span>
-          </div>
-          <h3 className="flex-1 text-sm font-black text-gray-900 dark:text-white truncate">{sec.sectionTitle}</h3>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold flex-shrink-0">
-            {allNonVideo.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-400">
-                {allNonVideo.length} files
-              </span>
-            )}
-            {sec.quizzes.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
-                {sec.quizzes.length}q
-              </span>
-            )}
-          </div>
-          <motion.div animate={{ rotate: expanded ? 0 : -90 }} transition={{ duration: 0.2 }}>
-            <ChevronDown className="w-4 h-4 text-gray-400" />
-          </motion.div>
+  const totalFiles = allLessons.reduce((a, l) =>
+    a + l.materials.filter(m => m.type !== "VIDEO" && m.type !== "TEXT").length, 0);
+
+  if (allLessons.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center">
+          <Paperclip className="w-7 h-7 text-gray-300 dark:text-gray-600" />
         </div>
+        <div>
+          <p className="font-bold text-gray-500 dark:text-gray-400">No lessons yet</p>
+          <p className="text-sm text-gray-400 mt-1">Add lessons in the Video tab first, then attach files here.</p>
+        </div>
+      </div>
+    );
+  }
 
-        <AnimatePresence initial={false}>
-          {expanded && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-              <div className="border-t border-gray-100 dark:border-white/[0.06]">
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-gray-400">{totalFiles} file{totalFiles !== 1 ? "s" : ""} across {allLessons.length} lessons</p>
+      <div className="space-y-3">
+        {allLessons.map(lesson => {
+          const fileMats        = lesson.materials.filter(m => m.type !== "VIDEO" && m.type !== "TEXT");
+          const previewItems    = buildPreviewItems(lesson.materials);
+          const lessonUpload    = uploadState[lesson.id] ?? { uploading: false, progress: 0 };
+          const isUploading     = lessonUpload.uploading;
+          const uploadProgress  = lessonUpload.progress;
 
-                {/* Sub-tabs */}
-                <div className="flex gap-0.5 px-5 pt-3">
-                  {SUB_TABS.map(t => (
-                    <button key={t.id} onClick={() => setSubTab(t.id)}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-t-xl text-xs font-bold transition-all border-b-2 ${
-                        subTab === t.id
-                          ? "text-blue-600 dark:text-blue-400 border-blue-500 bg-blue-50 dark:bg-blue-900/10"
-                          : "text-gray-400 dark:text-white/25 border-transparent hover:text-gray-600 dark:hover:text-white/50"
-                      }`}>
-                      {t.label}
-                      {t.count > 0 && (
-                        <span className={`px-1.5 rounded-full text-[10px] font-black ${
-                          subTab === t.id
-                            ? "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300"
-                            : "bg-gray-100 dark:bg-white/[0.07] text-gray-500 dark:text-white/30"
-                        }`}>{t.count}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="px-5 pb-5 pt-3">
-                  <AnimatePresence mode="wait">
-
-                    {/* Files — grouped by lesson */}
-                    {subTab === "files" && (
-                      <motion.div key="files" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                        {sec.lessons.length === 0 && (
-                          <div className="flex flex-col items-center gap-2 py-10 text-gray-300 dark:text-white/20 text-center">
-                            <Paperclip className="w-7 h-7 opacity-40" />
-                            <p className="text-sm">No lessons yet — add lessons in the Curriculum tab first.</p>
-                          </div>
+          return (
+            <div key={lesson.id} className="rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0f1623]">
+              <div className="flex items-center gap-3 px-5 py-3 bg-gray-50/60 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/[0.06]">
+                <Paperclip className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 flex-1 truncate">{lesson.title}</span>
+                <span className="text-[10px] text-gray-400">{lesson.sectionTitle}</span>
+                {fileMats.length > 0 && (
+                  <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20 px-1.5 py-0.5 rounded-md">
+                    {fileMats.length}
+                  </span>
+                )}
+              </div>
+              <div className="px-5 pb-4 pt-3 space-y-1.5">
+                <AnimatePresence>
+                  {fileMats.map((mat, matIdx) => {
+                    const iconMeta = MATERIAL_ICONS[mat.type] ?? MATERIAL_ICONS.OTHER;
+                    const fileType = resolvePreviewType(mat.type, mat.fileName);
+                    return (
+                      <motion.div key={mat.id}
+                        initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -8 }}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 dark:border-white/[0.05] group hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors">
+                        <div className={`w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 ${iconMeta.bg} ${iconMeta.color}`}>
+                          {fileType === "image" && mat.url
+                            ? <img src={mat.url} alt="" className="w-full h-full object-cover" />
+                            : iconMeta.icon
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{mat.title}</p>
+                          <p className="text-[10px] text-gray-400">{mat.type}{mat.size ? ` · ${formatSize(mat.size)}` : ""}</p>
+                        </div>
+                        {mat.url && (
+                          <button
+                            onClick={() => setPreview({ items: previewItems, index: matIdx })}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-400 hover:text-blue-500 transition-all flex-shrink-0">
+                            <ZoomIn className="w-3.5 h-3.5" />
+                          </button>
                         )}
-                        {sec.lessons.map(lesson => {
-                          const nonVideoMats  = lesson.materials.filter(m => m.type !== "VIDEO");
-                          const previewItems  = buildPreviewItems(lesson.materials);
-                          const isUploading   = uploading[lesson.id] ?? false;
-
-                          return (
-                            <div key={lesson.id} className="rounded-xl border border-gray-100 dark:border-white/[0.06] overflow-hidden">
-                              {/* Lesson label */}
-                              <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50/60 dark:bg-white/[0.02]">
-                                <Film className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 flex-1 truncate">{lesson.title}</span>
-                                {nonVideoMats.length > 0 && (
-                                  <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20 px-1.5 py-0.5 rounded-md">
-                                    {nonVideoMats.length}
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="px-4 pb-3 pt-2 space-y-1.5">
-                                <AnimatePresence>
-                                  {nonVideoMats.map((mat, matIdx) => {
-                                    const iconMeta  = MATERIAL_ICONS[mat.type] ?? MATERIAL_ICONS.OTHER;
-                                    const fileType  = resolvePreviewType(mat.type, mat.fileName);
-                                    return (
-                                      <motion.div key={mat.id}
-                                        initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -8 }}
-                                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 dark:border-white/[0.05] group hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors">
-                                        {/* Image thumbnail, else type icon */}
-                                        <div className={`w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 ${iconMeta.bg} ${iconMeta.color}`}>
-                                          {fileType === "image"
-                                            ? <img src={mat.url} alt="" className="w-full h-full object-cover" />
-                                            : iconMeta.icon
-                                          }
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{mat.title}</p>
-                                          <p className="text-[10px] text-gray-400">{mat.type}{mat.size ? ` · ${formatSize(mat.size)}` : ""}</p>
-                                        </div>
-                                        <button
-                                          onClick={() => setPreview({ items: previewItems, index: matIdx })}
-                                          className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-400 hover:text-blue-500 transition-all flex-shrink-0">
-                                          <ZoomIn className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button onClick={() => handleDelete(lesson.id, mat.id)}
-                                          className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all">
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </motion.div>
-                                    );
-                                  })}
-                                </AnimatePresence>
-
-                                {nonVideoMats.length === 0 && !isUploading && (
-                                  <p className="text-xs text-gray-400 italic py-1 px-1">No files for this lesson yet.</p>
-                                )}
-
-                                {/* Upload zone */}
-                                <input
-                                  ref={el => { fileRefs.current[lesson.id] = el; }}
-                                  type="file" multiple
-                                  accept="image/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.apk,*/*"
-                                  className="hidden"
-                                  onChange={e => { if (e.target.files) handleUpload(lesson.id, Array.from(e.target.files)); }}
-                                />
-                                <button
-                                  onClick={() => fileRefs.current[lesson.id]?.click()}
-                                  disabled={isUploading}
-                                  className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-gray-500 text-xs font-bold hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400 disabled:opacity-50 transition-all">
-                                  {isUploading
-                                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
-                                    : <><Upload className="w-3.5 h-3.5" /> Add image, audio, PDF, doc…</>
-                                  }
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-
-                    {/* Quizzes */}
-                    {subTab === "quizzes" && (
-                      <motion.div key="quizzes" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                        {sec.quizzes.length === 0 && (
-                          <div className="flex flex-col items-center gap-2 py-8 text-gray-300 dark:text-white/20">
-                            <HelpCircle className="w-7 h-7 opacity-40" />
-                            <p className="text-sm">No quizzes in this section.</p>
-                          </div>
-                        )}
-                        <AnimatePresence>
-                          {sec.quizzes.map(quiz => (
-                            <motion.div key={quiz.id}
-                              initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -8 }}
-                              className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-100 dark:border-white/[0.06] hover:bg-gray-50 dark:hover:bg-white/[0.02] group transition-colors">
-                              <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                                <ListChecks className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{quiz.title}</p>
-                                <p className="text-xs text-gray-400">{quiz.questions.length} questions · {quiz.passMark}% pass</p>
-                              </div>
-                              {quiz.isPublished
-                                ? <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Live</span>
-                                : <span className="text-xs font-bold text-gray-400 flex items-center gap-1"><Circle className="w-3 h-3" />Draft</span>
-                              }
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => setEditingQuiz(quiz)}
-                                  className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/20 transition-all">
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => deleteQuizMutation(quiz.id)}
-                                  className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-all">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </motion.div>
-                          ))}
-                        </AnimatePresence>
-                        <button onClick={() => setEditingQuiz("new")}
-                          className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-amber-200 dark:border-amber-900/50 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all w-full text-sm font-bold">
-                          <Plus className="w-4 h-4" /> Add Quiz
+                        <button onClick={() => deleteMaterial({ lessonId: lesson.id, sectionId: lesson.sectionId, materialId: mat.id })}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all">
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                    );
+                  })}
+                </AnimatePresence>
+                {fileMats.length === 0 && !isUploading && (
+                  <p className="text-xs text-gray-400 italic py-1">No files for this lesson yet.</p>
+                )}
+                <input
+                  ref={el => { fileRefs.current[lesson.id] = el; }}
+                  type="file" multiple
+                  accept="image/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.apk,*/*"
+                  className="hidden"
+                  onChange={e => { if (e.target.files) handleUpload(lesson.id, lesson.sectionId, Array.from(e.target.files)); }}
+                />
+                {isUploading ? (
+                  <div className="w-full px-3 py-2.5 rounded-xl border border-sky-200 dark:border-sky-800/50 bg-sky-50/50 dark:bg-sky-900/10 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Uploading…
+                      </span>
+                      <span className="text-xs font-black text-sky-600 dark:text-sky-400">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-sky-100 dark:bg-sky-900/40 overflow-hidden">
+                      <motion.div
+                        className="h-full rounded-full bg-sky-500 dark:bg-sky-400"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${uploadProgress}%` }}
+                        transition={{ ease: "linear", duration: 0.2 }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => fileRefs.current[lesson.id]?.click()}
+                    className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-gray-500 text-xs font-bold hover:border-sky-300 hover:text-sky-600 dark:hover:border-sky-700 dark:hover:text-sky-400 transition-all">
+                    <Upload className="w-3.5 h-3.5" /> Add PDF, audio, image, doc…
+                  </button>
+                )}
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+          );
+        })}
       </div>
 
       {preview && (
         <FilePreviewModal items={preview.items} startIndex={preview.index} onClose={() => setPreview(null)} />
       )}
-
-      <AnimatePresence>
-        {editingQuiz !== null && (
-          <QuizEditorModal
-            quiz={editingQuiz === "new" ? null : editingQuiz}
-            onClose={() => setEditingQuiz(null)}
-            onSave={saveQuiz}
-            isSaving={savingQuiz}
-          />
-        )}
-      </AnimatePresence>
-    </>
+    </div>
   );
 }
 
-// ─── Materials Tab ────────────────────────────────────────────────────────────
+// ─── Quiz Tab ─────────────────────────────────────────────────────────────────
 
-function MaterialsTab({ course, courseId }: { course: CourseDetail; courseId: string }) {
-  const [quizzesBySectionId, setQuizzesBySectionId] = useState<Record<string, InlineQuiz[]>>({});
+function QuizTab({
+  course,
+  courseId,
+  fetchedQuizzes,
+  loadingQuizzes,
+}: {
+  course: CourseDetail;
+  courseId: string;
+  fetchedQuizzes: import("@/services/quiz.service").Quiz[] | undefined;
+  loadingQuizzes: boolean;
+}) {
+  const qc = useQueryClient();
+  const [editingQuiz, setEditingQuiz]         = useState<InlineQuiz | null | "new">(null);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [quizError, setQuizError]             = useState<string | null>(null);
 
-  const sections: MaterialsSectionState[] = (course.sections ?? []).map(s => ({
+  // Group fetched quizzes by sectionId and map to InlineQuiz shape
+  const quizzesBySectionId: Record<string, InlineQuiz[]> = {};
+  for (const q of fetchedQuizzes ?? []) {
+    const mapped: InlineQuiz = {
+      id:          q.id,
+      title:       q.title,
+      passMark:    q.passMark,
+      isPublished: false, // API doesn't return this field yet
+      questions:   (q.questions ?? []).map(qq => ({
+        id:              qq.id ?? `qq-${Math.random()}`,
+        question:        qq.text,
+        options:         (qq.options ?? []).map(o => ({ id: o.id ?? `o-${Math.random()}`, text: o.text })),
+        correctOptionId: qq.options?.[0]?.id ?? "",
+      })),
+    };
+    if (!quizzesBySectionId[q.sectionId]) quizzesBySectionId[q.sectionId] = [];
+    quizzesBySectionId[q.sectionId].push(mapped);
+  }
+
+  const sections = (course.sections ?? []).map(s => ({
     sectionId:    s.id,
     sectionTitle: s.title,
     position:     s.position,
@@ -1339,67 +1582,154 @@ function MaterialsTab({ course, courseId }: { course: CourseDetail; courseId: st
     quizzes:      quizzesBySectionId[s.id] ?? [],
   }));
 
-  const totalFiles   = sections.reduce((a, s) =>
-    a + s.lessons.reduce((b, l) => b + l.materials.filter(m => m.type !== "VIDEO").length, 0), 0);
   const totalQuizzes = sections.reduce((a, s) => a + s.quizzes.length, 0);
-  const totalLessons = sections.reduce((a, s) => a + s.lessons.length, 0);
+
+  const { mutate: saveQuizMutation, isPending: savingQuiz } = useMutation({
+    mutationFn: async (quiz: InlineQuiz) => {
+      setQuizError(null);
+      // Validate: each question must have exactly 4 non-empty options with exactly 1 correct
+      for (const q of quiz.questions) {
+        if (q.options.length !== 4) throw new Error("Each question must have exactly 4 options.");
+        const emptyOpts = q.options.filter(o => !o.text.trim());
+        if (emptyOpts.length > 0) throw new Error("All option fields must be filled in.");
+        if (!q.question.trim()) throw new Error("All question texts must be filled in.");
+      }
+      const payload: CreateQuizPayload = {
+        title:     quiz.title,
+        sectionId: activeSectionId!,
+        passMark:  quiz.passMark,
+        questions: quiz.questions.map(q => ({
+          text:    q.question,
+          options: q.options.map(opt => ({
+            text:      opt.text,
+            isCorrect: opt.id === q.correctOptionId,
+          })),
+        })),
+      };
+      const isNew = !quiz.id || quiz.id.startsWith("q-");
+      if (isNew) return await QuizService.create(payload);
+      await QuizService.update(quiz.id, { title: quiz.title, passMark: quiz.passMark });
+      return quiz;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["course-quizzes", courseId] });
+      setEditingQuiz(null);
+      setActiveSectionId(null);
+      setQuizError(null);
+    },
+    onError: (error: Error) => setQuizError(error.message),
+  });
+
+  const { mutate: deleteQuizMutation, isPending: deletingQuiz } = useMutation({
+    mutationFn: (quizId: string) => QuizService.remove(quizId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["course-quizzes", courseId] });
+    },
+    onError: (error: Error) => setQuizError(error.message),
+  });
+
+  if (sections.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center">
+          <HelpCircle className="w-7 h-7 text-gray-300 dark:text-gray-600" />
+        </div>
+        <div>
+          <p className="font-bold text-gray-500 dark:text-gray-400">No sections yet</p>
+          <p className="text-sm text-gray-400 mt-1">Create sections in the Video tab first.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: "Sections", val: sections.length, color: "text-blue-600 dark:text-blue-400",   bg: "bg-blue-50 dark:bg-blue-900/20",   icon: <Layers className="w-4 h-4" /> },
-          { label: "Lessons",  val: totalLessons,    color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-50 dark:bg-indigo-900/20", icon: <Film className="w-4 h-4" /> },
-          { label: "Files",    val: totalFiles,      color: "text-sky-600 dark:text-sky-400",     bg: "bg-sky-50 dark:bg-sky-900/20",     icon: <Paperclip className="w-4 h-4" /> },
-          { label: "Quizzes",  val: totalQuizzes,    color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20", icon: <ListChecks className="w-4 h-4" /> },
-        ].map(s => (
-          <div key={s.label} className={`${s.bg} border border-gray-100 dark:border-white/[0.06] rounded-2xl p-4 flex items-center gap-3`}>
-            <div className={`w-9 h-9 rounded-xl bg-white dark:bg-white/[0.05] flex items-center justify-center flex-shrink-0 ${s.color}`}>
-              {s.icon}
+    <>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-400">
+            {loadingQuizzes
+              ? "Loading quizzes…"
+              : `${totalQuizzes} quiz${totalQuizzes !== 1 ? "zes" : ""} across ${sections.length} sections`
+            }
+          </p>
+          {loadingQuizzes && <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin" />}
+        </div>
+
+        {quizError && !editingQuiz && (
+          <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-red-50 dark:bg-red-500/[0.08] border border-red-200 dark:border-red-500/20">
+            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">{quizError}</p>
+          </div>
+        )}
+
+        {sections.map(sec => (
+          <div key={sec.sectionId} className="rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0f1623]">
+            <div className="flex items-center gap-3 px-5 py-3.5 bg-gray-50/60 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/[0.06]">
+              <div className="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                <ListChecks className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+              </div>
+              <h3 className="flex-1 text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{sec.sectionTitle}</h3>
+              {loadingQuizzes && <Loader2 className="w-3 h-3 text-amber-400 animate-spin flex-shrink-0" />}
+              {!loadingQuizzes && sec.quizzes.length > 0 && (
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded-md">
+                  {sec.quizzes.length}
+                </span>
+              )}
             </div>
-            <div>
-              <p className={`text-xl font-black ${s.color}`}>{s.val}</p>
-              <p className="text-[10px] text-gray-400 dark:text-white/30">{s.label}</p>
+            <div className="px-5 pb-4 pt-3 space-y-2">
+              <AnimatePresence>
+                {sec.quizzes.map(quiz => (
+                  <motion.div key={quiz.id}
+                    initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -8 }}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-100 dark:border-white/[0.06] hover:bg-gray-50 dark:hover:bg-white/[0.02] group transition-colors">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                      <ListChecks className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{quiz.title}</p>
+                      <p className="text-xs text-gray-400">{quiz.questions.length} questions · {quiz.passMark}% pass</p>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 opacity-100 transition-opacity">
+                      <button onClick={() => { setActiveSectionId(sec.sectionId); setEditingQuiz(quiz); }}
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/20 transition-all">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => deleteQuizMutation(quiz.id)} disabled={deletingQuiz}
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-all">
+                        {deletingQuiz
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin text-red-400" />
+                          : <Trash2 className="w-3.5 h-3.5" />
+                        }
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              {!loadingQuizzes && sec.quizzes.length === 0 && (
+                <p className="text-xs text-gray-400 italic py-1">No quizzes in this section yet.</p>
+              )}
+              <button
+                onClick={() => { setActiveSectionId(sec.sectionId); setEditingQuiz("new"); }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-amber-200 dark:border-amber-900/50 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all w-full text-xs font-bold">
+                <Plus className="w-3.5 h-3.5" /> Add Quiz
+              </button>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-500/20">
-        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-amber-700 dark:text-amber-200/60">
-          <strong>Quizzes</strong> are local state only — wire up{" "}
-          <code className="font-mono text-[11px]">POST /courses/:id/sections/:sectionId/quizzes</code> to persist them.
-          All other files upload to the API instantly.
-        </p>
-      </div>
-
-      {sections.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center">
-            <Paperclip className="w-7 h-7 text-gray-300 dark:text-gray-600" />
-          </div>
-          <div>
-            <p className="font-bold text-gray-500 dark:text-gray-400">No sections yet</p>
-            <p className="text-sm text-gray-400 mt-1">Create sections and lessons in the Curriculum tab first.</p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sections.map(sec => (
-            <MaterialsSectionBlock
-              key={sec.sectionId}
-              sec={sec}
-              courseId={courseId}
-              onQuizzesChange={(sectionId, quizzes) =>
-                setQuizzesBySectionId(p => ({ ...p, [sectionId]: quizzes }))
-              }
-            />
-          ))}
-        </div>
-      )}
-    </div>
+      <AnimatePresence>
+        {editingQuiz !== null && (
+          <QuizEditorModal
+            quiz={editingQuiz === "new" ? null : editingQuiz}
+            onClose={() => { setEditingQuiz(null); setActiveSectionId(null); setQuizError(null); }}
+            onSave={q => saveQuizMutation(q)}
+            isSaving={savingQuiz}
+            error={quizError}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -1638,7 +1968,7 @@ function StudentsTab({ course }: { course: CourseDetail }) {
 export function InstructorSingleCourse() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"curriculum" | "materials" | "overview" | "students">("curriculum");
+  const [tab, setTab] = useState<"video" | "text" | "file" | "quiz" | "overview" | "students">("video");
 
   const { data: course, isLoading } = useQuery<CourseDetail>({
     queryKey: ["instructor-course", id],
@@ -1646,6 +1976,22 @@ export function InstructorSingleCourse() {
     enabled:  !!id,
     staleTime: 0,
     refetchOnWindowFocus: false,
+  });
+
+  // ── Hoist quiz query so it loads in the background immediately ──────────────
+  const sectionIds = (course?.sections ?? []).map(s => s.id);
+  const { data: fetchedQuizzes, isLoading: loadingQuizzes } = useQuery({
+    queryKey: ["course-quizzes", id],
+    queryFn: async () => {
+      if (!sectionIds.length) return [] as import("@/services/quiz.service").Quiz[];
+      const results = await Promise.all(
+        sectionIds.map(sid => QuizService.findBySection(sid))
+      );
+      return results.flat();
+    },
+    enabled: !!id && sectionIds.length > 0,
+    staleTime: 1000 * 60 * 2,
+    placeholderData: keepPreviousData,
   });
 
   const { mutate: publish, isPending: publishing } = useMutation({
@@ -1671,18 +2017,22 @@ export function InstructorSingleCourse() {
   const isArchived   = course.status === "ARCHIVED";
   const enrollments  = course._count?.enrollments ?? 0;
   const totalLessons = (course.sections ?? []).reduce((a, s) => a + s.lessons.length, 0);
+  const totalTexts   = (course.sections ?? []).reduce((a, s) =>
+    a + s.lessons.reduce((b, l) => b + l.materials.filter(m => m.type === "TEXT").length, 0), 0);
   const totalMats    = (course.sections ?? []).reduce((a, s) =>
-    a + s.lessons.reduce((b, l) => b + l.materials.filter(m => m.type !== "VIDEO").length, 0), 0);
+    a + s.lessons.reduce((b, l) => b + l.materials.filter(m => m.type !== "VIDEO" && m.type !== "TEXT").length, 0), 0);
 
   const TABS = [
-    { id: "curriculum" as const, label: "Curriculum", count: totalLessons > 0 ? `${totalLessons}` : undefined },
-    { id: "materials"  as const, label: "Materials",  count: totalMats    > 0 ? `${totalMats}`    : undefined },
-    { id: "overview"   as const, label: "Course Info" },
-    { id: "students"   as const, label: "Students",   count: enrollments  > 0 ? `${enrollments}`  : undefined },
+    { id: "video"    as const, label: "Video",      count: totalLessons > 0 ? `${totalLessons}` : undefined },
+    { id: "text"     as const, label: "Text",        count: totalTexts   > 0 ? `${totalTexts}`   : undefined },
+    { id: "file"     as const, label: "File",        count: totalMats    > 0 ? `${totalMats}`    : undefined },
+    { id: "quiz"     as const, label: "Quiz" },
+    { id: "overview" as const, label: "Info" },
+    { id: "students" as const, label: "Students",   count: enrollments  > 0 ? `${enrollments}`  : undefined },
   ];
 
   return (
-    <div className="max-w-[900px] mx-auto px-4 py-8 space-y-6 pb-16">
+    <div className="max-w-[900px] mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-5 sm:space-y-6 pb-16">
 
       <Link to="/instructor/courses"
         className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
@@ -1693,17 +2043,17 @@ export function InstructorSingleCourse() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
         className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] overflow-hidden">
 
-        <div className="h-20 bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 relative overflow-hidden">
+        <div className="h-16 sm:h-20 bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 relative overflow-hidden">
           {course.img && <img src={course.img} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />}
           <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle,white 1px,transparent 1px)", backgroundSize: "18px 18px" }} />
         </div>
 
-        <div className="px-6 pb-6">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-8 mb-5">
-            <div className="relative z-10 w-16 h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0 ring-4 ring-white dark:ring-[#0f1623] shadow-lg">
-              {course.img ? <img src={course.img} alt="" className="w-full h-full object-cover" /> : <BookOpen className="w-7 h-7 text-white/60" />}
+        <div className="px-4 sm:px-6 pb-5 sm:pb-6">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4 -mt-7 sm:-mt-8 mb-4 sm:mb-5">
+            <div className="relative z-10 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0 ring-4 ring-white dark:ring-[#0f1623] shadow-lg">
+              {course.img ? <img src={course.img} alt="" className="w-full h-full object-cover" /> : <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 text-white/60" />}
             </div>
-            <div className="flex-1 sm:pb-1 min-w-0">
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${statusCfg.color} ${statusCfg.bg} ${statusCfg.border}`}>
                   {statusCfg.label}
@@ -1715,42 +2065,42 @@ export function InstructorSingleCourse() {
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600/10 text-blue-600 dark:text-blue-400">{course.badge}</span>
                 )}
               </div>
-              <h1 className="text-xl font-black text-gray-900 dark:text-white truncate">{course.title}</h1>
+              <h1 className="text-lg sm:text-xl font-black text-gray-900 dark:text-white line-clamp-2">{course.title}</h1>
               <p className="text-xs text-gray-400 mt-0.5">${(course.price ?? 0).toFixed(2)} · {enrollments} enrolled</p>
             </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 self-start sm:self-auto mt-1 sm:mt-0">
               {!isArchived && (
                 <button onClick={() => isPublished ? archive() : publish()} disabled={publishing || archiving}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  className={`flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
                     isPublished
                       ? "border border-gray-200 dark:border-white/[0.08] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04]"
                       : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-200 dark:shadow-emerald-900/30"
                   }`}>
-                  {(publishing || archiving) ? <Loader2 className="w-4 h-4 animate-spin" /> : isPublished ? <AlertTriangle className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
+                  {(publishing || archiving) ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : isPublished ? <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                   {isPublished ? "Archive" : "Publish"}
                 </button>
               )}
               {isArchived && (
                 <button onClick={() => publish()} disabled={publishing}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md">
-                  {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md">
+                  {publishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                   Re-publish
                 </button>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-gray-100 dark:border-white/[0.06]">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 pt-4 sm:pt-5 border-t border-gray-100 dark:border-white/[0.06]">
             {[
               { icon: Users,      val: String(enrollments),                  sub: "Students"  },
               { icon: Layers,     val: String(course.sections?.length ?? 0), sub: "Sections"  },
               { icon: Star,       val: String(totalLessons),                 sub: "Lessons"   },
               { icon: TrendingUp, val: `$${(course.price ?? 0).toFixed(0)}`, sub: "Price"    },
             ].map(({ icon: Icon, val, sub }) => (
-              <div key={sub} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-3.5 h-3.5 text-blue-500" />
+              <div key={sub} className="flex items-center gap-2 sm:gap-3">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-500" />
                 </div>
                 <div>
                   <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{val}</p>
@@ -1762,11 +2112,11 @@ export function InstructorSingleCourse() {
         </div>
       </motion.div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit overflow-x-auto">
+      {/* Tabs — scrollable on mobile */}
+      <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] overflow-x-auto scrollbar-none">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap flex-shrink-0 ${
               tab === t.id
                 ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm"
                 : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
@@ -1784,10 +2134,19 @@ export function InstructorSingleCourse() {
       {/* Tab content */}
       <AnimatePresence mode="wait">
         <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-          {tab === "curriculum" && <CurriculumTab course={course} courseId={id!} />}
-          {tab === "materials"  && <MaterialsTab  course={course} courseId={id!} />}
-          {tab === "overview"   && <OverviewTab   course={course} courseId={id!} />}
-          {tab === "students"   && <StudentsTab   course={course} />}
+          {tab === "video"    && <CurriculumTab course={course} courseId={id!} />}
+          {tab === "text"     && <TextTab       course={course} courseId={id!} />}
+          {tab === "file"     && <FileTab       course={course} courseId={id!} />}
+          {tab === "quiz"     && (
+            <QuizTab
+              course={course}
+              courseId={id!}
+              fetchedQuizzes={fetchedQuizzes}
+              loadingQuizzes={loadingQuizzes}
+            />
+          )}
+          {tab === "overview" && <OverviewTab   course={course} courseId={id!} />}
+          {tab === "students" && <StudentsTab   course={course} />}
         </motion.div>
       </AnimatePresence>
     </div>
