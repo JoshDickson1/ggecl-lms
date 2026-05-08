@@ -2,13 +2,17 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   GraduationCap, Lock, Download, Share2, ExternalLink,
   Award, CheckCircle2, BookOpen, Search,
-  Calendar, Star, ChevronRight, Clock,
+  Calendar, Star, ChevronRight, Loader2, Sparkles,
 } from "lucide-react";
-import ProgressService from "@/services/progress.service";
+import CertificateService, {
+  type GeneratedCertificate,
+  type EligibleCourse,
+  type IneligibleCourse,
+} from "@/services/certificate.service";
 import { useAuth } from "@/context/AuthProvider";
 import { ApiErrorPage } from "@/components/ui/ApiError";
 
@@ -25,11 +29,6 @@ const GRADIENTS = [
   "from-cyan-500 to-blue-400",
 ];
 
-const AVATAR_COLORS = [
-  "bg-blue-500", "bg-violet-500", "bg-emerald-500",
-  "bg-rose-500", "bg-amber-500", "bg-pink-500",
-];
-
 function strHash(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
@@ -37,18 +36,6 @@ function strHash(s: string): number {
 }
 
 function gradientFor(id: string) { return GRADIENTS[strHash(id) % GRADIENTS.length]; }
-function avatarBgFor(name: string) { return AVATAR_COLORS[strHash(name) % AVATAR_COLORS.length]; }
-function initialsOf(name: string) { return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase(); }
-
-function ratingToGrade(rating?: number): string | undefined {
-  if (!rating) return undefined;
-  if (rating >= 4.8) return "A+";
-  if (rating >= 4.5) return "A";
-  if (rating >= 4.0) return "A-";
-  if (rating >= 3.7) return "B+";
-  if (rating >= 3.3) return "B";
-  return "B-";
-}
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -56,57 +43,6 @@ function fmtDate(iso: string | null | undefined): string {
     year: "numeric", month: "long", day: "numeric",
   });
 }
-
-function credId(courseId: string, completedAt: string | null | undefined): string {
-  const year = completedAt ? new Date(completedAt).getFullYear() : new Date().getFullYear();
-  const slug = courseId.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase();
-  return `GGECL-${year}-${slug}`;
-}
-
-function fmtMinutes(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m}m`;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Certificate {
-  id: string;
-  courseId: string;
-  courseTitle: string;
-  instructor: string;
-  instructorBg: string;
-  instructorAvatar: string;
-  thumbnail: string;
-  completedAt: string;
-  credentialId: string;
-  lectures: number;
-  totalLectures: number;
-  grade?: string;
-}
-
-interface LockedCourse {
-  id: string;
-  title: string;
-  instructor: string;
-  thumbnail: string;
-  progress: number;
-  lectures: number;
-  totalLectures: number;
-}
-
-// ─── Grade styling ────────────────────────────────────────────────────────────
-
-const GRADE_COLOR: Record<string, string> = {
-  "A+": "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/50",
-  "A":  "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/50",
-  "A-": "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40",
-  "B+": "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/50",
-  "B":  "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/50",
-  "B-": "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/40",
-};
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
@@ -131,11 +67,12 @@ function PageSkeleton() {
 // ─── Certificate card ─────────────────────────────────────────────────────────
 
 function CertificateCard({ cert, index, studentName }: {
-  cert: Certificate;
+  cert: GeneratedCertificate;
   index: number;
   studentName: string;
 }) {
   const [showDetail, setShowDetail] = useState(false);
+  const gradient = gradientFor(cert.courseId);
 
   return (
     <>
@@ -151,26 +88,24 @@ function CertificateCard({ cert, index, studentName }: {
           transition-all duration-300 overflow-hidden group cursor-pointer"
         onClick={() => setShowDetail(true)}
       >
-        <div className={`h-2 w-full bg-gradient-to-r ${cert.thumbnail}`} />
+        <div className={`h-2 w-full bg-gradient-to-r ${gradient}`} />
 
         <div className="p-6">
           <div className="flex items-start justify-between gap-3 mb-4">
-            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${cert.thumbnail}
+            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${gradient}
               flex items-center justify-center shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex-shrink-0`}>
-              <GraduationCap className="w-6 h-6 text-white" />
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {cert.grade && (
-                <span className={`px-2.5 py-1 rounded-xl text-xs font-black border ${GRADE_COLOR[cert.grade] ?? GRADE_COLOR["B"]}`}>
-                  {cert.grade}
-                </span>
+              {cert.courseImg ? (
+                <img src={cert.courseImg} alt={cert.courseTitle}
+                  className="w-full h-full object-cover rounded-2xl" />
+              ) : (
+                <GraduationCap className="w-6 h-6 text-white" />
               )}
-              <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold
-                bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400
-                border border-emerald-200 dark:border-emerald-800/50">
-                <CheckCircle2 className="w-3 h-3" /> Completed
-              </span>
             </div>
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold
+              bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400
+              border border-emerald-200 dark:border-emerald-800/50">
+              <CheckCircle2 className="w-3 h-3" /> Issued
+            </span>
           </div>
 
           <h3 className="text-sm font-black text-gray-900 dark:text-white leading-snug mb-1
@@ -178,40 +113,37 @@ function CertificateCard({ cert, index, studentName }: {
             {cert.courseTitle}
           </h3>
 
-          <div className="flex items-center gap-1.5 mb-4">
-            <span className={`w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center flex-shrink-0 ${cert.instructorBg}`}>
-              {cert.instructorAvatar}
-            </span>
-            <span className="text-xs text-gray-400">{cert.instructor}</span>
-          </div>
-
           <div className="flex items-center gap-4 mb-4 text-xs text-gray-400">
             <span className="flex items-center gap-1">
               <BookOpen className="w-3 h-3" />
-              {cert.lectures}/{cert.totalLectures} lessons
+              Certificate ID: {cert.id.slice(-8).toUpperCase()}
             </span>
           </div>
 
           <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-white/[0.06]">
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
               <Calendar className="w-3.5 h-3.5" />
-              {cert.completedAt}
+              {fmtDate(cert.issuedAt)}
             </div>
             <div className="flex items-center gap-1.5">
               <button
-                onClick={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); navigator.clipboard?.writeText(cert.fileUrl); }}
+                title="Copy link"
                 className="w-8 h-8 rounded-xl flex items-center justify-center
                   bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06]
                   text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all">
                 <Share2 className="w-3.5 h-3.5" />
               </button>
-              <button
+              <a
+                href={cert.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 onClick={e => e.stopPropagation()}
                 className="w-8 h-8 rounded-xl flex items-center justify-center
                   bg-blue-600 hover:bg-blue-500 text-white
                   shadow-[0_3px_10px_rgba(59,130,246,0.35)] transition-all">
                 <Download className="w-3.5 h-3.5" />
-              </button>
+              </a>
             </div>
           </div>
         </div>
@@ -229,10 +161,12 @@ function CertificateCard({ cert, index, studentName }: {
 // ─── Certificate detail modal ─────────────────────────────────────────────────
 
 function CertificateModal({ cert, studentName, onClose }: {
-  cert: Certificate;
+  cert: GeneratedCertificate;
   studentName: string;
   onClose: () => void;
 }) {
+  const gradient = gradientFor(cert.courseId);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -251,12 +185,15 @@ function CertificateModal({ cert, studentName, onClose }: {
           shadow-[0_24px_80px_rgba(0,0,0,0.25)] overflow-hidden"
       >
         {/* Certificate preview */}
-        <div className={`relative h-52 bg-gradient-to-br ${cert.thumbnail} flex flex-col items-center justify-center p-6`}>
+        <div className={`relative h-52 bg-gradient-to-br ${gradient} flex flex-col items-center justify-center p-6`}>
           <div className="absolute inset-0 opacity-10"
             style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
           <div className="relative z-10 text-center">
-            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center mx-auto mb-3 shadow-xl">
-              <GraduationCap className="w-7 h-7 text-white" />
+            <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center mx-auto mb-3 shadow-xl overflow-hidden">
+              {cert.courseImg
+                ? <img src={cert.courseImg} alt={cert.courseTitle} className="w-full h-full object-cover" />
+                : <GraduationCap className="w-7 h-7 text-white" />
+              }
             </div>
             <p className="text-white/80 text-xs font-bold uppercase tracking-widest mb-1">Certificate of Completion</p>
             <p className="text-white text-lg font-black leading-tight px-4">{cert.courseTitle}</p>
@@ -270,11 +207,9 @@ function CertificateModal({ cert, studentName, onClose }: {
         <div className="p-6">
           <div className="grid grid-cols-2 gap-3 mb-5">
             {[
-              { label: "Issued",        value: cert.completedAt                    },
-              { label: "Credential ID", value: cert.credentialId                   },
-              { label: "Lessons",       value: `${cert.lectures}/${cert.totalLectures}` },
-              { label: "Instructor",    value: cert.instructor                     },
-              { label: "Grade",         value: cert.grade ?? "Pass"                },
+              { label: "Issued",        value: fmtDate(cert.issuedAt)              },
+              { label: "Certificate ID", value: cert.id.slice(-12).toUpperCase()   },
+              { label: "Course ID",     value: cert.courseId.slice(-8).toUpperCase() },
             ].map(({ label, value }) => (
               <div key={label} className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">{label}</p>
@@ -284,21 +219,31 @@ function CertificateModal({ cert, studentName, onClose }: {
           </div>
 
           <div className="flex gap-2">
-            <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold
-              bg-blue-600 hover:bg-blue-500 text-white
-              shadow-[0_4px_14px_rgba(59,130,246,0.35)] transition-all">
+            <a
+              href={cert.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold
+                bg-blue-600 hover:bg-blue-500 text-white
+                shadow-[0_4px_14px_rgba(59,130,246,0.35)] transition-all">
               <Download className="w-4 h-4" /> Download PDF
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold
-              border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400
-              hover:border-blue-200 hover:text-blue-600 transition-all">
+            </a>
+            <button
+              onClick={() => navigator.clipboard?.writeText(cert.fileUrl)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold
+                border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400
+                hover:border-blue-200 hover:text-blue-600 transition-all">
               <Share2 className="w-4 h-4" /> Share
             </button>
-            <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold
-              border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400
-              hover:border-blue-200 hover:text-blue-600 transition-all">
-              <ExternalLink className="w-4 h-4" /> Verify
-            </button>
+            <a
+              href={cert.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold
+                border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400
+                hover:border-blue-200 hover:text-blue-600 transition-all">
+              <ExternalLink className="w-4 h-4" /> View
+            </a>
           </div>
         </div>
       </motion.div>
@@ -306,10 +251,66 @@ function CertificateModal({ cert, studentName, onClose }: {
   );
 }
 
-// ─── Locked course card ───────────────────────────────────────────────────────
+// ─── Eligible course card (claim certificate) ─────────────────────────────────
 
-function LockedCard({ course, index }: { course: LockedCourse; index: number }) {
-  const remaining = course.totalLectures - course.lectures;
+function EligibleCard({ course, index, onClaim, isClaiming }: {
+  course: EligibleCourse;
+  index: number;
+  onClaim: (courseId: string) => void;
+  isClaiming: boolean;
+}) {
+  const gradient = gradientFor(course.courseId);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: index * 0.05 }}
+      className="flex items-center gap-4 p-4 rounded-[18px]
+        bg-white dark:bg-[#0f1623]
+        border border-emerald-100 dark:border-emerald-900/30
+        shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
+    >
+      <div className={`relative w-14 h-14 rounded-2xl flex-shrink-0 overflow-hidden`}>
+        {course.courseImg
+          ? <img src={course.courseImg} alt={course.courseTitle} className="w-full h-full object-cover" />
+          : <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+              <GraduationCap className="w-6 h-6 text-white" />
+            </div>
+        }
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-gray-800 dark:text-white line-clamp-1">
+          {course.courseTitle}
+        </p>
+        <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-bold
+          text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="w-3 h-3" /> Course completed
+        </span>
+      </div>
+
+      <button
+        disabled={isClaiming}
+        onClick={() => onClaim(course.courseId)}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
+          bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed
+          text-white shadow-[0_3px_10px_rgba(16,185,129,0.3)] transition-all flex-shrink-0">
+        {isClaiming
+          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          : <Sparkles className="w-3.5 h-3.5" />
+        }
+        {isClaiming ? "Generating…" : "Claim"}
+      </button>
+    </motion.div>
+  );
+}
+
+// ─── Ineligible (in-progress) course card ────────────────────────────────────
+
+function IneligibleCard({ course, index }: { course: IneligibleCourse; index: number }) {
+  const gradient = gradientFor(course.courseId);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -320,40 +321,30 @@ function LockedCard({ course, index }: { course: LockedCourse; index: number }) 
         border border-gray-100 dark:border-white/[0.07]
         shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
     >
-      <div className={`relative w-14 h-14 rounded-2xl flex-shrink-0 bg-gradient-to-br ${course.thumbnail} flex items-center justify-center overflow-hidden`}>
+      <div className={`relative w-14 h-14 rounded-2xl flex-shrink-0 overflow-hidden`}>
+        {course.courseImg
+          ? <img src={course.courseImg} alt={course.courseTitle} className="w-full h-full object-cover" />
+          : <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+              <GraduationCap className="w-6 h-6 text-white" />
+            </div>
+        }
         <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
           <Lock className="w-5 h-5 text-white/80" />
         </div>
       </div>
 
       <div className="flex-1 min-w-0">
-        <Link to={`/student/courses/${course.id}/watch`}
-          className="text-sm font-bold text-gray-800 dark:text-white line-clamp-1
-            hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-          {course.title}
-        </Link>
-        <p className="text-xs text-gray-400 mt-0.5">{course.instructor}</p>
-        <div className="flex items-center gap-2 mt-2">
-          <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.07] overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${course.progress}%` }}
-              transition={{ duration: 0.7, ease: "easeOut" }}
-              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400"
-            />
-          </div>
-          <span className="text-[11px] font-bold text-blue-500 flex-shrink-0">{course.progress}%</span>
-        </div>
+        <p className="text-sm font-bold text-gray-800 dark:text-white line-clamp-1">
+          {course.courseTitle}
+        </p>
+        <p className="text-xs text-gray-400 mt-0.5">Complete this course to earn a certificate</p>
       </div>
 
-      <div className="text-right flex-shrink-0">
-        <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{remaining}</p>
-        <p className="text-[10px] text-gray-400">lessons left</p>
-        <Link to={`/student/courses/${course.id}/watch`}
-          className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
-          Continue <ChevronRight className="w-3 h-3" />
-        </Link>
-      </div>
+      <Link
+        to={`/student/courses/${course.courseId}/watch`}
+        className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0">
+        Continue <ChevronRight className="w-3 h-3" />
+      </Link>
     </motion.div>
   );
 }
@@ -362,76 +353,43 @@ function LockedCard({ course, index }: { course: LockedCourse; index: number }) 
 
 export default function StudentCertificates() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [claimingId, setClaimingId] = useState<string | null>(null);
 
-  const { data: dashRaw, isLoading: dashLoading, isError: dashError, refetch: refetchDash } = useQuery({
-    queryKey: ["progress-dashboard"],
-    queryFn: () => ProgressService.getDashboard() as Promise<any>,
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ["certificates-dashboard"],
+    queryFn: () => CertificateService.getDashboard(),
   });
 
-  const { data: topRaw, isLoading: topLoading } = useQuery({
-    queryKey: ["progress-top-courses"],
-    queryFn: () => ProgressService.getTopCourses(),
+  const generateMutation = useMutation({
+    mutationFn: (courseId: string) => CertificateService.generate(courseId),
+    onMutate: (courseId) => setClaimingId(courseId),
+    onSettled: () => setClaimingId(null),
+    onSuccess: () => {
+      // Refresh the dashboard so the new cert moves from eligible → generated
+      queryClient.invalidateQueries({ queryKey: ["certificates-dashboard"] });
+    },
   });
 
-  const isLoading = dashLoading || topLoading;
   if (isLoading) return <PageSkeleton />;
-  if (dashError) return <ApiErrorPage onRetry={refetchDash} message="Failed to load certificates." />;
+  if (isError) return <ApiErrorPage onRetry={refetch} message="Failed to load certificates." />;
 
-  // ── Build data ────────────────────────────────────────────────────────────
-
-  const allCourses: any[] = dashRaw?.courses ?? [];
-  const stats = dashRaw?.stats;
-
-  // Map of courseId → completedAt from getTopCourses
-  const completedAtMap: Record<string, string | null> = {};
-  for (const t of (topRaw ?? [])) {
-    completedAtMap[t.courseId] = t.isCompleted ? new Date().toISOString() : null;
-  }
-
-  const earned: Certificate[] = allCourses
-    .filter(c => c.completed)
-    .map(c => ({
-      id: `cert-${c.courseId}`,
-      courseId: c.courseId,
-      courseTitle: c.title,
-      instructor: c.instructor?.name ?? "Instructor",
-      instructorBg: avatarBgFor(c.instructor?.name ?? c.courseId),
-      instructorAvatar: initialsOf(c.instructor?.name ?? "IN"),
-      thumbnail: gradientFor(c.courseId),
-      completedAt: fmtDate(completedAtMap[c.courseId] ?? (c as any).completedAt ?? null),
-      credentialId: credId(c.courseId, completedAtMap[c.courseId] ?? (c as any).completedAt),
-      lectures: c.completedLessons ?? 0,
-      totalLectures: c.totalLessons ?? 0,
-      grade: ratingToGrade(c.myRating),
-    }));
-
-  const inProgress: LockedCourse[] = allCourses
-    .filter(c => !c.completed)
-    .map(c => ({
-      id: c.courseId,
-      title: c.title,
-      instructor: c.instructor?.name ?? "Instructor",
-      thumbnail: gradientFor(c.courseId),
-      progress: Math.round(c.progressPercent ?? 0),
-      lectures: c.completedLessons ?? 0,
-      totalLectures: c.totalLessons ?? 0,
-    }));
-
-  // Stats
-  const totalStudyMins: number = stats?.totalTimeSpentThisMonth ?? 0;
-  const avgGrade = earned.length > 0
-    ? earned.filter(c => c.grade).map(c => c.grade!)[0] ?? "—"
-    : "—";
-
-  // Search filter
-  const filtered = earned.filter(c =>
-    !search ||
-    c.courseTitle.toLowerCase().includes(search.toLowerCase()) ||
-    c.instructor.toLowerCase().includes(search.toLowerCase())
-  );
+  const generated = data?.generated ?? [];
+  const eligible  = data?.eligible  ?? [];
+  const ineligible = data?.ineligible ?? [];
 
   const studentName = user?.name ?? "Student";
+
+  // Search filter on generated certs
+  const filtered = generated.filter(c =>
+    !search || c.courseTitle.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="max-w-[1100px] mx-auto pb-10 space-y-8">
@@ -442,7 +400,9 @@ export default function StudentCertificates() {
           My <span className="text-blue-600 dark:text-blue-400">Certificates</span>
         </h1>
         <p className="text-sm text-gray-400 mt-1">
-          {earned.length} certificate{earned.length !== 1 ? "s" : ""} earned · {inProgress.length} in progress
+          {generated.length} certificate{generated.length !== 1 ? "s" : ""} earned
+          {eligible.length > 0 && ` · ${eligible.length} ready to claim`}
+          {ineligible.length > 0 && ` · ${ineligible.length} in progress`}
         </p>
       </motion.div>
 
@@ -452,10 +412,10 @@ export default function StudentCertificates() {
         className="grid grid-cols-2 sm:grid-cols-4 gap-4"
       >
         {[
-          { icon: Award,    value: String(earned.length),           label: "Earned",      color: "emerald" },
-          { icon: Lock,     value: String(inProgress.length),       label: "In Progress", color: "blue"    },
-          { icon: Star,     value: avgGrade,                        label: "Avg Grade",   color: "amber"   },
-          { icon: Clock,    value: fmtMinutes(totalStudyMins),      label: "Study Time",  color: "blue"    },
+          { icon: Award,    value: String(generated.length),  label: "Earned",       color: "emerald" },
+          { icon: Sparkles, value: String(eligible.length),   label: "Ready to Claim", color: "amber"  },
+          { icon: Lock,     value: String(ineligible.length), label: "In Progress",  color: "blue"    },
+          { icon: Star,     value: generated.length > 0 ? "Pass" : "—", label: "Status", color: "blue" },
         ].map(({ icon: Icon, value, label, color }) => {
           const palette: Record<string, string> = {
             emerald: "bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-100/60 dark:border-emerald-900/20 [&_div]:bg-emerald-100 dark:[&_div]:bg-emerald-900/40 [&_svg]:text-emerald-600 dark:[&_svg]:text-emerald-400",
@@ -473,6 +433,28 @@ export default function StudentCertificates() {
           );
         })}
       </motion.div>
+
+      {/* Claim eligible certificates */}
+      {eligible.length > 0 && (
+        <section>
+          <h2 className="text-lg font-black text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-amber-500" />
+            Ready to Claim
+            <span className="text-sm font-medium text-gray-400">— you've completed these courses</span>
+          </h2>
+          <div className="flex flex-col gap-3">
+            {eligible.map((course, i) => (
+              <EligibleCard
+                key={course.courseId}
+                course={course}
+                index={i}
+                onClaim={(id) => generateMutation.mutate(id)}
+                isClaiming={claimingId === course.courseId}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Search */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.08 }}
@@ -502,7 +484,7 @@ export default function StudentCertificates() {
               <CertificateCard key={cert.id} cert={cert} index={i} studentName={studentName} />
             ))}
           </div>
-        ) : earned.length === 0 ? (
+        ) : generated.length === 0 ? (
           <div className="py-12 text-center rounded-2xl border border-dashed border-gray-200 dark:border-white/[0.08]">
             <GraduationCap className="w-10 h-10 text-gray-300 mx-auto mb-3" />
             <p className="text-sm font-bold text-gray-500 dark:text-gray-400">No certificates yet.</p>
@@ -515,8 +497,8 @@ export default function StudentCertificates() {
         )}
       </section>
 
-      {/* In progress */}
-      {inProgress.length > 0 && (
+      {/* In progress / ineligible */}
+      {ineligible.length > 0 && (
         <section>
           <h2 className="text-lg font-black text-gray-900 dark:text-white mb-2 flex items-center gap-2">
             <Lock className="w-5 h-5 text-gray-400" />
@@ -524,8 +506,8 @@ export default function StudentCertificates() {
             <span className="text-sm font-medium text-gray-400">— complete the course to unlock your certificate</span>
           </h2>
           <div className="flex flex-col gap-3 mt-4">
-            {inProgress.map((course, i) => (
-              <LockedCard key={course.id} course={course} index={i} />
+            {ineligible.map((course, i) => (
+              <IneligibleCard key={course.courseId} course={course} index={i} />
             ))}
           </div>
         </section>

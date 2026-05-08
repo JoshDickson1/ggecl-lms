@@ -282,8 +282,6 @@ const router = createBrowserRouter([
           { path: "categories/:id",               element: <StudentSingleCategory /> },
           { path: "live",               element: <StudentLiveLobby /> },
           { path: "live/:id",               element: <StudentLiveClass /> },
-          // { path: "live/recordings", element: <StudentRecordings /> },
-          // { path: "live/recordings/:id", element: <StudentRecordingView /> },
         ],
       },
     ],
