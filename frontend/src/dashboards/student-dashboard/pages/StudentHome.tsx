@@ -287,8 +287,24 @@ export default function StudentHome() {
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
 
-  // Chart data: map to { day, minutes }
-  const chartData = weeklyDays.map(d => ({ day: d.label, minutes: d.minutes }));
+  // Chart data: last 7 days ending today, with dynamic day labels.
+  // Build a map of date string → minutes from the API data.
+  const minutesByDate = Object.fromEntries(
+    weeklyDays.map(d => [d.date.slice(0, 10), d.minutes])
+  );
+
+  // Generate the rolling 7-day window ending today.
+  const today = new Date();
+  const chartData = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (6 - i)); // day 0 = 6 days ago, day 6 = today
+    const iso = d.toISOString().slice(0, 10);
+    const isToday = i === 6;
+    const label = isToday
+      ? "Today"
+      : d.toLocaleDateString("en-US", { weekday: "short" }); // Mon, Tue, …
+    return { day: label, minutes: minutesByDate[iso] ?? 0 };
+  });
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6 pb-12">
