@@ -25,6 +25,7 @@ export enum MaterialType {
   PDF    = "PDF",
   AUDIO  = "AUDIO",
   LINK   = "LINK",
+  TEXT   = "TEXT",
   QUIZ   = "QUIZ",
 }
 
@@ -181,7 +182,8 @@ export interface CourseMaterial {
   id: string;
   type: MaterialType;
   title: string;
-  url: string;
+  url?: string;
+  note?: string;
   publicId?: string;
   fileName?: string;
   size?: number;
@@ -207,7 +209,10 @@ export type UpdateLessonPayload = Partial<CreateLessonPayload>;
 export interface AddMaterialPayload {
   type: MaterialType;
   title: string;
-  url: string;
+  /** Required for VIDEO, PDF, AUDIO, LINK. Omit for TEXT. */
+  url?: string;
+  /** Required for TEXT. Omit for all other types. */
+  note?: string;
   publicId?: string;
   fileName?: string;
   size?: number;
@@ -623,6 +628,44 @@ export default class CoursesService {
     });
 
     return { material, lesson };
+  }
+
+  // ─── REORDER ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Reorder sections within a course.
+   * orderedIds must contain every section ID in the course.
+   */
+  static async reorderSections(
+    courseId: string,
+    orderedIds: string[],
+  ): Promise<{ id: string; title: string; position: number }[]> {
+    const response = await APIConfig.fetch(`/courses/${courseId}/sections/reorder`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderedIds }),
+    });
+    return response.json();
+  }
+
+  /**
+   * Reorder lessons within a section.
+   * orderedIds must contain every lesson ID in the section.
+   */
+  static async reorderLessons(
+    courseId: string,
+    sectionId: string,
+    orderedIds: string[],
+  ): Promise<{ id: string; title: string; position: number }[]> {
+    const response = await APIConfig.fetch(
+      `/courses/${courseId}/sections/${sectionId}/lessons/reorder`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds }),
+      },
+    );
+    return response.json();
   }
 
   /**

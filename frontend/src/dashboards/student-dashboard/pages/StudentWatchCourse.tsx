@@ -65,11 +65,25 @@ function getSectionsAsArray(sections: CourseSection[] | string | undefined): Cou
   return [];
 }
 
-function buildCompletedSet(progress: unknown): Set<string> {
+/** Unwrap the progress API response — handles both flat and { data: ... } shapes */
+function unwrapProgress(raw: unknown): CourseProgressDetail | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  // Handle { data: { sections: [...], ... } } wrapper
+  if (r.data && typeof r.data === "object" && Array.isArray((r.data as Record<string, unknown>).sections)) {
+    return r.data as unknown as CourseProgressDetail;
+  }
+  // Handle flat { sections: [...], ... }
+  if (Array.isArray(r.sections)) {
+    return r as unknown as CourseProgressDetail;
+  }
+  return null;
+}
+
+function buildCompletedSet(raw: unknown): Set<string> {
   const set = new Set<string>();
-  if (!progress || typeof progress !== "object") return set;
-  const p = progress as CourseProgressDetail;
-  if (!Array.isArray(p.sections)) return set;
+  const p = unwrapProgress(raw);
+  if (!p || !Array.isArray(p.sections)) return set;
   for (const section of p.sections) {
     if (!Array.isArray(section.lessons)) continue;
     for (const lesson of section.lessons) {
@@ -79,11 +93,10 @@ function buildCompletedSet(progress: unknown): Set<string> {
   return set;
 }
 
-function buildLockedSet(progress: unknown): Set<string> {
+function buildLockedSet(raw: unknown): Set<string> {
   const set = new Set<string>();
-  if (!progress || typeof progress !== "object") return set;
-  const p = progress as CourseProgressDetail;
-  if (!Array.isArray(p.sections)) return set;
+  const p = unwrapProgress(raw);
+  if (!p || !Array.isArray(p.sections)) return set;
   for (const section of p.sections) {
     if (!Array.isArray(section.lessons)) continue;
     for (const lesson of section.lessons) {
@@ -119,6 +132,7 @@ function getMaterialIcon(type: string) {
     case "DOCUMENT": return <FileText className="w-4 h-4" />;
     case "LINK": return <Eye className="w-4 h-4" />;
     case "AUDIO": return <Volume2 className="w-4 h-4" />;
+    case "TEXT": return <FileText className="w-4 h-4" />;
     default: return <File className="w-4 h-4" />;
   }
 }
@@ -609,6 +623,48 @@ function MaterialCard({ material }: { material: CourseMaterial }) {
   );
 }
 
+// ==================== TEXT MATERIAL CARD ====================
+
+function TextMaterialCard({ material }: { material: CourseMaterial }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.02] overflow-hidden">
+      <button
+        onClick={() => setOpen(p => !p)}
+        className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all text-left"
+      >
+        <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-100 dark:border-violet-500/20 flex items-center justify-center flex-shrink-0 text-violet-500">
+          <FileText className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{material.title}</p>
+          <p className="text-xs text-gray-400">Text note</p>
+        </div>
+        <ChevronDown className={cn("w-4 h-4 text-gray-400 flex-shrink-0 transition-transform", open ? "rotate-180" : "")} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-white/[0.06]">
+              {material.note ? (
+                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">{material.note}</p>
+              ) : (
+                <p className="text-sm text-gray-400 italic">No content available.</p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ==================== QUIZ PANEL ====================
 
 function SingleQuiz({ quiz, onNextSection, isLastSection }: {
@@ -1003,9 +1059,9 @@ export default function StudentWatchCourse() {
     enabled: !!courseId,
   });
 
-  const { data: progress } = useQuery<CourseProgressDetail>({
+  const { data: progressRaw } = useQuery({
     queryKey: ["course-progress", courseId],
-    queryFn: () => ProgressService.getCourseProgress(courseId!) as Promise<CourseProgressDetail>,
+    queryFn: () => ProgressService.getCourseProgress(courseId!),
     enabled: !!courseId && !!course?.isEnrolled,
   });
 
@@ -1025,10 +1081,22 @@ export default function StudentWatchCourse() {
 
   // ── Derived state ─────────────────────────────────────────────────────────────
 
-  const completedIds = buildCompletedSet(progress);
-  const lockedIds = buildLockedSet(progress);
-  const overallProgress = progress?.overallProgress ?? 0;
   const sections = getSectionsAsArray(course?.sections);
+  const progressData = unwrapProgress(progressRaw);
+  const completedIds = buildCompletedSet(progressRaw);
+  const lockedIds = buildLockedSet(progressRaw);
+
+  // Overall progress: prefer the API value, fall back to computing from completed/total
+  const totalLessons = progressData?.totalLessons ?? sections.flatMap(s => s.lessons).length;
+  const completedCount = progressData?.completedLessons ?? completedIds.size;
+  const overallProgress = (progressData?.overallProgress && progressData.overallProgress > 0)
+    ? progressData.overallProgress
+    : totalLessons > 0
+      ? Math.round((completedCount / totalLessons) * 100)
+      : 0;
+
+  // Keep a `progress` alias so the existing `{progress && ...}` guards in the JSX still work
+  const progress = progressData ?? (progressRaw ? {} as CourseProgressDetail : null);
 
   // Prefetch quiz existence for every section in parallel — background, no UI spinner
   const sectionIds = sections.map(s => s.id);
@@ -1378,6 +1446,29 @@ export default function StudentWatchCourse() {
                       {videoLessons.map(lesson => (
                         <LessonItem key={lesson.id} lesson={lesson} isCompleted={completedIds.has(lesson.id)} isLocked={lockedIds.has(lesson.id)} isCurrent={selectedLesson?.id === lesson.id} onClick={() => selectLesson(lesson)} />
                       ))}
+                      {/* Quiz entry — shown at the bottom of the section if a quiz exists */}
+                      {sectionsWithQuiz.has(section.id) && (
+                        <button
+                          onClick={() => openQuiz(section.id)}
+                          className={cn(
+                            "w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all border",
+                            quizSectionId === section.id
+                              ? "bg-violet-50 dark:bg-violet-500/10 border-violet-200 dark:border-violet-500/30"
+                              : "hover:bg-gray-50 dark:hover:bg-white/[0.04] border-transparent"
+                          )}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center flex-shrink-0">
+                            <HelpCircle className="w-4 h-4 text-violet-500" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-semibold text-gray-900 dark:text-white truncate">Section Quiz</h4>
+                            <p className="text-xs text-gray-400 mt-0.5">Test your knowledge</p>
+                          </div>
+                          {quizSectionId === section.id && (
+                            <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -1614,9 +1705,13 @@ export default function StudentWatchCourse() {
                   <div className="bg-white dark:bg-[#111827] rounded-2xl border border-gray-200 dark:border-white/[0.07] p-4">
                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Lesson Materials</h3>
                     <div className="space-y-2">
-                      {selectedLesson.materials.filter(m => m.type !== "VIDEO").map(mat => (
-                        <MaterialCard key={mat.id} material={mat} />
-                      ))}
+                      {selectedLesson.materials.filter(m => m.type !== "VIDEO").map(mat =>
+                        mat.type === "TEXT" ? (
+                          <TextMaterialCard key={mat.id} material={mat} />
+                        ) : (
+                          <MaterialCard key={mat.id} material={mat} />
+                        )
+                      )}
                     </div>
                   </div>
                 )}
