@@ -12,7 +12,7 @@ import {
 import { FilePreviewModal, type PreviewFile } from "@/components/FilePreviewModal";
 import AssignmentService, {
   type StudentAssignmentItem,
-  type MySubmission,
+  type NormalisedSubmission,
   type AssignmentStatus,
   // type LetterGrade,
 } from "@/services/AssignmentService";
@@ -54,7 +54,6 @@ const STATUS_MAP: Record<AssignmentStatus, {
   submitted: { label: "Submitted", color: "text-blue-700 dark:text-blue-300",      bg: "bg-blue-50 dark:bg-blue-950/30",      border: "border-blue-200 dark:border-blue-800/40",      icon: CheckCircle2 },
   late:      { label: "Late",      color: "text-orange-700 dark:text-orange-300",  bg: "bg-orange-50 dark:bg-orange-950/30",  border: "border-orange-200 dark:border-orange-800/40",  icon: AlertTriangle },
   graded:    { label: "Graded",    color: "text-emerald-700 dark:text-emerald-300",bg: "bg-emerald-50 dark:bg-emerald-950/30",border: "border-emerald-200 dark:border-emerald-800/40",icon: CheckCircle2 },
-  returned:  { label: "Returned",  color: "text-purple-700 dark:text-purple-300",  bg: "bg-purple-50 dark:bg-purple-950/30",  border: "border-purple-200 dark:border-purple-800/40",  icon: FileText     },
 };
 
 function StatusBadge({ status }: { status: AssignmentStatus }) {
@@ -137,7 +136,7 @@ function SubmitModal({
 }: {
   assignment: StudentAssignmentItem;
   onClose: () => void;
-  onSubmitted: (submission: MySubmission) => void;
+  onSubmitted: (submission: NormalisedSubmission) => void;
 }) {
   const [files, setFiles]     = useState<File[]>([]);
   const [note, setNote]       = useState("");
@@ -163,24 +162,24 @@ function SubmitModal({
     setError(null);
 
     try {
-      // 1. Upload each file to R2, collect object keys (not public URLs)
+      // 1. Upload each file to R2, collect public CDN URLs
       setStatus("uploading");
-      const fileKeys: string[] = [];
+      const attachments: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        const key = await StorageService.uploadGetKey("assignments", files[i]);
-        fileKeys.push(key);
+        const url = await StorageService.upload("assignments", files[i]);
+        attachments.push(url);
         setUploadProgress(Math.round(((i + 1) / files.length) * 100));
       }
 
-      // 2. Submit to API
+      // 2. Submit to API — response is already normalised by the service
       setStatus("submitting");
-      const submission = await AssignmentService.submit(assignment.id, {
-        fileKeys,
+      const normSub = await AssignmentService.submit(assignment.id, {
+        attachments,
         note: note.trim() || undefined,
       });
 
       setStatus("done");
-      onSubmitted(submission);
+      onSubmitted(normSub);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed. Please try again.");
@@ -364,9 +363,11 @@ function AssignmentCard({ assignment: initial }: { assignment: StudentAssignment
   const [assignment, setAssignment] = useState(initial);
   const [open, setOpen]             = useState(false);
   const [submitModal, setSubmitModal] = useState(false);
-  const [submission, setSubmission] = useState<MySubmission | null>(null);
-  const [loadingSub, setLoadingSub] = useState(false);
-  const [preview, setPreview]       = useState<{ files: PreviewFile[]; index: number } | null>(null);
+  // Submission is embedded in the list item — no lazy-load needed
+  const [submission, setSubmission] = useState<NormalisedSubmission | null>(
+    initial.submission ?? null,
+  );
+  const [preview, setPreview] = useState<{ files: PreviewFile[]; index: number } | null>(null);
 
   const attFiles: PreviewFile[] = (assignment.attachments ?? []).map(f => ({
     name: f.name, url: f.url, size: f.size,
@@ -375,37 +376,29 @@ function AssignmentCard({ assignment: initial }: { assignment: StudentAssignment
     name: f.name, url: f.url, size: f.size,
   }));
 
-  const dueDate  = new Date(assignment.dueDate);
-  const now      = new Date();
-  const daysLeft = Math.ceil((dueDate.getTime() - now.getTime()) / 86400000);
+  const dueDate   = new Date(assignment.dueDate);
+  const now       = new Date();
+  const daysLeft  = Math.ceil((dueDate.getTime() - now.getTime()) / 86400000);
   const isOverdue = daysLeft < 0;
 
   const gradeMeta = assignment.grade ? GRADE_META[assignment.grade] : null;
 
-  // Lazy-load submission detail when the card expands
-  useEffect(() => {
-    if (!open || submission !== null || loadingSub) return;
-    if (!["submitted", "graded", "late", "returned"].includes(assignment.status)) return;
+  // Once submitted the API does not allow resubmission — show submit button
+  // only when the assignment is still pending (no submission yet).
+  const canSubmit   = assignment.status === "pending";
+  const hasSubmitted = assignment.status !== "pending";
 
-    setLoadingSub(true);
-    AssignmentService.getMySubmission(assignment.id)
-      .then(sub => setSubmission(sub))
-      .catch(console.error)
-      .finally(() => setLoadingSub(false));
-  }, [open, assignment.id, assignment.status, submission, loadingSub]);
-
-  const handleSubmitted = (sub: MySubmission) => {
+  const handleSubmitted = (sub: NormalisedSubmission) => {
     setSubmission(sub);
     setAssignment(prev => ({
       ...prev,
-      status:      sub.status,
-      submittedAt: sub.submittedAt,
-      isLate:      sub.isLate,
+      submission:   sub,
+      status:       sub.isLate ? "late" : "submitted",
+      submittedAt:  sub.submittedAt,
+      isLate:       sub.isLate,
+      submissionId: sub.id,
     }));
   };
-
-  const canSubmit   = !["graded", "returned"].includes(assignment.status);
-  const hasSubmitted = ["submitted", "graded", "late", "returned"].includes(assignment.status);
 
   return (
     <>
@@ -492,15 +485,8 @@ function AssignmentCard({ assignment: initial }: { assignment: StudentAssignment
                   </div>
                 )}
 
-                {/* Submission detail (lazy loaded) */}
-                {loadingSub && (
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Loading submission…
-                  </div>
-                )}
-
-                {submission && !loadingSub && (
+                {/* Submission detail */}
+                {submission && (
                   <div className="rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden">
                     <div className="px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/[0.06]">
                       <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase">Your Submission</p>
@@ -524,31 +510,23 @@ function AssignmentCard({ assignment: initial }: { assignment: StudentAssignment
                           <p className="text-xs text-gray-600 dark:text-gray-400">{submission.note}</p>
                         </div>
                       )}
+                      {submission.score != null && (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/15 border border-emerald-100 dark:border-emerald-900/20">
+                          <span className="text-[10px] font-bold text-emerald-600 uppercase">Score</span>
+                          <span className="text-sm font-black text-emerald-700 dark:text-emerald-400">
+                            {submission.score} / {assignment.maxScore}
+                          </span>
+                          {submission.gradedAt && (
+                            <span className="ml-auto text-[10px] text-gray-400">
+                              Graded {new Date(submission.gradedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {submission.feedback && (
                         <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/15 border border-emerald-100 dark:border-emerald-900/20">
                           <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Instructor Feedback</p>
                           <p className="text-xs text-gray-700 dark:text-gray-300">{submission.feedback}</p>
-                        </div>
-                      )}
-                      {submission.rubric && submission.rubric.length > 0 && (
-                        <div className="pt-2">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Rubric Breakdown</p>
-                          <div className="flex flex-col gap-2">
-                            {(submission.rubric ?? []).map(r => (
-                              <div key={r.id}>
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs text-gray-600 dark:text-gray-400">{r.label}</span>
-                                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">{r.score}/{r.maxScore}</span>
-                                </div>
-                                <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                                  <div
-                                    style={{ width: `${(r.score / r.maxScore) * 100}%` }}
-                                    className="h-full rounded-full bg-blue-500"
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
                         </div>
                       )}
                     </div>
@@ -562,28 +540,20 @@ function AssignmentCard({ assignment: initial }: { assignment: StudentAssignment
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => setSubmitModal(true)}
-                      className={cn(
-                        "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all",
-                        hasSubmitted
-                          ? "border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20"
-                          : "bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.35)]",
-                      )}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold
+                        bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.35)] transition-all"
                     >
                       <Upload className="w-4 h-4" />
-                      {hasSubmitted ? "Resubmit" : "Submit Assignment"}
+                      Submit Assignment
                     </motion.button>
                   )}
-                  {(assignment.attachments ?? []).length > 0 && (
-                    <a
-                      href={(assignment.attachments ?? [])[0]?.url ?? "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold
-                        border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400
-                        hover:border-blue-300 hover:text-blue-600 transition-all"
-                    >
-                      <Download className="w-4 h-4" /> Download Files
-                    </a>
+                  {hasSubmitted && assignment.status !== "graded" && (
+                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold
+                      bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]
+                      text-gray-500 dark:text-gray-400">
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                      Submitted — awaiting grade
+                    </div>
                   )}
                 </div>
               </div>
@@ -635,7 +605,8 @@ function AssignmentSkeleton() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-const FILTER_OPTIONS: { key: AssignmentStatus | "all"; label: string }[] = [
+// API accepts: all | pending | submitted | graded
+const FILTER_OPTIONS: { key: "all" | "pending" | "submitted" | "graded"; label: string }[] = [
   { key: "all",       label: "All"       },
   { key: "pending",   label: "Pending"   },
   { key: "submitted", label: "Submitted" },
@@ -646,7 +617,7 @@ export default function StudentAssignment() {
   const [assignments, setAssignments] = useState<StudentAssignmentItem[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
-  const [filter, setFilter]           = useState<AssignmentStatus | "all">("all");
+  const [filter, setFilter]           = useState<"all" | "pending" | "submitted" | "graded">("all");
   const [page, setPage]               = useState(1);
   const [totalPages, setTotalPages]   = useState(1);
   const [sortType, setSortType]       = useState<"soon" | "recent" | "old" | "default">("recent");
