@@ -241,7 +241,7 @@ export default function StudentCourses() {
     isLoading: enrollmentsLoading,
     isError,
   } = useQuery<MyEnrollment[]>({
-    queryKey: ["my-enrollments"],
+    queryKey: ["enrollments-mine"],
     queryFn: () => EnrollmentService.getMine(),
   });
 

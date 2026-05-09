@@ -19,6 +19,7 @@ import CoursesService, {
 import ProgressService from "@/services/progress.service";
 import ReviewService, { type ReviewResponse } from "@/services/review.service";
 import QuizService, { type Quiz, type QuizAttempt } from "@/services/quiz.service";
+import UserService, { type PublicInstructorProfile } from "@/services/user.service";
 
 // ==================== TYPES ====================
 
@@ -139,6 +140,10 @@ function getMaterialIcon(type: string) {
 
 function cn(...classes: (string | boolean | undefined | null)[]) {
   return classes.filter(Boolean).join(" ");
+}
+
+function initials(name: string) {
+  return name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
 }
 
 // ==================== REVIEW MODAL ====================
@@ -1134,6 +1139,13 @@ export default function StudentWatchCourse() {
     enabled: !!courseId && !!course?.isEnrolled,
   });
 
+  // Fetch instructor profile using the instructorId from the course
+  const { data: instructor } = useQuery<PublicInstructorProfile>({
+    queryKey: ["instructor-public", course?.instructorId],
+    queryFn: () => UserService.findOneInstructorPublic(course!.instructorId),
+    enabled: !!course?.instructorId,
+  });
+
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
   const { mutate: saveProgress } = useMutation({
@@ -1459,14 +1471,14 @@ export default function StudentWatchCourse() {
   // ── Render helpers ────────────────────────────────────────────────────────────
 
   const sidebarContent = (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Sidebar header — desktop only; mobile drawer has its own header */}
       <div className="hidden md:block p-4 border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0">
         <h2 className="text-sm font-bold text-gray-900 dark:text-white">Course Content</h2>
       </div>
 
       {/* Sections list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 overscroll-contain">
         {sections.map(section => {
           const sectionComplete = isSectionComplete(section, completedIds);
           const sectionExpanded = expandedSections.has(section.id);
@@ -1546,7 +1558,7 @@ export default function StudentWatchCourse() {
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0a0f1a] overflow-hidden">
       {/* ── Header ── */}
-      <header className="flex-shrink-0 bg-white/80 rounded-2xl mb-2 dark:bg-[#0d1525]/80 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/[0.06] z-30">
+      <header className="flex-shrink-0 bg-white dark:bg-[#0d1525] border-b border-gray-200 dark:border-white/[0.06] z-30">
         <div className="px-4 py-3 flex items-center gap-3">
           {/* Back button */}
           <button onClick={() => navigate("/student/courses")}
@@ -1631,7 +1643,7 @@ export default function StudentWatchCourse() {
               <motion.div
                 initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
                 transition={{ duration: 0.28, ease: "easeInOut" }}
-                className="fixed left-0 right-0 bottom-0 bg-white dark:bg-[#0d1525] z-50 md:hidden shadow-2xl flex flex-col rounded-t-2xl"
+                className="fixed left-0 right-0 bottom-0 bg-white dark:bg-[#0d1525] z-50 md:hidden shadow-2xl flex flex-col rounded-t-2xl overflow-hidden"
                 style={{ maxHeight: "80dvh" }}
               >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/[0.06] flex-shrink-0">
@@ -1640,7 +1652,7 @@ export default function StudentWatchCourse() {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 overflow-y-auto overscroll-contain">
                   {sidebarContent}
                 </div>
               </motion.div>
@@ -1750,6 +1762,35 @@ export default function StudentWatchCourse() {
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedLesson.title}</h2>
                         {selectedLesson.description && (
                           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selectedLesson.description}</p>
+                        )}
+                        {/* Instructor info */}
+                        {instructor && (
+                          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
+                            {instructor.user.image ? (
+                              <img
+                                src={instructor.user.image}
+                                alt={instructor.user.name}
+                                className="w-8 h-8 rounded-full object-cover ring-2 ring-gray-200 dark:ring-white/10 flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-xs font-black text-white ring-2 ring-gray-200 dark:ring-white/10 flex-shrink-0">
+                                {initials(instructor.user.name)}
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-gray-400 dark:text-gray-500">Instructor</p>
+                              <a
+                                href={`/instructors/${course.instructorId}`}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  window.open(`/student/instructors/${course.instructorId}`, '_blank');
+                                }}
+                                className="text-sm font-semibold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                              >
+                                {instructor.user.name}
+                              </a>
+                            </div>
+                          </div>
                         )}
                       </>
                     )}

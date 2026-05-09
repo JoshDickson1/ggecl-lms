@@ -23,6 +23,7 @@ import {
   ConnectionState,
   type Participant,
 } from "livekit-client";
+import { useQueries } from "@tanstack/react-query";
 import LiveService, { type JoinSessionResponse } from "@/services/live.service";
 import SchedulingService, { type LiveSession } from "@/services/scheduling.service";
 
@@ -444,21 +445,42 @@ export default function StudentLiveClass() {
   const navigate = useNavigate();
   const { id: sessionId } = useParams<{ id: string }>();
 
-  const [tokenData, setTokenData] = useState<JoinSessionResponse | null>(null);
-  const [session, setSession] = useState<LiveSession | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  // Fire both requests in parallel — token + session metadata
+  const [tokenQuery, sessionQuery] = useQueries({
+    queries: [
+      {
+        queryKey: ["live-session-token", sessionId],
+        queryFn: () => LiveService.joinSession(sessionId!),
+        enabled: !!sessionId,
+        // Tokens are short-lived — don't cache them across navigations
+        staleTime: 0,
+        gcTime: 0,
+        retry: false,
+      },
+      {
+        queryKey: ["live-session", sessionId],
+        queryFn: () => SchedulingService.getSession(sessionId!),
+        enabled: !!sessionId,
+        staleTime: 1000 * 30,
+        retry: 1,
+      },
+    ],
+  });
 
-  useEffect(() => {
-    if (!sessionId) { setError("No session ID provided."); setLoading(false); return; }
-    Promise.all([
-      LiveService.joinSession(sessionId),
-      SchedulingService.getSession(sessionId),
-    ])
-      .then(([token, sess]) => { setTokenData(token); setSession(sess); })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not join session."))
-      .finally(() => setLoading(false));
-  }, [sessionId]);
+  const loading = !sessionId
+    ? false
+    : tokenQuery.isLoading || sessionQuery.isLoading;
+
+  const errorMsg = !sessionId
+    ? "No session ID provided."
+    : tokenQuery.isError
+    ? (tokenQuery.error instanceof Error ? tokenQuery.error.message : "Could not join session.")
+    : sessionQuery.isError
+    ? (sessionQuery.error instanceof Error ? sessionQuery.error.message : "Session not found.")
+    : "";
+
+  const tokenData: JoinSessionResponse | undefined = tokenQuery.data;
+  const session: LiveSession | undefined = sessionQuery.data;
 
   const handleBack = () => navigate("/student/live");
 
@@ -488,8 +510,8 @@ export default function StudentLiveClass() {
       {/* Body */}
       {loading ? (
         <LoadingScreen message="Joining session…" />
-      ) : error || !tokenData || !session ? (
-        <ErrorScreen message={error || "Session not found."} onBack={handleBack} />
+      ) : errorMsg || !tokenData || !session ? (
+        <ErrorScreen message={errorMsg || "Session not found."} onBack={handleBack} />
       ) : (
         <LiveKitRoom
           token={tokenData.token}

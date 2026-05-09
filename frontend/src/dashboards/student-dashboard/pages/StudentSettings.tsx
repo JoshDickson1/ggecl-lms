@@ -4,10 +4,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera, User, Mail, Phone, MapPin,
   Lock, Eye, EyeOff, CheckCircle2, AlertTriangle,
-  Save, Loader2, Trash2, Shield, ChevronRight, X,
+  Save, Loader2, Trash2, Shield, ChevronRight, X, Plus, Target,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import UserService from "@/services/user.service";
+import type { UpdateMinePayload } from "@/services/user.service";
 import StorageService from "@/services/storage.service";
 import { useAuth } from "@/context/AuthProvider";
 import { authClient } from "@/lib/auth-client";
@@ -23,7 +27,9 @@ interface UserResponse {
   gender: string | null;
   role: string;
   studentProfile: {
-    matricNumber: string;
+    matricNumber: string | null;
+    bio: string | null;
+    phoneNumber: string | null;
     learningGoals: string[];
   } | null;
 }
@@ -159,6 +165,31 @@ function Textarea({ label, placeholder, value, onChange, hint, rows = 3 }: {
   );
 }
 
+// ─── Select field ─────────────────────────────────────────────────────────────
+
+function SelectField({ label, value, onChange, options, placeholder, hint }: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder: string; hint?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-bold text-gray-600 dark:text-gray-400">{label}</label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-11 rounded-xl border-gray-200 dark:border-white/[0.08] bg-gray-50/80 dark:bg-white/[0.04]">
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent className="rounded-xl">
+          {options.map(opt => (
+            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {hint && <p className="text-[11px] text-gray-400">{hint}</p>}
+    </div>
+  );
+}
+
 // ─── Password strength ────────────────────────────────────────────────────────
 
 function PasswordStrength({ password }: { password: string }) {
@@ -245,14 +276,18 @@ export default function StudentSettings() {
 
   const [personal, setPersonal] = useState({
     firstName: "", lastName: "", email: "",
-    phone: "", location: "", bio: "",
+    phone: "", location: "", bio: "", gender: "",
+    matricNumber: "",
   });
+  const [learningGoals, setLearningGoals] = useState<string[]>([]);
+  const [newGoal, setNewGoal] = useState("");
 
   // ── Fetch user ──────────────────────────────────────────────────────────────
 
   const { data: userData, isLoading } = useQuery<UserResponse>({
     queryKey: ["user-mine"],
-    queryFn:  () => UserService.getMe() as Promise<UserResponse>,
+    queryFn:  () => UserService.getMine() as Promise<UserResponse>,
+    staleTime: 30_000,
   });
 
   // Populate form once user data arrives
@@ -260,20 +295,22 @@ export default function StudentSettings() {
     if (!userData) return;
     const parts = userData.name.split(" ");
     setPersonal({
-      firstName: parts[0] ?? "",
-      lastName:  parts.slice(1).join(" ") ?? "",
-      email:     userData.email,
-      phone:     "",
-      location:  userData.location ?? "",
-      bio:       "",
+      firstName:    parts[0] ?? "",
+      lastName:     parts.slice(1).join(" ") ?? "",
+      email:        userData.email,
+      phone:        userData.studentProfile?.phoneNumber ?? "",
+      location:     userData.location ?? "",
+      bio:          userData.studentProfile?.bio ?? "",
+      gender:       userData.gender ?? "",
+      matricNumber: userData.studentProfile?.matricNumber ?? "",
     });
+    setLearningGoals(userData.studentProfile?.learningGoals ?? []);
   }, [userData]);
 
   // ── Update user mutation ────────────────────────────────────────────────────
 
   const updateMutation = useMutation({
-    mutationFn: (payload: { name?: string; location?: string }) =>
-      UserService.update(authUser!.id, payload),
+    mutationFn: (payload: UpdateMinePayload) => UserService.updateMine(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user-mine"] });
       showToast("Changes saved successfully!");
@@ -302,7 +339,7 @@ export default function StudentSettings() {
     setAvatarUploading(true);
     try {
       const publicUrl = await StorageService.upload("avatars", avatarFile);
-      await UserService.update(authUser.id, { image: publicUrl });
+      await UserService.updateMine({ image: publicUrl });
       await authClient.updateUser({ image: publicUrl });
       queryClient.invalidateQueries({ queryKey: ["user-mine"] });
       setAvatarPreview(null);
@@ -317,7 +354,15 @@ export default function StudentSettings() {
 
   const handlePersonalSave = () => {
     const name = `${personal.firstName} ${personal.lastName}`.trim();
-    updateMutation.mutate({ name, location: personal.location || undefined });
+    updateMutation.mutate({
+      name,
+      location:     personal.location     || undefined,
+      phoneNumber:  personal.phone        || undefined,
+      bio:          personal.bio          || undefined,
+      gender:       personal.gender       || undefined,
+      matricNumber: personal.matricNumber || undefined,
+      learningGoals: learningGoals.length > 0 ? learningGoals : undefined,
+    });
   };
 
   const handlePasswordSave = async () => {
@@ -329,15 +374,23 @@ export default function StudentSettings() {
     if (Object.keys(errs).length) return showToast("Please fix the errors above", "error");
 
     try {
-      await authClient.changePassword({
+      const result = await authClient.changePassword({
         currentPassword: pwd.current,
         newPassword: pwd.next,
         revokeOtherSessions: false,
       });
+      
+      // Better Auth returns { error } if it fails
+      if (result.error) {
+        showToast(result.error.message || "Failed to update password.", "error");
+        return;
+      }
+      
       showToast("Password updated successfully!");
       setPwd({ current: "", next: "", confirm: "" });
-    } catch {
-      showToast("Failed to update password.", "error");
+      setPwdErrors({});
+    } catch (error: any) {
+      showToast(error?.message || "Failed to update password.", "error");
     }
   };
 
@@ -470,13 +523,76 @@ export default function StudentSettings() {
                 <Field label="Email Address"  placeholder="you@example.com"  icon={Mail}  type="email" value={personal.email} onChange={setP("email")} required
                   hint="Contact support to change your email address" disabled />
                 <Field label="Phone Number"   placeholder="+234 800 000 0000" icon={Phone} type="tel"  value={personal.phone}    onChange={setP("phone")}    />
+                <SelectField label="Gender" value={personal.gender} onChange={setP("gender")}
+                  placeholder="Select gender"
+                  options={[
+                    { value: "MALE",   label: "Male" },
+                    { value: "FEMALE", label: "Female" },
+                    { value: "OTHER",  label: "Other" },
+                    { value: "PREFER_NOT_TO_SAY", label: "Prefer not to say" },
+                  ]} />
                 <Field label="Location"       placeholder="City, Country"     icon={MapPin}            value={personal.location} onChange={setP("location")} />
+                <Field label="Matric Number"  placeholder="e.g. CSC/2021/001" icon={User}              value={personal.matricNumber} onChange={setP("matricNumber")}
+                  hint="Your student registration number" />
                 <div className="sm:col-span-2">
                   <Textarea label="Bio" placeholder="Tell others about yourself…"
                     value={personal.bio} onChange={setP("bio")}
                     hint="Shown on your profile. Max 300 characters." rows={3} />
                 </div>
               </div>
+
+              {/* Learning Goals */}
+              <div className="mb-5 p-4 rounded-2xl bg-gray-50/60 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Target className="w-4 h-4 text-blue-500" />
+                  <label className="text-xs font-bold text-gray-600 dark:text-gray-400">Learning Goals</label>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {learningGoals.map((goal, i) => (
+                    <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                      bg-blue-100 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50
+                      text-xs font-medium text-blue-700 dark:text-blue-300">
+                      {goal}
+                      <button onClick={() => setLearningGoals(learningGoals.filter((_, idx) => idx !== i))}
+                        className="hover:text-red-500 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newGoal}
+                    onChange={e => setNewGoal(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && newGoal.trim()) {
+                        setLearningGoals([...learningGoals, newGoal.trim()]);
+                        setNewGoal("");
+                      }
+                    }}
+                    placeholder="Add a learning goal..."
+                    className="flex-1 px-3 py-2 rounded-lg text-xs
+                      bg-white dark:bg-white/[0.04]
+                      border border-gray-200 dark:border-white/[0.08]
+                      text-gray-800 dark:text-white placeholder:text-gray-400 outline-none
+                      focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all" />
+                  <button
+                    onClick={() => {
+                      if (newGoal.trim()) {
+                        setLearningGoals([...learningGoals, newGoal.trim()]);
+                        setNewGoal("");
+                      }
+                    }}
+                    className="px-3 py-2 rounded-lg text-xs font-bold
+                      bg-blue-600 hover:bg-blue-500 text-white
+                      flex items-center gap-1 transition-all">
+                    <Plus className="w-3 h-3" /> Add
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-2">Press Enter or click Add to save a goal</p>
+              </div>
+
               <SaveBtn loading={updateMutation.isPending} onClick={handlePersonalSave} />
             </Section>
           </div>
@@ -549,21 +665,7 @@ export default function StudentSettings() {
                   <p className="text-xs text-red-400/80 dark:text-red-500/70 mt-0.5">These actions cannot be undone.</p>
                 </div>
               </div>
-              <div className="p-6 flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-4 p-4 rounded-2xl
-                  bg-red-50/60 dark:bg-red-950/15 border border-red-100 dark:border-red-900/20">
-                  <div>
-                    <p className="text-sm font-bold text-gray-800 dark:text-white">Pause Learning</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Temporarily pause your account. Your progress and certificates are kept.
-                    </p>
-                  </div>
-                  <button className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold
-                    border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400
-                    hover:bg-red-100 dark:hover:bg-red-950/40 transition-all">
-                    Pause
-                  </button>
-                </div>
+              <div className="p-6">
                 <div className="flex items-center justify-between gap-4 p-4 rounded-2xl
                   bg-red-50/60 dark:bg-red-950/15 border border-red-100 dark:border-red-900/20">
                   <div>
@@ -573,7 +675,7 @@ export default function StudentSettings() {
                     </p>
                   </div>
                   <button
-                    onClick={() => UserService.remove(authUser!.id).then(() => authClient.signOut())}
+                    onClick={() => UserService.deleteMine().then(() => authClient.signOut())}
                     className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold
                       bg-red-600 hover:bg-red-700 text-white
                       shadow-[0_3px_10px_rgba(239,68,68,0.35)] transition-all">

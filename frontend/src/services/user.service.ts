@@ -60,6 +60,35 @@ interface UpdateUserPayload {
   instructorProfile?: InstructorProfilePayload;
 }
 
+/** Payload for PATCH /users/mine — updates the authenticated user's own profile */
+export interface UpdateMinePayload {
+  // User-level fields
+  name?: string;
+  gender?: string;
+  status?: string;
+  location?: string;
+  image?: string;
+  // Student profile fields
+  phoneNumber?: string;
+  matricNumber?: string;
+  learningGoals?: string[];
+  bio?: string;
+  // Instructor profile fields
+  department?: string;
+  professionalTitle?: string;
+  description?: string;
+  tags?: string[];
+  website?: string;
+  github?: string;
+  twitter?: string;
+  linkedin?: string;
+  youtube?: string;
+  areasOfExpertise?: string[];
+  professionalExperience?: string;
+  teachingCategories?: string[];
+  specialization?: string;
+}
+
 export interface UserQuery {
   search?: string;
   role?: UserRole;
@@ -146,6 +175,21 @@ export interface PublicInstructorProfile {
   areasOfExpertise: string[];
   professionalExperience: string | null;
   teachingCategories: string[];
+  courses?: Array<{
+    id: string;
+    title: string;
+    img: string | null;
+    price: number;
+    level: string;
+    status: string;
+    certification: string;
+    publishedAt: string | null;
+    totalDuration: number;
+    _count: {
+      enrollments: number;
+    };
+    createdAt: string;
+  }>;
   user: PublicInstructorUser;
 }
 
@@ -281,14 +325,51 @@ export default class UserService {
     return response.json();
   }
 
-  // ─── AUTHENTICATED ────────────────────────────────────────────────────────────
+  // ─── AUTHENTICATED (SELF) ─────────────────────────────────────────────────────
 
   /**
-   * Get the currently authenticated user's own profile.
+   * Get the currently authenticated user's own full profile.
+   * Returns user + studentProfile + instructorProfile.
    * Works for all roles.
    */
   static async getMe(): Promise<unknown> {
     const response = await APIConfig.fetch("/users/mine");
+    return response.json();
+  }
+
+  /**
+   * Get the currently authenticated user's own full profile.
+   * Alias for getMe() — use this for the /users/mine endpoint.
+   */
+  static async getMine(): Promise<unknown> {
+    const response = await APIConfig.fetch("/users/mine");
+    return response.json();
+  }
+
+  /**
+   * Update the currently authenticated user's own profile.
+   * Accepts both user-level and profile-level fields.
+   * Student fields: name, gender, location, phoneNumber, matricNumber, learningGoals, bio
+   * Instructor fields: department, professionalTitle, description, tags, website, github,
+   *   twitter, linkedin, youtube, areasOfExpertise, professionalExperience, teachingCategories, specialization
+   */
+  static async updateMine(payload: UpdateMinePayload): Promise<unknown> {
+    const response = await APIConfig.fetch("/users/mine", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  }
+
+  /**
+   * Permanently delete the currently authenticated user's own account.
+   * Cleans up BetterAuth sessions and accounts before removing the record.
+   */
+  static async deleteMine(): Promise<unknown> {
+    const response = await APIConfig.fetch("/users/mine", {
+      method: "DELETE",
+    });
     return response.json();
   }
 

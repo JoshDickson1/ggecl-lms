@@ -1,11 +1,11 @@
-// src/dashboards/student-dashboard/pages/StudentProfile.tsx
+﻿// src/dashboards/student-dashboard/pages/StudentProfile.tsx
 import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Star, BookOpen, Award, Globe, Mail, MapPin, Calendar,
-  CheckCircle2, Edit3, Play, TrendingUp, ShoppingBag, Loader2, Camera,
+  CheckCircle2, Edit3, Play, TrendingUp, Loader2, Camera,
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -14,29 +14,50 @@ import UserService from "@/services/user.service";
 import StorageService from "@/services/storage.service";
 import { authClient } from "@/lib/auth-client";
 import ProgressService from "@/services/progress.service";
-import EnrollmentService from "@/services/enrollment.service";
 import ReviewService from "@/services/review.service";
 import { useAuth } from "@/context/AuthProvider";
 
-// ─── API Types ────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ API Types ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-interface StudentProfile {
+interface StudentProfileData {
   id: string;
-  matricNumber: string;
-  enrollmentDate: string;
+  userId: string;
+  matricNumber: string | null;
+  enrollmentDate: string | null;
+  bio: string | null;
+  phoneNumber: string | null;
   learningGoals: string[];
+  enrollments: {
+    id: string;
+    enrolledAt: string;
+    course: {
+      id: string;
+      title: string;
+      img: string | null;
+      price: number;
+      level: string;
+      status: string;
+      instructorId: string;
+    };
+  }[];
 }
 
 interface UserResponse {
   id: string;
   name: string;
   email: string;
+  emailVerified: boolean;
   image: string | null;
-  createdAt: string;
   role: string;
-  location: string | null;
+  status: string;
   gender: string | null;
-  studentProfile: StudentProfile | null;
+  location: string | null;
+  banned: boolean;
+  banReason: string | null;
+  banExpires: string | null;
+  createdAt: string;
+  updatedAt: string;
+  studentProfile: StudentProfileData | null;
 }
 
 interface DashboardStats {
@@ -63,7 +84,7 @@ interface DashboardResponse {
 interface EnrollmentCourse {
   id: string;
   title: string;
-  img: string;
+  img: string | null;
   price: number;
   level: string;
   instructorId: string;
@@ -75,7 +96,7 @@ interface Enrollment {
   course: EnrollmentCourse;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
@@ -94,7 +115,7 @@ function gradientFor(i: number) {
   return THUMBNAIL_GRADIENTS[i % THUMBNAIL_GRADIENTS.length];
 }
 
-// ─── UI helpers ───────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ UI helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 const Fade = ({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) => (
   <motion.div
@@ -178,7 +199,7 @@ function Sk({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-gray-100 dark:bg-white/[0.06] ${className}`} />;
 }
 
-// ─── Review tab ───────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Review tab ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 function ReviewTab({ enrollments }: { enrollments: Enrollment[] }) {
   const [selectedCourseId, setSelectedCourseId] = useState("");
@@ -337,7 +358,7 @@ function ReviewTab({ enrollments }: { enrollments: Enrollment[] }) {
                   text-white text-sm font-bold shadow-lg shadow-blue-500/20 transition-all
                   flex items-center justify-center gap-2">
                 {submitting
-                  ? <><Loader2 className="w-4 h-4 animate-spin" />{existingReview ? "Updating…" : "Submitting…"}</>
+                  ? <><Loader2 className="w-4 h-4 animate-spin" />{existingReview ? "UpdatingΓÇª" : "SubmittingΓÇª"}</>
                   : existingReview ? "Update Review" : "Submit Review"}
               </button>
             </>
@@ -348,7 +369,7 @@ function ReviewTab({ enrollments }: { enrollments: Enrollment[] }) {
   );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Main page ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export default function StudentProfile() {
   const { user: authUser } = useAuth();
@@ -359,7 +380,8 @@ export default function StudentProfile() {
 
   const { data: userData, isLoading: userLoading } = useQuery<UserResponse>({
     queryKey: ["user-mine"],
-    queryFn:  () => UserService.getMe() as Promise<UserResponse>,
+    queryFn:  () => UserService.getMine() as Promise<UserResponse>,
+    staleTime: 30_000,
   });
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -368,11 +390,11 @@ export default function StudentProfile() {
     setAvatarUploading(true);
     try {
       const publicUrl = await StorageService.upload("avatars", file);
-      await UserService.update(authUser.id, { image: publicUrl });
+      await UserService.updateMine({ image: publicUrl });
       await authClient.updateUser({ image: publicUrl });
       queryClient.invalidateQueries({ queryKey: ["user-mine"] });
     } catch {
-      // silent fail — user stays on profile
+      // silent fail ΓÇö user stays on profile
     } finally {
       setAvatarUploading(false);
       e.target.value = "";
@@ -382,21 +404,18 @@ export default function StudentProfile() {
   const { data: dashboard, isLoading: dashLoading } = useQuery<DashboardResponse>({
     queryKey: ["progress-dashboard"],
     queryFn:  () => ProgressService.getDashboard() as Promise<DashboardResponse>,
+    staleTime: 30_000,
   });
 
-  const { data: enrollments, isLoading: enrollLoading } = useQuery<Enrollment[]>({
-    queryKey: ["enrollments-mine"],
-    queryFn:  () => EnrollmentService.getMine() as Promise<Enrollment[]>,
-  });
-
-  const isLoading = userLoading || dashLoading || enrollLoading;
+  // Enrollments come from the /users/mine response — no separate query needed
+  const isLoading = userLoading || dashLoading;
 
   if (isLoading) {
     return (
       <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
         <Sk className="h-52 rounded-[22px]" />
-        <div className="grid grid-cols-3 gap-4">
-          {[1,2,3].map(i => <Sk key={i} className="h-28 rounded-2xl" />)}
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+          {[1,2].map(i => <Sk key={i} className="h-28 rounded-2xl" />)}
         </div>
         <Sk className="h-10 w-64 rounded-2xl" />
         <Sk className="h-48 rounded-[22px]" />
@@ -404,20 +423,31 @@ export default function StudentProfile() {
     );
   }
 
-  // ── Derived ─────────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Derived ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   const nameParts  = (userData?.name ?? authUser?.name ?? "").split(" ");
   // const firstName  = nameParts[0] ?? "";
   const initials   = nameParts.map(p => p[0]).join("").slice(0, 2).toUpperCase();
   const stats      = dashboard?.stats;
   const courses    = dashboard?.courses ?? [];
-  const myEnrollments = enrollments ?? [];
-  const joined     = userData?.createdAt ? fmtDate(userData.createdAt) : "—";
-  const location   = userData?.location ?? "—";
-  const email      = userData?.email ?? authUser?.email ?? "—";
+  // Enrollments come from the /users/mine response — no extra network call
+  const myEnrollments: Enrollment[] = (userData?.studentProfile?.enrollments ?? []).map(e => ({
+    id: e.id,
+    enrolledAt: e.enrolledAt,
+    course: {
+      id: e.course.id,
+      title: e.course.title,
+      img: e.course.img,
+      price: e.course.price,
+      level: e.course.level,
+      instructorId: e.course.instructorId,
+    },
+  }));
+  const joined     = userData?.createdAt ? fmtDate(userData.createdAt) : "ΓÇö";
+  const location   = userData?.location ?? "ΓÇö";
+  const email      = userData?.email ?? authUser?.email ?? "ΓÇö";
   const goals      = userData?.studentProfile?.learningGoals ?? [];
   const completed  = stats?.completedCourses ?? 0;
-  const totalSpent = myEnrollments.reduce((sum, e) => sum + e.course.price, 0);
 
   const TABS = [
     { id: "about",   label: "About"          },
@@ -428,7 +458,7 @@ export default function StudentProfile() {
   return (
     <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
 
-      {/* ── Hero ─────────────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ Hero ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <Fade>
         <Card>
           <div className="h-32 rounded-t-[22px] bg-gradient-to-br from-blue-600 via-blue-500 to-blue-600 relative overflow-hidden">
@@ -495,16 +525,15 @@ export default function StudentProfile() {
         </Card>
       </Fade>
 
-      {/* ── Stats ────────────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ Stats ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <Fade delay={0.06}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <StatTile icon={BookOpen}      color="blue"    value={String(myEnrollments.length)} label="Enrolled Courses" />
           <StatTile icon={CheckCircle2}  color="emerald" value={String(completed)}            label="Completed" sub="courses finished" />
-          <StatTile icon={ShoppingBag}   color="amber"   value={`$${totalSpent.toFixed(0)}`} label="Total Invested"   sub="in your education" />
         </div>
       </Fade>
 
-      {/* ── Tabs ─────────────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ Tabs ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       <Fade delay={0.1}>
         <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
           {TABS.map(tab => (
@@ -520,7 +549,7 @@ export default function StudentProfile() {
         </div>
       </Fade>
 
-      {/* ── ABOUT tab ────────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ ABOUT tab ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {activeTab === "about" && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
           <div className="flex flex-col gap-5">
@@ -528,8 +557,8 @@ export default function StudentProfile() {
               <Card className="p-7">
                 <SectionHead icon={Globe} title="About Me" />
                 <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                  {userData?.gender ? `${userData.gender} · ` : ""}
-                  {location !== "—" ? `Based in ${location}. ` : ""}
+                  {userData?.gender ? `${userData.gender} ┬╖ ` : ""}
+                  {location !== "ΓÇö" ? `Based in ${location}. ` : ""}
                   {`Enrolled ${fmtDate(userData?.studentProfile?.enrollmentDate ?? userData?.createdAt ?? new Date().toISOString())}.`}
                 </p>
                 {userData?.studentProfile?.matricNumber && (
@@ -598,14 +627,14 @@ export default function StudentProfile() {
         </div>
       )}
 
-      {/* ── COURSES tab ──────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ COURSES tab ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {activeTab === "courses" && (
         <div className="flex flex-col gap-4">
           {myEnrollments.length === 0 ? (
             <Card className="p-10 flex flex-col items-center gap-3 text-center">
               <BookOpen className="w-8 h-8 text-blue-400 opacity-40" />
               <p className="text-sm font-bold text-gray-600 dark:text-gray-400">No courses enrolled yet.</p>
-              <Link to="/student/explore" className="text-xs font-bold text-blue-500 hover:underline">Browse courses →</Link>
+              <Link to="/student/explore" className="text-xs font-bold text-blue-500 hover:underline">Browse courses ΓåÆ</Link>
             </Card>
           ) : (
             myEnrollments.map((enr, i) => {
@@ -665,7 +694,7 @@ export default function StudentProfile() {
         </div>
       )}
 
-      {/* ── REVIEW tab ───────────────────────────────────────────── */}
+      {/* ΓöÇΓöÇ REVIEW tab ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {activeTab === "review" && <ReviewTab enrollments={myEnrollments} />}
     </div>
   );

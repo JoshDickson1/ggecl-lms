@@ -122,30 +122,6 @@ function fmtRelative(iso?: string): string {
 
 const todayAbbr = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date().getDay()];
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function Sk({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-xl bg-gray-100 dark:bg-white/[0.06] ${className}`} />;
-}
-
-function PageSkeleton() {
-  return (
-    <div className="max-w-[1100px] mx-auto pb-10 space-y-8">
-      <div className="space-y-2">
-        <Sk className="h-9 w-64" />
-        <Sk className="h-4 w-80" />
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => <Sk key={i} className="h-28 rounded-2xl" />)}
-      </div>
-      <Sk className="h-56 rounded-[22px]" />
-      <div className="space-y-4">
-        {Array.from({ length: 3 }).map((_, i) => <Sk key={i} className="h-44 rounded-[20px]" />)}
-      </div>
-    </div>
-  );
-}
-
 // ─── Progress bar ─────────────────────────────────────────────────────────────
 
 function ProgressBar({ pct, color = "blue" }: { pct: number; color?: "blue" | "emerald" | "cyan" }) {
@@ -324,8 +300,6 @@ export default function StudentProgress() {
     queryFn:  () => ProgressService.getDashboard() as Promise<DashboardResponse>,
   });
 
-  if (isLoading) return <PageSkeleton />;
-
   if (isError) {
     return (
       <div className="max-w-[1100px] mx-auto py-20 flex flex-col items-center gap-3">
@@ -370,7 +344,7 @@ export default function StudentProgress() {
   return (
     <div className="max-w-[1100px] mx-auto pb-10 space-y-8">
 
-      {/* Header */}
+      {/* Header — static, renders immediately */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-3xl font-black text-gray-900 dark:text-white">
           Learning <span className="text-blue-600 dark:text-blue-400">Progress</span>
@@ -378,15 +352,15 @@ export default function StudentProgress() {
         <p className="text-sm text-gray-400 mt-1">Track your journey across all enrolled courses</p>
       </motion.div>
 
-      {/* Top stats */}
+      {/* Top stats — icon + label render immediately, values pulse while loading */}
       <motion.div
         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
         className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: Clock,        value: totalTime,          label: "Total Time Spent", sub: "this month",     color: "blue"    },
-          { icon: Flame,        value: streak > 0 ? `${streak}d` : "0d",  label: "Learning Streak",  sub: streak > 0 ? "keep it going! 🔥" : "start today!", color: "amber"   },
-          { icon: CheckCircle2, value: String(completed),  label: "Completed",        sub: "courses",        color: "emerald" },
-          { icon: Target,       value: `${avgProgress}%`,  label: "Avg Completion",   sub: "across courses", color: "cyan"    },
+          { icon: Clock,        value: totalTime,                         label: "Total Time Spent", sub: "this month",                                       color: "blue"    },
+          { icon: Flame,        value: streak > 0 ? `${streak}d` : "0d", label: "Learning Streak",  sub: streak > 0 ? "keep it going! 🔥" : "start today!", color: "amber"   },
+          { icon: CheckCircle2, value: String(completed),                 label: "Completed",        sub: "courses",                                          color: "emerald" },
+          { icon: Target,       value: `${avgProgress}%`,                 label: "Avg Completion",   sub: "across courses",                                   color: "cyan"    },
         ].map(({ icon: Icon, value, label, sub, color }) => {
           const palette: Record<string, string> = {
             blue:    "bg-blue-50/60 dark:bg-blue-950/20 border-blue-100/60 dark:border-blue-900/20 [&_div]:bg-blue-100 dark:[&_div]:bg-blue-900/40 [&_svg]:text-blue-600 dark:[&_svg]:text-blue-400",
@@ -399,8 +373,17 @@ export default function StudentProgress() {
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2">
                 <Icon className="w-4 h-4" />
               </div>
-              <p className="text-xl font-black text-gray-900 dark:text-white leading-none">{value}</p>
-              {sub && <p className="text-[9px] font-bold mt-0.5 text-current opacity-60">{sub}</p>}
+              {isLoading ? (
+                <>
+                  <div className="h-6 w-10 rounded-lg bg-current opacity-10 animate-pulse mb-1" />
+                  <div className="h-2 w-14 rounded bg-current opacity-10 animate-pulse" />
+                </>
+              ) : (
+                <>
+                  <p className="text-xl font-black text-gray-900 dark:text-white leading-none">{value}</p>
+                  {sub && <p className="text-[9px] font-bold mt-0.5 text-current opacity-60">{sub}</p>}
+                </>
+              )}
               <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 text-center leading-tight">{label}</p>
             </div>
           );
@@ -427,52 +410,79 @@ export default function StudentProgress() {
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl
             bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/30">
             <Flame className="w-3.5 h-3.5 text-amber-500" />
-            <span className="text-xs font-black text-amber-600 dark:text-amber-400">{streak} day streak</span>
+            {isLoading
+              ? <div className="w-16 h-3 rounded bg-amber-200 dark:bg-amber-900/40 animate-pulse" />
+              : <span className="text-xs font-black text-amber-600 dark:text-amber-400">{streak} day streak</span>
+            }
           </div>
         </div>
 
-        <div className="flex items-end gap-3 h-28">
-          {weeklyDays.map((day, i) => {
-            const pct     = (day.minutes / maxMinutes) * 100;
-            const isToday = day.label === todayAbbr;
-            return (
-              <div key={day.date} className="flex-1 flex flex-col items-center gap-2">
+        {isLoading ? (
+          <div className="flex items-end gap-3 h-28">
+            {[55, 30, 75, 45, 85, 40, 65].map((h, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-2">
                 <div className="w-full flex flex-col justify-end" style={{ height: "80px" }}>
-                  {day.minutes > 0 ? (
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${pct}%` }}
-                      transition={{ duration: 0.6, delay: i * 0.05, ease: "easeOut" }}
-                      className={`w-full rounded-xl ${
-                        isToday
-                          ? "bg-gradient-to-t from-blue-600 to-blue-400"
-                          : "bg-gradient-to-t from-blue-200 to-blue-100 dark:from-blue-900/60 dark:to-blue-800/30"
-                      }`}
-                    />
-                  ) : (
-                    <div className="w-full h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.05]" />
-                  )}
+                  <div
+                    className="w-full rounded-xl bg-gray-100 dark:bg-white/[0.06] animate-pulse"
+                    style={{ height: `${h}%` }}
+                  />
                 </div>
-                <span className={`text-[10px] font-bold ${isToday ? "text-blue-600 dark:text-blue-400" : "text-gray-400"}`}>
-                  {day.label}
-                </span>
+                <div className="h-2 w-5 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-end gap-3 h-28">
+            {weeklyDays.map((day, i) => {
+              const pct     = (day.minutes / maxMinutes) * 100;
+              const isToday = day.label === todayAbbr;
+              return (
+                <div key={day.date} className="flex-1 flex flex-col items-center gap-2">
+                  <div className="w-full flex flex-col justify-end" style={{ height: "80px" }}>
+                    {day.minutes > 0 ? (
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: `${pct}%` }}
+                        transition={{ duration: 0.6, delay: i * 0.05, ease: "easeOut" }}
+                        className={`w-full rounded-xl ${
+                          isToday
+                            ? "bg-gradient-to-t from-blue-600 to-blue-400"
+                            : "bg-gradient-to-t from-blue-200 to-blue-100 dark:from-blue-900/60 dark:to-blue-800/30"
+                        }`}
+                      />
+                    ) : (
+                      <div className="w-full h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.05]" />
+                    )}
+                  </div>
+                  <span className={`text-[10px] font-bold ${isToday ? "text-blue-600 dark:text-blue-400" : "text-gray-400"}`}>
+                    {day.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Legend */}
         <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-100 dark:border-white/[0.06]">
-          {[
-            { label: "Total this week", value: `${weekTotal} min` },
-            { label: "Daily average",   value: `${dailyAvg} min`  },
-            { label: "Most active",     value: mostActive          },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{label}</p>
-              <p className="text-sm font-black text-gray-800 dark:text-white">{value}</p>
-            </div>
-          ))}
+          {isLoading
+            ? Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="space-y-1">
+                  <div className="h-2 w-16 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                  <div className="h-4 w-10 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                </div>
+              ))
+            : [
+                { label: "Total this week", value: `${weekTotal} min` },
+                { label: "Daily average",   value: `${dailyAvg} min`  },
+                { label: "Most active",     value: mostActive          },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{label}</p>
+                  <p className="text-sm font-black text-gray-800 dark:text-white">{value}</p>
+                </div>
+              ))
+          }
         </div>
       </motion.div>
 
@@ -483,6 +493,7 @@ export default function StudentProgress() {
             <Zap className="w-5 h-5 text-blue-500" />
             Course Progress
           </h2>
+          {/* Filter tabs — static chrome, counts only shown once data is ready */}
           <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05]">
             {(["all", "active", "completed"] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)}
@@ -492,14 +503,45 @@ export default function StudentProgress() {
                     : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
                   }`}>
                 {f}
-                {f === "active"    && ` (${inProgress})`}
-                {f === "completed" && ` (${completed})`}
+                {!isLoading && f === "active"    && ` (${inProgress})`}
+                {!isLoading && f === "completed" && ` (${completed})`}
               </button>
             ))}
           </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="rounded-[20px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] overflow-hidden">
+                {/* progress strip */}
+                <div className="h-1 w-2/3 bg-gray-100 dark:bg-white/[0.07] animate-pulse" />
+                <div className="p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/[0.06] animate-pulse flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-3/4 rounded-lg bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                      <div className="h-3 w-1/4 rounded-lg bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                      <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-white/[0.06] animate-pulse mt-3" />
+                      <div className="flex justify-between">
+                        <div className="h-2 w-16 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                        <div className="h-2 w-16 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-white/[0.06]">
+                    {Array.from({ length: 3 }).map((_, j) => (
+                      <div key={j} className="space-y-1">
+                        <div className="h-2 w-12 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                        <div className="h-3 w-10 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="py-16 flex flex-col items-center gap-2 text-gray-400">
             <CheckCircle2 className="w-8 h-8 opacity-30" />
             <p className="text-sm font-medium">

@@ -11,6 +11,7 @@ import CoursesService from "@/services/course.service";
 import ReviewService from "@/services/review.service";
 import CartService from "@/services/cart.service";
 import WishlistService from "@/services/wishlist.service";
+import UserService, { type PublicInstructorProfile } from "@/services/user.service";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -376,6 +377,13 @@ export default function StudentSingleCourse() {
     enabled:  !!id,
   });
 
+  // Fetch instructor profile using the instructorId from the course
+  const { data: instructor } = useQuery<PublicInstructorProfile>({
+    queryKey: ["instructor-public", course?.instructorId],
+    queryFn:  () => UserService.findOneInstructorPublic(course!.instructorId),
+    enabled:  !!course?.instructorId,
+  });
+
   const toggleSection = (i: number) =>
     setOpenSections(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]);
 
@@ -491,15 +499,27 @@ export default function StudentSingleCourse() {
               {/* Instructor mini */}
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
                 className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center text-sm font-black text-white ring-2 ring-white/30 flex-shrink-0">
-                  IN
-                </div>
+                {instructor?.user.image ? (
+                  <img
+                    src={instructor.user.image}
+                    alt={instructor.user.name}
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-white/30 flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center text-sm font-black text-white ring-2 ring-white/30 flex-shrink-0">
+                    {instructor?.user.name ? initials(instructor.user.name) : "IN"}
+                  </div>
+                )}
                 <div>
                   <p className="text-white/60 text-xs">Instructor</p>
-                  <Link to={`/student/instructors/${course.instructorId}`}
-                    className="text-white font-bold text-sm hover:underline underline-offset-4 decoration-white/50">
-                    View instructor
-                  </Link>
+                  {instructor ? (
+                    <Link to={`/student/instructors/${course.instructorId}`}
+                      className="text-white font-bold text-sm hover:underline underline-offset-4 decoration-white/50">
+                      {instructor.user.name}
+                    </Link>
+                  ) : (
+                    <span className="text-white font-bold text-sm">Loading...</span>
+                  )}
                 </div>
               </motion.div>
             </div>

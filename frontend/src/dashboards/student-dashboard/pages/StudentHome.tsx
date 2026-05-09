@@ -148,30 +148,6 @@ function greeting(): string {
   return "Good evening";
 }
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function Sk({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-xl bg-gray-100 dark:bg-white/[0.06] ${className}`} />;
-}
-
-function HomeSkeleton() {
-  return (
-    <div className="max-w-[1100px] mx-auto space-y-6 pb-12">
-      <Sk className="h-52 rounded-3xl" />
-      <Sk className="h-32 rounded-2xl" />
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-        <Sk className="h-56 rounded-2xl" />
-        <Sk className="h-56 rounded-2xl" />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Sk className="h-40 rounded-2xl" />
-        <Sk className="h-40 rounded-2xl" />
-        <Sk className="h-40 rounded-2xl" />
-      </div>
-    </div>
-  );
-}
-
 // ─── UI Helpers ───────────────────────────────────────────────────────────────
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -232,7 +208,7 @@ export default function StudentHome() {
   });
 
   const { data: activityRes, isLoading: activityLoading } = useQuery<ActivityResponse>({
-    queryKey: ["activities", 5],
+    queryKey: ["activities-feed", 5],
     queryFn: () => ActivityService.getFeed({ limit: 5 }) as Promise<ActivityResponse>,
   });
 
@@ -241,8 +217,6 @@ export default function StudentHome() {
     queryFn: () => EnrollmentService.getMine(),
   });
 
-  const isLoading = dashLoading || xpLoading || activityLoading || enrollLoading;
-  if (isLoading) return <HomeSkeleton />;
   if (dashError) return <ApiErrorPage onRetry={refetchDash} message="Failed to load your dashboard." />;
 
   // ── Derived values ──────────────────────────────────────────────────────────
@@ -280,12 +254,20 @@ export default function StudentHome() {
   const allEnrollments = enrollments ?? [];
   const myCourses = allEnrollments.slice(0, 3);
 
-  // Avatar initials
+  // Avatar initials — available immediately from auth context, no API needed
   const initials = user?.name
     ? user.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
     : "??";
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
+
+  // Loading flags per section
+  const heroDataLoading    = dashLoading || xpLoading || enrollLoading;
+  const continueLearning   = dashLoading;
+  const chartLoading       = dashLoading;
+  const activityFeedLoading = activityLoading;
+  const myCoursesLoading   = enrollLoading;
+  const statsLoading       = dashLoading;
 
   // Chart data: last 7 days ending today, with dynamic day labels.
   // Build a map of date string → minutes from the API data.
@@ -321,48 +303,70 @@ export default function StudentHome() {
               <div className="flex items-center gap-2 mb-2">
                 <Flame className="w-5 h-5 text-amber-300" />
                 <span className="text-amber-200 text-sm font-bold">
-                  {streak > 0 ? `${streak}-day streak 🔥` : "Start your streak today! 🔥"}
+                  {heroDataLoading
+                    ? <span className="inline-block w-32 h-4 rounded-lg bg-white/20 animate-pulse" />
+                    : streak > 0 ? `${streak}-day streak 🔥` : "Start your streak today! 🔥"
+                  }
                 </span>
               </div>
               <h1 className="text-3xl font-black text-white leading-tight">
                 {greeting()},<br />{firstName} 👋
               </h1>
               <p className="text-blue-200 text-sm mt-2">
-                {topCourse
-                  ? `You're ${Math.round(100 - (topCourse.percentComplete || 0)) || 0}% away from completing your top course.`
-                  : "Explore courses and start learning today."}
+                {heroDataLoading
+                  ? <span className="inline-block w-56 h-4 rounded-lg bg-white/20 animate-pulse" />
+                  : topCourse
+                    ? `You're ${Math.round(100 - (topCourse.percentComplete || 0)) || 0}% away from completing your top course.`
+                    : "Explore courses and start learning today."
+                }
               </p>
 
               {/* XP Bar */}
               <div className="mt-4 max-w-xs">
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-blue-200 font-semibold">Level {xpLevel}</span>
-                  <span className="text-blue-200">{xpTotal.toLocaleString()} XP · Next: {xpNext.toLocaleString()}</span>
+                  <span className="text-blue-200 font-semibold">
+                    {xpLoading ? <span className="inline-block w-12 h-3 rounded bg-white/20 animate-pulse" /> : `Level ${xpLevel}`}
+                  </span>
+                  <span className="text-blue-200">
+                    {xpLoading
+                      ? <span className="inline-block w-28 h-3 rounded bg-white/20 animate-pulse" />
+                      : `${xpTotal.toLocaleString()} XP · Next: ${xpNext.toLocaleString()}`
+                    }
+                  </span>
                 </div>
                 <div className="h-2 w-full rounded-full bg-white/20 overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${xpPct}%` }}
-                    transition={{ duration: 1, delay: 0.3, ease: "easeOut" }}
-                    className="h-full rounded-full bg-gradient-to-r from-amber-300 to-yellow-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]"
-                  />
+                  {xpLoading
+                    ? <div className="h-full w-1/3 rounded-full bg-white/30 animate-pulse" />
+                    : (
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${xpPct}%` }}
+                        transition={{ duration: 1, delay: 0.3, ease: "easeOut" }}
+                        className="h-full rounded-full bg-gradient-to-r from-amber-300 to-yellow-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]"
+                      />
+                    )
+                  }
                 </div>
               </div>
             </div>
 
             {/* Avatar + stats */}
             <div className="flex items-center md:justify-end justify-between gap-4">
-              <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-sm border-2 border-white/30 flex items-center justify-center text-3xl font-black text-white shadow-xl">
+              {/* Initials card — always square */}
+              <div className="aspect-square w-20 rounded-2xl bg-white/20 backdrop-blur-sm border-2 border-white/30 flex items-center justify-center text-3xl font-black text-white shadow-xl">
                 {initials}
               </div>
               <div className="flex md:flex-col flex-row gap-2">
                 {[
-                  { label: "Enrolled",   value: allEnrollments.length },
-                  { label: "Completed",  value: completed },
-                  { label: "Streak",     value: `${streak}d` },
+                  { label: "Enrolled",  value: heroDataLoading ? null : allEnrollments.length },
+                  { label: "Completed", value: heroDataLoading ? null : completed },
+                  { label: "Streak",    value: heroDataLoading ? null : `${streak}d` },
                 ].map(s => (
-                  <div key={s.label} className="text-center px-3 py-1 rounded-xl bg-white/15 border border-white/20">
-                    <p className="text-white font-black text-sm leading-none">{s.value}</p>
+                  <div key={s.label} className="aspect-square flex flex-col items-center justify-center px-3 py-1 rounded-xl bg-white/15 border border-white/20 min-w-[52px]">
+                    {s.value === null
+                      ? <span className="w-6 h-4 rounded bg-white/30 animate-pulse mb-1" />
+                      : <p className="text-white font-black text-sm leading-none">{s.value}</p>
+                    }
                     <p className="text-blue-200 text-[10px]">{s.label}</p>
                   </div>
                 ))}
@@ -373,7 +377,25 @@ export default function StudentHome() {
       </Fade>
 
       {/* ── Continue Learning ──────────────────────────────────── */}
-      {topCourse ? (
+      {continueLearning ? (
+        <Fade delay={0.06}>
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Zap className="w-4 h-4 text-blue-500" />
+              <h2 className="font-black text-base text-gray-900 dark:text-white">Continue Learning</h2>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-5 items-start">
+              <div className="w-full sm:w-44 h-28 rounded-2xl bg-gray-100 dark:bg-white/[0.06] animate-pulse flex-shrink-0" />
+              <div className="flex-1 space-y-3">
+                <div className="h-5 w-3/4 rounded-lg bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                <div className="h-3 w-1/3 rounded-lg bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                <div className="h-3 w-1/2 rounded-lg bg-gray-100 dark:bg-white/[0.06] animate-pulse mt-4" />
+                <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+              </div>
+            </div>
+          </Card>
+        </Fade>
+      ) : topCourse ? (
         <Fade delay={0.06}>
           <Card className="p-6 overflow-hidden relative">
             <div className="flex items-center gap-2 mb-4">
@@ -479,13 +501,24 @@ export default function StudentHome() {
                 <BarChart3 className="w-4 h-4 text-blue-500" />
                 <h2 className="font-black text-base text-gray-900 dark:text-white">This Week</h2>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30">
-                <TrendingUp className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{totalMinutes} min total</span>
-              </div>
+              {chartLoading
+                ? <div className="w-24 h-6 rounded-xl bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                : (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30">
+                    <TrendingUp className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{totalMinutes} min total</span>
+                  </div>
+                )
+              }
             </div>
             <p className="text-xs text-gray-400 mb-5">Daily learning time (minutes)</p>
-            {chartData.length > 0 ? (
+            {chartLoading ? (
+              <div className="h-40 flex items-end gap-2 px-1">
+                {[40, 65, 30, 80, 55, 70, 45].map((h, i) => (
+                  <div key={i} className="flex-1 rounded-t-lg bg-gray-100 dark:bg-white/[0.06] animate-pulse" style={{ height: `${h}%` }} />
+                ))}
+              </div>
+            ) : chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={160}>
                 <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <defs>
@@ -508,15 +541,21 @@ export default function StudentHome() {
             )}
             {/* Legend */}
             <div className="flex items-center gap-6 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
-              {[
-                { label: "Daily avg",    value: `${dailyAvg || 0} min` },
-                { label: "Most active",  value: mostActive },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{label}</p>
-                  <p className="text-sm font-black text-gray-800 dark:text-white">{value}</p>
-                </div>
-              ))}
+              {chartLoading
+                ? <>
+                    <div className="space-y-1"><div className="h-2 w-12 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" /><div className="h-4 w-8 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" /></div>
+                    <div className="space-y-1"><div className="h-2 w-16 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" /><div className="h-4 w-10 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" /></div>
+                  </>
+                : [
+                    { label: "Daily avg",   value: `${dailyAvg || 0} min` },
+                    { label: "Most active", value: mostActive },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{label}</p>
+                      <p className="text-sm font-black text-gray-800 dark:text-white">{value}</p>
+                    </div>
+                  ))
+              }
             </div>
           </Card>
         </Fade>
@@ -526,13 +565,25 @@ export default function StudentHome() {
           <Card className="p-6 h-[338px] overflow-y-scroll">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-black text-base text-gray-900 dark:text-white">Recent Activity</h2>
-              {(activityRes?.meta.unreadCount ?? 0) > 0 && (
+              {!activityFeedLoading && (activityRes?.meta.unreadCount ?? 0) > 0 && (
                 <span className="flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full">
                   <Bell className="w-3 h-3" />{activityRes?.meta.unreadCount} new
                 </span>
               )}
             </div>
-            {activities.length > 0 ? (
+            {activityFeedLoading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-white/[0.06] animate-pulse flex-shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 w-full rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                      <div className="h-2 w-1/3 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : activities.length > 0 ? (
               <div className="space-y-3">
                 {activities.map((a, i) => (
                   <motion.div
@@ -559,7 +610,7 @@ export default function StudentHome() {
                 <p className="text-xs">No recent activity yet.</p>
               </div>
             )}
-            {activities.length > 0 && (
+            {!activityFeedLoading && activities.length > 0 && (
               <Link to="/student/notifications"
                 className="mt-4 flex items-center justify-center gap-1 text-xs font-semibold text-blue-500 hover:underline">
                 View all <ChevronRight className="w-3.5 h-3.5" />
@@ -574,10 +625,20 @@ export default function StudentHome() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-black text-base text-gray-900 dark:text-white">My Courses</h2>
-            <span className="text-[10px] text-gray-400">{allEnrollments.length} enrolled</span>
+            {!myCoursesLoading && <span className="text-[10px] text-gray-400">{allEnrollments.length} enrolled</span>}
           </div>
 
-          {myCourses.length > 0 ? (
+          {myCoursesLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i} className="p-4">
+                  <div className="w-full h-20 rounded-xl bg-gray-100 dark:bg-white/[0.06] animate-pulse mb-3" />
+                  <div className="h-3 w-3/4 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse mb-2" />
+                  <div className="h-2 w-1/3 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                </Card>
+              ))}
+            </div>
+          ) : myCourses.length > 0 ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {myCourses.map((enr, i) => {
@@ -641,20 +702,31 @@ export default function StudentHome() {
           <Card className="p-6">
             <h2 className="font-black text-base text-gray-900 dark:text-white mb-4">Learning Stats</h2>
             <div className="space-y-3">
-              {[
-                { icon: Clock,        label: "Time this month",  value: `${stats?.totalTimeSpentThisMonth ?? 0} min`,       color: "text-blue-500"    },
-                { icon: Flame,        label: "Current streak",   value: `${streak} day${streak !== 1 ? "s" : ""}`,          color: "text-amber-500"   },
-                { icon: CheckCircle2, label: "Courses completed", value: String(completed),                                  color: "text-emerald-500" },
-                { icon: Star,         label: "Avg completion",   value: `${Math.round(Number(stats?.avgCompletionPercent) || 0)}%`, color: "text-violet-500"  },
-              ].map(({ icon: Icon, label, value, color }) => (
-                <div key={label} className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-white/[0.04] last:border-0">
-                  <div className="flex items-center gap-2">
-                    <Icon className={`w-4 h-4 ${color}`} />
-                    <span className="text-xs text-gray-600 dark:text-gray-400">{label}</span>
-                  </div>
-                  <span className="text-xs font-black text-gray-900 dark:text-white">{value}</span>
-                </div>
-              ))}
+              {statsLoading
+                ? Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-white/[0.04] last:border-0">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                        <div className="h-3 w-24 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                      </div>
+                      <div className="h-3 w-10 rounded bg-gray-100 dark:bg-white/[0.06] animate-pulse" />
+                    </div>
+                  ))
+                : [
+                    { icon: Clock,        label: "Time this month",   value: `${stats?.totalTimeSpentThisMonth ?? 0} min`,       color: "text-blue-500"    },
+                    { icon: Flame,        label: "Current streak",    value: `${streak} day${streak !== 1 ? "s" : ""}`,          color: "text-amber-500"   },
+                    { icon: CheckCircle2, label: "Courses completed", value: String(completed),                                  color: "text-emerald-500" },
+                    { icon: Star,         label: "Avg completion",    value: `${Math.round(Number(stats?.avgCompletionPercent) || 0)}%`, color: "text-violet-500"  },
+                  ].map(({ icon: Icon, label, value, color }) => (
+                    <div key={label} className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-white/[0.04] last:border-0">
+                      <div className="flex items-center gap-2">
+                        <Icon className={`w-4 h-4 ${color}`} />
+                        <span className="text-xs text-gray-600 dark:text-gray-400">{label}</span>
+                      </div>
+                      <span className="text-xs font-black text-gray-900 dark:text-white">{value}</span>
+                    </div>
+                  ))
+              }
             </div>
           </Card>
         </Fade>

@@ -1,13 +1,14 @@
 // src/dashboards/instructor-dashboard/InstructorLayout.tsx
 import { type ReactNode } from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, ScrollRestoration } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useDashboardUser } from "@/hooks/useDashboardUser";
 import { InstructorSidebar, InstructorSidebarProvider } from "./InstructorSidebar";
 import { InstructorNavbar } from "./InstructorNavbar";
 
 function Guard({ children }: { children: ReactNode }) {
-  const { user, role } = useDashboardUser();
+  const { user, role, isLoading } = useDashboardUser();
+  if (isLoading) return null;
   if (!user || !role) return <Navigate to="/instructor/login" replace />;
   if (role !== "instructor") {
     if (role === "admin") return <Navigate to="/dashboard" replace />;
@@ -19,6 +20,7 @@ function Guard({ children }: { children: ReactNode }) {
 export function InstructorLayout({ children }: { children?: ReactNode }) {
   return (
     <Guard>
+      <ScrollRestoration />
       <InstructorSidebarProvider>
         <div className="min-h-screen bg-[#f8fafc] dark:bg-[#080d18]">
           <div className="fixed inset-0 z-0 pointer-events-none opacity-[0.018]"

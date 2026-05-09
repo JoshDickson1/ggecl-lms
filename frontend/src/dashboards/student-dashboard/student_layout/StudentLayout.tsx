@@ -1,13 +1,19 @@
 // src/dashboards/student-dashboard/StudentLayout.tsx
 import { type ReactNode } from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, ScrollRestoration } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useDashboardUser } from "@/hooks/useDashboardUser";
 import { StudentSidebar, StudentSidebarProvider } from "./StudentSidebar";
 import { StudentNavbar } from "./StudentNavbar";
 
 function Guard({ children }: { children: ReactNode }) {
-  const { user, role } = useDashboardUser();
+  const { user, role, isLoading } = useDashboardUser();
+
+  // Wait for the session to resolve before making any redirect decision.
+  // Redirecting while isLoading is true unmounts the whole layout tree,
+  // which destroys all active query subscriptions and their cached data.
+  if (isLoading) return null;
+
   if (!user || !role) return <Navigate to="/login" replace />;
   if (role !== "student") {
     if (role === "admin") return <Navigate to="/dashboard" replace />;
@@ -19,6 +25,7 @@ function Guard({ children }: { children: ReactNode }) {
 export function StudentLayout({ children }: { children?: ReactNode }) {
   return (
     <Guard>
+      <ScrollRestoration />
       <StudentSidebarProvider>
         <div className="min-h-screen bg-[#f8fafc] dark:bg-[#080d18]">
           {/* Subtle dot grid */}

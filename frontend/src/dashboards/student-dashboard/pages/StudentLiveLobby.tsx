@@ -1,12 +1,48 @@
 // src/dashboards/student-dashboard/pages/StudentLiveLobby.tsx
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar, Clock, Radio, BookOpen, Play,
-  Headphones, AlertCircle, Loader2, RefreshCw,
+  Headphones, AlertCircle, RefreshCw,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import SchedulingService, { type LiveSession } from "@/services/scheduling.service";
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function Sk({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded-xl bg-gray-100 dark:bg-white/[0.06] ${className}`} />;
+}
+
+function PageSkeleton() {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 items-start">
+      {/* Left column */}
+      <div className="space-y-5">
+        {/* Tab bar */}
+        <Sk className="h-10 w-56 rounded-2xl" />
+        {/* Session cards */}
+        {[0, 1, 2].map(i => (
+          <div key={i} className="rounded-2xl border border-gray-100 dark:border-white/[0.07] bg-white dark:bg-white/[0.02] p-5 flex items-center gap-4">
+            <Sk className="w-12 h-12 rounded-2xl flex-shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Sk className="h-3 w-20 rounded-lg" />
+              <Sk className="h-4 w-3/4 rounded-lg" />
+              <Sk className="h-3 w-1/2 rounded-lg" />
+            </div>
+            <Sk className="h-9 w-24 rounded-2xl flex-shrink-0" />
+          </div>
+        ))}
+      </div>
+      {/* Right column */}
+      <div className="space-y-4">
+        <Sk className="h-44 rounded-2xl" />
+        <Sk className="h-16 rounded-2xl" />
+      </div>
+    </div>
+  );
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -130,26 +166,25 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 export default function StudentLiveLobby() {
   const navigate = useNavigate();
-
-  const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
 
-  const loadSessions = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await SchedulingService.listSessions({ limit: 100 });
-      setSessions(Array.isArray(res.data) ? res.data : []);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load sessions.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const {
+    data,
+    isLoading: loading,
+    isError,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["live-sessions"],
+    queryFn: () => SchedulingService.listSessions({ limit: 100 }),
+    // Live sessions change frequently — keep stale time short so the list
+    // stays fresh when the student navigates back to this page.
+    staleTime: 1000 * 30, // 30 seconds
+    refetchInterval: 1000 * 60, // poll every minute for status changes
+  });
 
-  useEffect(() => { loadSessions(); }, [loadSessions]);
+  const sessions = Array.isArray(data?.data) ? data.data : [];
+  const error = isError ? (queryError instanceof Error ? queryError.message : "Failed to load sessions.") : "";
 
   const liveSessions     = sessions.filter(s => s.status === "LIVE");
   const upcomingSessions = sessions.filter(s => s.status === "SCHEDULED");
@@ -182,7 +217,11 @@ export default function StudentLiveLobby() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 items-start">
 
+          {/* ── Skeleton while loading ── */}
+          {loading && <PageSkeleton />}
+
           {/* ── Left: Session list ── */}
+          {!loading && (
           <div className="space-y-5">
 
             {/* Live NOW banner */}
@@ -217,15 +256,9 @@ export default function StudentLiveLobby() {
               ))}
             </div>
 
-            {loading && (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-red-500" />
-              </div>
-            )}
+            {error && <ErrorState message={error} onRetry={refetch} />}
 
-            {!loading && error && <ErrorState message={error} onRetry={loadSessions} />}
-
-            {!loading && !error && (
+            {!error && (
               <AnimatePresence mode="wait">
                 {tab === "upcoming" && (
                   <motion.div key="up" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
@@ -246,8 +279,10 @@ export default function StudentLiveLobby() {
               </AnimatePresence>
             )}
           </div>
+          )}
 
           {/* ── Right: Info panel ── */}
+          {!loading && (
           <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }}
             className="space-y-4 lg:sticky lg:top-6">
 
@@ -291,6 +326,7 @@ export default function StudentLiveLobby() {
               </p>
             </div>
           </motion.div>
+          )}
         </div>
       </div>
     </div>

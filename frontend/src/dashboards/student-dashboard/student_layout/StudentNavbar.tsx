@@ -101,14 +101,14 @@ function NotificationBell() {
   const queryClient  = useQueryClient();
 
   const { data, isLoading } = useQuery<ActivityResponse>({
-    queryKey: ["activities-navbar"],
+    queryKey: ["activities-feed", 5],
     queryFn:  () => ActivityService.getFeed({ limit: 5 }) as Promise<ActivityResponse>,
-    refetchInterval: 60_000, // refresh every 60s
+    refetchInterval: 60_000, // refresh every 60s — drives the unread badge
   });
 
   const markAllRead = useMutation({
     mutationFn: () => ActivityService.markAllAsRead(),
-    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ["activities-navbar"] }),
+    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ["activities-feed"] }),
   });
 
   const notifications = data?.data ?? [];

@@ -13,7 +13,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,   // 5 min — data is fresh, no refetch on revisit
+      gcTime:    1000 * 60 * 15,  // 15 min — keep inactive cache alive across page navigations
+      refetchOnWindowFocus: false, // don't refetch just because user alt-tabbed back
     },
   },
 });

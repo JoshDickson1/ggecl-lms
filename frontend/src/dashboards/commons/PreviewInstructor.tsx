@@ -26,38 +26,7 @@ import {
   Hash,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import UserService from "@/services/user.service";
-
-interface ApiUser {
-  id: string;
-  name: string;
-  email: string;
-  image?: string | null;
-  location?: string | null;
-  gender?: "MALE" | "FEMALE" | "OTHER";
-  role?: "STUDENT" | "INSTRUCTOR" | "ADMIN";
-  createdAt: string;
-  instructorProfile?: {
-    id: string;
-    userId: string;
-    department?: string;
-    bio?: string | null;
-    description?: string | null;
-    specialization?: string | null;
-    professionalTitle?: string | null;
-    professionalExperience?: string | null;
-    phoneNumber?: string | null;
-    tags?: string[];
-    areasOfExpertise?: string[];
-    teachingCategories?: string[];
-    website?: string | null;
-    github?: string | null;
-    twitter?: string | null;
-    linkedin?: string | null;
-    youtube?: string | null;
-    recognitions?: string[] | null;
-  } | null;
-}
+import UserService, { type PublicInstructorProfile } from "@/services/user.service";
 
 function fmt(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -352,9 +321,9 @@ export default function PreviewInstructor() {
   const [activeTab, setActiveTab] = useState<"about" | "courses" | "students" | "reviews">("about");
   const [showModal, setShowModal] = useState(false);
 
-  const { data: apiUser, isLoading } = useQuery<ApiUser>({
-    queryKey: ["user", id],
-    queryFn: async () => UserService.findOne(id!) as Promise<ApiUser>,
+  const { data: apiUser, isLoading } = useQuery<PublicInstructorProfile>({
+    queryKey: ["instructor-profile", id],
+    queryFn: async () => UserService.findOneInstructor(id!) as Promise<PublicInstructorProfile>,
     enabled: !!id,
   });
 
@@ -414,15 +383,15 @@ export default function PreviewInstructor() {
     enabled: !!id,
   });
 
-  const profile = apiUser?.instructorProfile;
+  const profile = apiUser;
   const ins = {
-    name:           apiUser?.name ?? "Instructor",
-    avatar:         initials(apiUser?.name ?? "I"),
+    name:           apiUser?.user?.name ?? "Instructor",
+    avatar:         initials(apiUser?.user?.name ?? "I"),
     avatarBg:       "bg-gradient-to-br from-blue-600 to-indigo-700",
     title:          profile?.professionalTitle ?? profile?.specialization ?? "Instructor",
     bio:            profile?.bio ?? profile?.description ?? "No bio provided.",
-    location:       apiUser?.location ?? "—",
-    email:          apiUser?.email ?? "",
+    location:       apiUser?.user?.location ?? "—",
+    email:          apiUser?.user?.email ?? "",
     phoneNumber:    profile?.phoneNumber ?? "—",
     website:        profile?.website ?? undefined as string | undefined,
     github:         profile?.github ?? undefined as string | undefined,
@@ -434,7 +403,7 @@ export default function PreviewInstructor() {
     areasOfExpertise: profile?.areasOfExpertise ?? [],
     tags:           profile?.tags ?? [],
     teachingCategories: profile?.teachingCategories ?? [],
-    recognitions:   profile?.recognitions ?? [],
+    recognitions:   [], // Not available in API
     // Use real API data or fallback to empty arrays
     badges:         instructorStats?.badges || [],
     rating:         instructorStats?.averageRating || 0,
@@ -532,8 +501,8 @@ export default function PreviewInstructor() {
                 <div className="w-24 h-24 rounded-[20px] overflow-hidden
                   ring-4 ring-white dark:ring-[#0f1623]
                   shadow-[0_8px_32px_rgba(59,130,246,0.3)]">
-                  {apiUser?.image
-                    ? <img src={apiUser.image} alt={ins.name} className="w-full h-full object-cover" />
+                  {apiUser?.user?.image
+                    ? <img src={apiUser.user.image} alt={ins.name} className="w-full h-full object-cover" />
                     : <div className={`w-full h-full flex items-center justify-center text-3xl font-black text-white ${ins.avatarBg}`}>{ins.avatar}</div>
                   }
                 </div>
@@ -763,7 +732,7 @@ export default function PreviewInstructor() {
                     Recognitions & Awards
                   </h3>
                   <ul className="space-y-2">
-                    {ins.recognitions.map((recognition, index) => (
+                    {ins.recognitions.map((recognition: string, index: number) => (
                       <li key={index} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
                         <Trophy className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
                         <span>{recognition}</span>

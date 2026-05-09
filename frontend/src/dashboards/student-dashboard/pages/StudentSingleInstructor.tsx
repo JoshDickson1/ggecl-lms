@@ -1,16 +1,15 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowRight, Star, Users, BookOpen,
-  Globe, Mail, Award, CheckCircle,
-  MessageSquare, X, Send, Loader2, Play,
+  ArrowRight, BookOpen,
+  Globe, Mail, CheckCircle,
+  Play,
   ChevronDown, ChevronUp,
 } from "lucide-react";
-import UserService from "@/services/user.service";
+import UserService, { type PublicInstructorProfile } from "@/services/user.service";
 import CoursesService from "@/services/course.service";
-import ReviewService from "@/services/review.service";
 import EnrollmentService from "@/services/enrollment.service";
 import { PageHeroBg } from "@/landing/pages/SingleCategory";
 import { ApiErrorPage } from "@/components/ui/ApiError";
@@ -35,40 +34,6 @@ function avatarBg(id: string): string {
 
 function initials(name: string): string {
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-}
-
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-// ─── Stars ────────────────────────────────────────────────────────────────────
-function Stars({ rating, size = 14, interactive = false, onRate }: {
-  rating: number;
-  size?: number;
-  interactive?: boolean;
-  onRate?: (r: number) => void;
-}) {
-  const [hovered, setHovered] = useState(0);
-  const display = interactive ? (hovered || Math.round(rating)) : Math.round(rating);
-  return (
-    <span className="flex items-center gap-[2px]">
-      {Array.from({ length: 5 }, (_, i) => (
-        <svg
-          key={i}
-          width={size} height={size} viewBox="0 0 24 24"
-          fill={i + 1 <= display ? "#FFC806" : "#374151"}
-          className={interactive ? "cursor-pointer transition-transform hover:scale-110" : ""}
-          onMouseEnter={() => interactive && setHovered(i + 1)}
-          onMouseLeave={() => interactive && setHovered(0)}
-          onClick={() => interactive && onRate?.(i + 1)}
-        >
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-        </svg>
-      ))}
-    </span>
-  );
 }
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
@@ -104,166 +69,18 @@ function PageSkeleton() {
   );
 }
 
-// ─── Review Modal ─────────────────────────────────────────────────────────────
-interface ReviewModalProps {
-  instructorName: string;
-  courses: { id: string; title: string }[];
-  onClose: () => void;
-}
-
-function ReviewModal({ instructorName, courses, onClose }: ReviewModalProps) {
-  const qc = useQueryClient();
-  const [selectedCourse, setSelectedCourse] = useState(courses[0]?.id ?? "");
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState("");
-  const [done, setDone] = useState(false);
-  const [serverError, setServerError] = useState("");
-
-  const { mutate, isPending } = useMutation({
-    mutationFn: () => ReviewService.create({ courseId: selectedCourse, rating, comment: comment.trim() }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["instructor-reviews-public"] });
-      setDone(true);
-    },
-    onError: (err: any) => {
-      setServerError(err?.message ?? "Could not submit review. Please try again.");
-    },
-  });
-
-  function handleSubmit() {
-    if (!selectedCourse || rating === 0 || isPending) return;
-    setServerError("");
-    mutate();
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.92, y: 16 }}
-        transition={{ duration: 0.2 }}
-        onClick={e => e.stopPropagation()}
-        className="w-full max-w-md rounded-2xl p-6 bg-white dark:bg-[#0f1420] border border-gray-100 dark:border-white/[0.08] shadow-[0_24px_60px_rgba(0,0,0,0.25)]"
-      >
-        {done ? (
-          <div className="text-center py-4">
-            <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 flex items-center justify-center mx-auto mb-3">
-              <CheckCircle className="w-7 h-7 text-emerald-500" />
-            </div>
-            <p className="font-bold text-gray-900 dark:text-white mb-1">Review submitted!</p>
-            <p className="text-sm text-gray-400">Thanks for sharing your feedback.</p>
-            <button onClick={onClose} className="mt-5 px-5 py-2 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors">
-              Done
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                  <MessageSquare className="w-4 h-4" />
-                </div>
-                <p className="font-bold text-gray-900 dark:text-white">Review {instructorName.split(" ")[0]}</p>
-              </div>
-              <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {courses.length === 0 ? (
-              <div className="text-center py-6">
-                <BookOpen className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">You need to be enrolled in one of this instructor's courses to leave a review.</p>
-                <button onClick={onClose} className="mt-4 px-5 py-2 rounded-xl text-sm font-bold bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors">
-                  Close
-                </button>
-              </div>
-            ) : (
-              <>
-            {/* Course selector */}
-            {courses.length > 1 && (
-              <div className="mb-4">
-                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 block">Course</label>
-                <select
-                  value={selectedCourse}
-                  onChange={e => setSelectedCourse(e.target.value)}
-                  className="w-full text-sm rounded-xl border border-gray-200 dark:border-white/[0.10] bg-gray-50 dark:bg-white/[0.04] px-3 py-2 text-gray-800 dark:text-white focus:outline-none focus:border-blue-400"
-                >
-                  {courses.map(c => (
-                    <option key={c.id} value={c.id}>{c.title}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Rating */}
-            <div className="mb-4">
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 block">Rating</label>
-              <Stars rating={rating} size={28} interactive onRate={setRating} />
-              {rating > 0 && (
-                <span className="text-xs text-gray-400 mt-1.5 block">
-                  {["", "Poor", "Fair", "Good", "Very Good", "Excellent"][rating]}
-                </span>
-              )}
-            </div>
-
-            {/* Comment */}
-            <div className="mb-4">
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 block">Comment (optional)</label>
-              <textarea
-                value={comment}
-                onChange={e => setComment(e.target.value)}
-                rows={3}
-                placeholder="Share your experience..."
-                className="w-full text-sm rounded-xl border border-gray-200 dark:border-white/[0.10] bg-gray-50 dark:bg-white/[0.04] px-3 py-2.5 text-gray-800 dark:text-white placeholder-gray-400 focus:outline-none focus:border-blue-400 resize-none"
-              />
-            </div>
-
-            {serverError && (
-              <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-lg px-3 py-2 mb-3">
-                {serverError}
-              </p>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                onClick={handleSubmit}
-                disabled={rating === 0 || !selectedCourse || isPending}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
-              >
-                {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {isPending ? "Submitting…" : "Submit Review"}
-              </button>
-              <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors">
-                Cancel
-              </button>
-            </div>
-              </>
-            )}
-          </>
-        )}
-      </motion.div>
-    </motion.div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function SingleInstructor() {
   const { id } = useParams<{ id: string }>();
   const [showContact, setShowContact] = useState(false);
-  const [showReview, setShowReview] = useState(false);
   const [showAllExpertise, setShowAllExpertise] = useState(false);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
-  const { data: profileRaw, isLoading: profileLoading, isError: profileError, refetch: refetchProfile } = useQuery({
-    queryKey: ["public-user", id],
-    queryFn: () => UserService.findOnePublic(id!),
+  const { data: profileRaw, isLoading: profileLoading, isError: profileError, refetch: refetchProfile } = useQuery<PublicInstructorProfile>({
+    queryKey: ["instructor-public", id],
+    queryFn: () => UserService.findOneInstructorPublic(id!),
     enabled: !!id,
+    retry: 1,
   });
 
   const { data: coursesRaw } = useQuery({
@@ -272,11 +89,7 @@ export default function SingleInstructor() {
     enabled: !!id,
   });
 
-  const { data: reviewsRaw } = useQuery({
-    queryKey: ["instructor-reviews-public", id],
-    queryFn: () => ReviewService.getInstructorReviews(id!),
-    enabled: !!id,
-  });
+
 
   const { data: enrollmentsRaw } = useQuery({
     queryKey: ["enrollments-mine"],
@@ -284,24 +97,16 @@ export default function SingleInstructor() {
   });
 
   // ── Normalize ──────────────────────────────────────────────────────────────
-  const profile = profileRaw as any;
-  const name = profile?.name ?? "Instructor";
-  const image = profile?.image ?? null;
-  const ip = profile?.instructorProfile ?? {};
-  const bio = ip.bio ?? ip.description ?? "";
-  const specialization = ip.specialization ?? "";
-  const expertise: string[] = ip.areasOfExpertise ?? [];
-  const website: string | null = ip.website ?? null;
-  const email: string | null = profile?.email ?? null;
+  const profile = profileRaw;
+  const name = profile?.user?.name ?? "Instructor";
+  const image = profile?.user?.image ?? null;
+  const bio = profile?.bio ?? profile?.description ?? "";
+  const specialization = profile?.specialization ?? "";
+  const expertise: string[] = profile?.areasOfExpertise ?? [];
+  const website: string | null = profile?.website ?? null;
+  const email: string | null = profile?.user?.email ?? null;
 
-  // Reviews — handle { overallAverage, totalReviews, perCourse } or { average, total, ... }
-  const reviewsData = reviewsRaw as any;
-  const overallRating: number =
-    reviewsData?.overallAverage ?? reviewsData?.average ?? reviewsData?.avgRating ?? 0;
-  const totalReviews: number =
-    reviewsData?.totalReviews ?? reviewsData?.reviewCount ?? reviewsData?.total ?? reviewsData?.count ?? 0;
-  const perCourseReviews: { courseId: string; title: string; reviewCount: number; averageRating: number }[] =
-    reviewsData?.perCourse ?? [];
+
 
   // Courses from API (may be empty if backend doesn't filter by instructorId for students)
   const coursesData = coursesRaw as any;
@@ -316,17 +121,7 @@ export default function SingleInstructor() {
   // Prefer API course list if populated; fall back to enrolled
   const courses: any[] = apiCourses.length > 0 ? apiCourses : enrolledInstructorCourses;
 
-  // Total students: from courses or profile stats
-  const totalStudents: number =
-    courses.reduce((s: number, c: any) => s + (c.enrollmentCount ?? 0), 0) ||
-    (profile?.stats?.totalStudents ?? 0);
-
   const visibleExpertise = showAllExpertise ? expertise : expertise.slice(0, 5);
-
-  // Courses the student can review (enrolled, by this instructor)
-  const reviewCourses = enrolledInstructorCourses.length > 0
-    ? enrolledInstructorCourses.map((c: any) => ({ id: c.id, title: c.title }))
-    : courses.map((c: any) => ({ id: c.id, title: c.title }));
 
   if (profileLoading) return <PageSkeleton />;
   if (profileError) return <ApiErrorPage onRetry={refetchProfile} message="Failed to load instructor profile." />;
@@ -392,10 +187,7 @@ export default function SingleInstructor() {
               {/* Stats row */}
               <div className="flex flex-wrap gap-5 mb-6">
                 {[
-                  { icon: Users, n: fmt(totalStudents), l: "Students" },
-                  { icon: Star, n: String(totalReviews.toLocaleString()), l: "Reviews" },
                   { icon: BookOpen, n: String(courses.length), l: "Courses" },
-                  { icon: Award, n: overallRating > 0 ? overallRating.toFixed(1) : "—", l: "Avg. Rating" },
                 ].map(({ icon: Icon, n, l }) => (
                   <div key={l} className="flex items-center gap-2.5">
                     <div className="w-9 h-9 rounded-xl flex-shrink-0 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
@@ -420,18 +212,11 @@ export default function SingleInstructor() {
                   <Mail className="w-3.5 h-3.5" /> Contact Instructor
                 </motion.button>
 
-                <motion.button
-                  onClick={() => setShowReview(true)}
-                  whileHover={{ y: -2 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-200 dark:border-white/[0.10] text-gray-600 dark:text-gray-300 text-sm font-medium hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400 transition-all bg-white/50 dark:bg-white/[0.03]"
-                >
-                  <Star className="w-3.5 h-3.5" /> Write a Review
-                </motion.button>
-
                 {website && (
                   <motion.a
-                    href={website} target="_blank" rel="noopener noreferrer"
+                    href={website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
                     whileHover={{ y: -1 }}
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-gray-200 dark:border-white/[0.10] text-gray-600 dark:text-gray-300 text-sm font-medium capitalize hover:border-blue-300 hover:text-blue-600 dark:hover:border-blue-700 dark:hover:text-blue-400 transition-all bg-white/50 dark:bg-white/[0.03]"
                   >
@@ -517,27 +302,7 @@ export default function SingleInstructor() {
             </motion.div>
           )}
 
-          {/* Per-course ratings */}
-          {perCourseReviews.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-              className="rounded-[22px] p-7 bg-white dark:bg-[#0f1420] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-            >
-              <h2 className="font-syne text-lg font-extrabold text-gray-900 dark:text-white tracking-tight mb-5">Course Ratings</h2>
-              <div className="flex flex-col gap-3">
-                {perCourseReviews.map(c => (
-                  <div key={c.courseId} className="flex items-center justify-between gap-4 p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
-                    <p className="text-sm text-gray-700 dark:text-gray-300 flex-1 min-w-0 truncate">{c.title}</p>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Stars rating={c.averageRating} size={12} />
-                      <span className="text-xs font-bold text-amber-500">{c.averageRating.toFixed(1)}</span>
-                      <span className="text-xs text-gray-400">({c.reviewCount})</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
+
         </div>
 
         {/* ── Right: sidebar ───────────────────────────────────────────────── */}
@@ -549,12 +314,9 @@ export default function SingleInstructor() {
             className="rounded-[22px] p-5 bg-white dark:bg-[#0f1420] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
           >
             <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">At a Glance</p>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 gap-2.5">
               {[
-                { n: fmt(totalStudents), s: "", l: "Students" },
-                { n: totalReviews.toLocaleString(), s: "", l: "Reviews" },
                 { n: String(courses.length), s: "", l: "Courses" },
-                { n: overallRating > 0 ? overallRating.toFixed(1) : "—", s: overallRating > 0 ? "★" : "", l: "Rating" },
               ].map(({ n, s, l }) => (
                 <div key={l} className="flex flex-col items-center py-3.5 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100/60 dark:border-blue-900/20 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
                   <div className="font-syne text-2xl font-extrabold text-gray-900 dark:text-white leading-none">
@@ -565,25 +327,6 @@ export default function SingleInstructor() {
               ))}
             </div>
           </motion.div>
-
-          {/* Overall rating */}
-          {overallRating > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}
-              className="rounded-[22px] p-5 bg-white dark:bg-[#0f1420] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)]"
-            >
-              <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-4">Student Rating</p>
-              <div className="flex items-center gap-3">
-                <span className="font-syne text-5xl font-extrabold text-gray-900 dark:text-white leading-none">
-                  {overallRating.toFixed(1)}
-                </span>
-                <div>
-                  <Stars rating={overallRating} size={15} />
-                  <p className="text-[11px] text-gray-400 mt-1">Based on {totalReviews.toLocaleString()} reviews</p>
-                </div>
-              </div>
-            </motion.div>
-          )}
 
           {/* Courses */}
           {courses.length > 0 && (
@@ -610,17 +353,6 @@ export default function SingleInstructor() {
                       <p className="text-xs font-bold text-gray-800 dark:text-white line-clamp-2 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                         {c.title}
                       </p>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        {c.averageRating > 0 && (
-                          <>
-                            <Stars rating={c.averageRating} size={10} />
-                            <span className="text-[10px] font-bold text-amber-500">{c.averageRating.toFixed(1)}</span>
-                          </>
-                        )}
-                        {c.enrollmentCount > 0 && (
-                          <span className="text-[10px] text-gray-400">{fmt(c.enrollmentCount)} students</span>
-                        )}
-                      </div>
                       <p className="text-xs font-extrabold text-gray-900 dark:text-white mt-1">
                         {c.price === 0 ? "Free" : `$${c.price}`}
                       </p>
@@ -646,16 +378,10 @@ export default function SingleInstructor() {
                 Send Message
                 <span className="ml-auto text-gray-300 dark:text-gray-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all">›</span>
               </button>
-              <button onClick={() => setShowReview(true)}
-                className="flex items-center gap-3 px-4 py-2.5 rounded-xl w-full border border-gray-100 dark:border-white/[0.07] text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-blue-200 dark:hover:border-blue-800/50 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 hover:text-blue-600 dark:hover:text-blue-400 transition-all group">
-                <div className="w-7 h-7 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/30 flex items-center justify-center text-blue-500 dark:text-blue-400">
-                  <Star className="w-3.5 h-3.5" />
-                </div>
-                Write a Review
-                <span className="ml-auto text-gray-300 dark:text-gray-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all">›</span>
-              </button>
               {website && (
-                <a href={website} target="_blank" rel="noopener noreferrer"
+                <a href={website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
                   className="flex items-center gap-3 px-4 py-2.5 rounded-xl w-full border border-gray-100 dark:border-white/[0.07] text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-blue-200 dark:hover:border-blue-800/50 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 hover:text-blue-600 dark:hover:text-blue-400 transition-all group">
                   <div className="w-7 h-7 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/30 flex items-center justify-center text-blue-500 dark:text-blue-400">
                     <Globe className="w-3.5 h-3.5" />
@@ -714,13 +440,7 @@ export default function SingleInstructor() {
           </motion.div>
         )}
 
-        {showReview && (
-          <ReviewModal
-            instructorName={name}
-            courses={reviewCourses}
-            onClose={() => setShowReview(false)}
-          />
-        )}
+
       </AnimatePresence>
     </div>
   );

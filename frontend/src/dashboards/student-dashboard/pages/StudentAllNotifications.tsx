@@ -161,32 +161,32 @@ export default function StudentAllNotifications() {
   const markOneMutation = useMutation({
     mutationFn: (id: string) => ActivityService.markAsRead(id),
     onSuccess:  () => {
-      queryClient.invalidateQueries({ queryKey: ["activities-all"]    });
-      queryClient.invalidateQueries({ queryKey: ["activities-navbar"] });
+      queryClient.invalidateQueries({ queryKey: ["activities-all"]  });
+      queryClient.invalidateQueries({ queryKey: ["activities-feed"] });
     },
   });
 
   const markAllMutation = useMutation({
     mutationFn: () => ActivityService.markAllAsRead(),
     onSuccess:  () => {
-      queryClient.invalidateQueries({ queryKey: ["activities-all"]    });
-      queryClient.invalidateQueries({ queryKey: ["activities-navbar"] });
+      queryClient.invalidateQueries({ queryKey: ["activities-all"]  });
+      queryClient.invalidateQueries({ queryKey: ["activities-feed"] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => ActivityService.remove(id),
     onSuccess:  () => {
-      queryClient.invalidateQueries({ queryKey: ["activities-all"]    });
-      queryClient.invalidateQueries({ queryKey: ["activities-navbar"] });
+      queryClient.invalidateQueries({ queryKey: ["activities-all"]  });
+      queryClient.invalidateQueries({ queryKey: ["activities-feed"] });
     },
   });
 
   const clearAllMutation = useMutation({
     mutationFn: () => ActivityService.clearAll(),
     onSuccess:  () => {
-      queryClient.invalidateQueries({ queryKey: ["activities-all"]    });
-      queryClient.invalidateQueries({ queryKey: ["activities-navbar"] });
+      queryClient.invalidateQueries({ queryKey: ["activities-all"]  });
+      queryClient.invalidateQueries({ queryKey: ["activities-feed"] });
     },
   });
 

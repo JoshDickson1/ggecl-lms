@@ -1,6 +1,11 @@
 // src/hooks/useDashboardUser.tsx
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { authClient } from "@/lib/auth-client";
+import {
+  readSessionCache,
+  writeSessionCache,
+  clearSessionCache,
+} from "@/lib/session-cache";
 
 const { useSession } = authClient;
 
@@ -28,43 +33,87 @@ type DashboardAuthCtx = {
 
 const Ctx = createContext<DashboardAuthCtx | null>(null);
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function rawToDashboardUser(raw: {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+  role?: string;
+}): DashboardUser {
+  const nameParts = (raw.name ?? "").trim().split(" ");
+  const firstName = nameParts[0] ?? "";
+  const lastName  = nameParts.slice(1).join(" ") || "";
+  const role      = (raw.role ?? "student").toLowerCase() as Role;
+  return {
+    id: raw.id,
+    firstName,
+    lastName,
+    email:     raw.email,
+    role,
+    avatarUrl: raw.image ?? undefined,
+  };
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function DashboardAuthProvider({ children }: { children: ReactNode }) {
   const { data: session, isPending } = useSession();
 
-  // better-auth session.user shape:
-  // { id, name, email, image, role, ... }
   const raw = session?.user as
     | { id: string; name: string; email: string; image?: string | null; role?: string }
     | undefined;
 
-  // Split "First Last" → firstName / lastName
-  const nameParts  = (raw?.name ?? "").trim().split(" ");
-  const firstName  = nameParts[0] ?? "";
-  const lastName   = nameParts.slice(1).join(" ") || "";
+  // Live user from network
+  const liveUser: DashboardUser | null = raw ? rawToDashboardUser(raw) : null;
 
-  const rawRole    = (raw?.role ?? "student").toLowerCase() as Role;
-
-  const user: DashboardUser | null = raw
-    ? {
-        id:        raw.id,
-        firstName,
-        lastName,
-        email:     raw.email,
-        role:      rawRole,
-        avatarUrl: raw.image ?? undefined,
-      }
+  // Cached user from localStorage — available synchronously on first render
+  const cachedRaw = readSessionCache();
+  const cachedUser: DashboardUser | null = cachedRaw
+    ? rawToDashboardUser({
+        id:    cachedRaw.id,
+        name:  cachedRaw.name,
+        email: cachedRaw.email,
+        image: null,
+        role:  cachedRaw.role,
+      })
     : null;
 
-  const logout = () => authClient.signOut();
+  // Use live user once resolved; fall back to cache while pending
+  const user: DashboardUser | null = isPending ? cachedUser : liveUser;
+
+  // Keep cache in sync
+  useEffect(() => {
+    if (!isPending) {
+      if (raw) {
+        writeSessionCache({
+          id:    raw.id,
+          name:  raw.name,
+          email: raw.email,
+          role:  raw.role ?? "student",
+          image: raw.image,
+        });
+      } else {
+        clearSessionCache();
+      }
+    }
+  }, [isPending, raw]);
+
+  // Only block rendering if we have no cached user to fall back on
+  const isLoading = isPending && !cachedUser;
+
+  const logout = () => {
+    clearSessionCache();
+    authClient.signOut();
+  };
 
   return (
     <Ctx.Provider
       value={{
         user,
         role:         user?.role ?? null,
-        isLoading:    isPending,
+        isLoading,
         isAdmin:      user?.role === "admin",
         isStudent:    user?.role === "student",
         isInstructor: user?.role === "instructor",
@@ -83,8 +132,6 @@ export function useDashboardUser(): DashboardAuthCtx {
   if (!ctx) throw new Error("useDashboardUser must be inside <DashboardAuthProvider>");
   return ctx;
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function getInitials(user: DashboardUser | null): string {
   if (!user) return "??";
