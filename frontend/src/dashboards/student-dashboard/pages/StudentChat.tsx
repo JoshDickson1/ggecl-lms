@@ -667,7 +667,13 @@ function ChatView({
   room: RoomSummaryItem; roomIndex: number; currentUserId: string; onBack: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // Seed messages from cache immediately so they show while refetching
+  const cachedMessages = queryClient.getQueryData<{ data: ChatMessage[] }>(["chat-messages", room.id]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    cachedMessages ? [...cachedMessages.data].reverse() : []
+  );
+
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -681,6 +687,7 @@ function ChatView({
       setMessages([...res.data].reverse());
       return res;
     },
+    staleTime: 1000 * 30, // 30 seconds
   });
 
   const { data: roomDetail } = useQuery({
