@@ -6,16 +6,13 @@
   "devCommand": "cd frontend && npm run dev",
   "framework": "vite",
   "rewrites": [
-    { 
-      "source": "/(.*)", 
-      "destination": "/index.html" 
-    }
-  ],
-  "routes": [
     {
-      "src": "/[^.]+",
-      "dest": "/",
-      "status": 200
+      "source": "/api/:path*",
+      "destination": "https://site--ggecl-lms-backend--j5c4srwzm2wk.code.run/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }

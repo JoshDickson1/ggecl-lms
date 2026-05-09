@@ -523,7 +523,7 @@ function MessageInput({
   };
 
   return (
-    <div className="px-4 py-3 border-t border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
+    <div className="px-4 py-3 border-t border-gray-100 rounded-2xl dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
       {/* Reply strip */}
       {replyTo && (
         <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/30">
@@ -1078,7 +1078,13 @@ function ChatView({
   room: RoomSummaryItem; roomIndex: number; currentUserId: string; onBack: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // Seed messages from cache immediately so they show while refetching
+  const cachedMessages = queryClient.getQueryData<{ data: ChatMessage[] }>(["chat-messages", room.id]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    cachedMessages ? [...cachedMessages.data].reverse() : []
+  );
+
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -1092,6 +1098,7 @@ function ChatView({
       setMessages([...res.data].reverse());
       return res;
     },
+    staleTime: 1000 * 30, // 30 seconds — don't refetch if navigating back quickly
     retry: false,
   });
 
@@ -1213,7 +1220,7 @@ function ChatView({
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 rounded-2xl dark:border-white/[0.07] bg-white dark:bg-[#0f1623] flex-shrink-0">
         <button onClick={onBack} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition-all">
           <ChevronDown className="w-4 h-4 rotate-90" />
         </button>
@@ -1406,7 +1413,7 @@ export default function AdminChat() {
           </div>
         ) : (
           /* ── Active chat ── */
-          <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-[#0f1623]">
+          <div className="flex-1 flex flex-col min-h-0 m-2 rounded-2xl bg-white dark:bg-[#0f1623]">
             <ChatView
               room={activeRoom.room}
               roomIndex={activeRoom.index}
