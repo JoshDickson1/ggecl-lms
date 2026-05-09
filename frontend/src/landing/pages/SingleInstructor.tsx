@@ -1,5 +1,5 @@
 // src/landing/pages/SingleInstructor.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +10,8 @@ import {
 import { PageHeroBg } from "@/landing/pages/SingleCategory";
 import UserService, { type PublicInstructorProfile } from "@/services/user.service";
 import CoursesService from "@/services/course.service";
+import { getCurrency, formatCurrency, type CurrencyCode } from "@/lib/currency.utils";
+import { useCurrencyConverter } from "@/services/currency.service";
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 
@@ -77,7 +79,22 @@ function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
 
 // ─── Course snippet card ──────────────────────────────────────────────────────
 
-function CourseSnippetCard({ course, index }: { course: PublicCourse; index: number }) {
+function CourseSnippetCard({ 
+  course, 
+  index,
+  currency,
+  convertToNGN,
+}: { 
+  course: PublicCourse; 
+  index: number;
+  currency: CurrencyCode;
+  convertToNGN: ((usdAmount: number) => number | null) | undefined;
+}) {
+  // Calculate price in user's currency
+  const displayPrice = currency === 'NGN' && convertToNGN 
+    ? convertToNGN(course.price) 
+    : course.price;
+
   return (
     <motion.div whileHover={{ y: -2 }}
       className="flex gap-3 p-3 rounded-2xl bg-gray-50 dark:bg-white/[0.04]
@@ -104,7 +121,9 @@ function CourseSnippetCard({ course, index }: { course: PublicCourse; index: num
           </span>
           <span className="text-[10px] text-gray-400">{fmt(course._count?.enrollments ?? 0)} students</span>
         </div>
-        <p className="text-xs font-extrabold text-gray-900 dark:text-white mt-1">${course.price.toFixed(2)}</p>
+        <p className="text-xs font-extrabold text-gray-900 dark:text-white mt-1">
+          {displayPrice !== null ? formatCurrency(displayPrice, currency) : formatCurrency(course.price, 'USD')}
+        </p>
       </div>
     </motion.div>
   );
@@ -117,6 +136,15 @@ export default function SingleInstructor() {
   const [showAllExpertise, setShowAllExpertise] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [showContact, setShowContact] = useState(false);
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
+
+  // Get currency converter for real-time NGN conversion
+  const { convert: convertToNGN } = useCurrencyConverter();
+
+  // Detect currency on mount
+  useEffect(() => {
+    getCurrency().then(setCurrency);
+  }, []);
 
   // Fetch instructor public profile by instructorProfile.id
   const { data: instructor, isLoading, isError, error } = useQuery<PublicInstructorProfile>({
@@ -401,7 +429,15 @@ export default function SingleInstructor() {
                 <h2 className="font-syne text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">Their Courses</h2>
               </div>
               <div className="flex flex-col gap-3">
-                {instructorCourses.map((c, i) => <CourseSnippetCard key={c.id} course={c} index={i} />)}
+                {instructorCourses.map((c, i) => (
+                  <CourseSnippetCard 
+                    key={c.id} 
+                    course={c} 
+                    index={i}
+                    currency={currency}
+                    convertToNGN={convertToNGN}
+                  />
+                ))}
               </div>
             </motion.div>
           )}

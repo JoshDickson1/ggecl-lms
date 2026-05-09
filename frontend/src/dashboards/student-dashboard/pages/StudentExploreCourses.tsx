@@ -1,5 +1,6 @@
 // src/dashboards/student/pages/StudentExploreCourses.tsx
-import { useState, useMemo } from "react";import { motion, AnimatePresence } from "framer-motion";
+import { useState, useMemo, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   Search, SlidersHorizontal, X, Star, Clock, BookOpen,
@@ -10,6 +11,8 @@ import CoursesService, { CourseLevel } from "@/services/course.service";
 import ProgressService from "@/services/progress.service";
 import { useCart } from "@/services/cart.service";
 import { useWishlist } from "@/services/wishlist.service";
+import { getCurrency, formatCurrency, type CurrencyCode } from "@/lib/currency.utils";
+import { useCurrencyConverter } from "@/services/currency.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number) {
@@ -84,18 +87,25 @@ function CourseBadge({ badge }: { badge: Course["badge"] }) {
 }
 
 // ─── Course Card ──────────────────────────────────────────────────────────────
-function CourseCard({ course, index, cartCourseIds, wishlistCourseIds, addToCartMutation, toggleWishlistMutation }: {
+function CourseCard({ course, index, cartCourseIds, wishlistCourseIds, addToCartMutation, toggleWishlistMutation, currency, convertToNGN }: {
   course: Course;
   index: number;
   cartCourseIds: Set<string>;
   wishlistCourseIds: Set<string>;
   addToCartMutation: ReturnType<typeof useMutation<unknown, Error, string>>;
   toggleWishlistMutation: ReturnType<typeof useMutation<unknown, Error, { courseId: string; isWishlisted: boolean }>>;
+  currency: CurrencyCode;
+  convertToNGN: ((usdAmount: number) => number | null) | undefined;
 }) {
   const [hovered, setHovered] = useState(false);
   const carted = cartCourseIds.has(course.id);
   const wishlisted = wishlistCourseIds.has(course.id);
   const [enrollAnim, setCartAnim] = useState(false);
+  
+  // Calculate price in user's currency
+  const displayPrice = currency === 'NGN' && convertToNGN 
+    ? convertToNGN(course.price) 
+    : course.price;
   
   // Generate deterministic gradient based on course id
   const gradients = ["from-blue-500 to-indigo-600", "from-emerald-500 to-teal-600", "from-violet-500 to-purple-600", "from-sky-500 to-blue-500", "from-amber-500 to-orange-500", "from-rose-500 to-pink-600"];
@@ -213,8 +223,22 @@ function CourseCard({ course, index, cartCourseIds, wishlistCourseIds, addToCart
       {/* Price + Cart — outside card */}
       <div className="flex items-center justify-between px-1 pt-3 pb-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-lg font-black text-gray-900 dark:text-white">${course.price.toFixed(2)}</span>
-          {discount > 0 && <span className="text-sm text-gray-400 line-through">${(course.price * (1 + discount / 100)).toFixed(2)}</span>}
+          {displayPrice !== null ? (
+            <>
+              <span className="text-lg font-black text-gray-900 dark:text-white">
+                {formatCurrency(displayPrice, currency)}
+              </span>
+              {discount > 0 && (
+                <span className="text-sm text-gray-400 line-through">
+                  {formatCurrency(displayPrice * (1 + discount / 100), currency)}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-lg font-black text-gray-900 dark:text-white">
+              {formatCurrency(course.price, 'USD')}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -369,6 +393,15 @@ export default function StudentExploreCourses() {
   const [showCarted, setShowCarted] = useState(false);
   const [cartError, setCartError] = useState<string | null>(null);
   const [wishlistError, setWishlistError] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
+
+  // Get currency converter for real-time NGN conversion
+  const { convert: convertToNGN } = useCurrencyConverter();
+
+  // Detect currency on mount
+  useEffect(() => {
+    getCurrency().then(setCurrency);
+  }, []);
 
   // Fetch all courses — use authenticated endpoint so enrolled/cart state is accurate
   const { data: allCoursesData = [], isLoading: coursesLoading } = useQuery({
@@ -560,6 +593,8 @@ export default function StudentExploreCourses() {
                       wishlistCourseIds={wishlistCourseIds}
                       addToCartMutation={addToCartMutation}
                       toggleWishlistMutation={toggleWishlistMutation}
+                      currency={currency}
+                      convertToNGN={convertToNGN}
                     />
                   ))}
                 </AnimatePresence>

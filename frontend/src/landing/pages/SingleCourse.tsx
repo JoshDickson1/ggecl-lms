@@ -1,5 +1,5 @@
 // src/landing/pages/SingleCourse.tsx
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +15,8 @@ import WishlistService from "@/services/wishlist.service";
 import UserService from "@/services/user.service";
 import { useAuth } from "@/context/AuthProvider";
 import { SafeImage } from "@/components/SafeImage";
+import { getCurrency, formatCurrency, type CurrencyCode } from "@/lib/currency.utils";
+import { useCurrencyConverter } from "@/services/currency.service";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -223,7 +225,15 @@ function CurriculumSection({ section, index, open, onToggle }: {
 
 // ─── Purchase Card ────────────────────────────────────────────────────────────
 
-function PurchaseCard({ course }: { course: PublicCourse }) {
+function PurchaseCard({ 
+  course,
+  currency,
+  convertToNGN,
+}: { 
+  course: PublicCourse;
+  currency: CurrencyCode;
+  convertToNGN: ((usdAmount: number) => number | null) | undefined;
+}) {
   const { isStudent, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -288,8 +298,19 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
     fn();
   };
 
-  const origPrice = Math.round(course.price * 1.4 * 100) / 100;
-  const discount  = Math.round(((origPrice - course.price) / origPrice) * 100);
+  // Calculate prices in user's currency
+  const origPriceUSD = Math.round(course.price * 1.4 * 100) / 100;
+  const displayPrice = currency === 'NGN' && convertToNGN 
+    ? convertToNGN(course.price) 
+    : course.price;
+  const displayOriginalPrice = currency === 'NGN' && convertToNGN 
+    ? convertToNGN(origPriceUSD) 
+    : origPriceUSD;
+  
+  const discount = displayOriginalPrice && displayPrice
+    ? Math.round(((displayOriginalPrice - displayPrice) / displayOriginalPrice) * 100)
+    : 0;
+  
   const gradient  = GRADIENTS[0];
 
   return (
@@ -298,9 +319,13 @@ function PurchaseCard({ course }: { course: PublicCourse }) {
       <div className={`h-3 w-full bg-gradient-to-r ${gradient}`} />
       <div className="p-6 flex flex-col gap-5">
         <div className="flex items-end gap-3">
-          <span className="text-4xl font-black text-gray-900 dark:text-white">${course.price.toFixed(2)}</span>
+          <span className="text-4xl font-black text-gray-900 dark:text-white">
+            {displayPrice !== null ? formatCurrency(displayPrice, currency) : formatCurrency(course.price, 'USD')}
+          </span>
           <div className="flex flex-col pb-1">
-            <span className="text-sm text-gray-400 dark:text-gray-500 line-through">${origPrice.toFixed(2)}</span>
+            <span className="text-sm text-gray-400 dark:text-gray-500 line-through">
+              {displayOriginalPrice !== null ? formatCurrency(displayOriginalPrice, currency) : formatCurrency(origPriceUSD, 'USD')}
+            </span>
             <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{discount}% off</span>
           </div>
         </div>
@@ -431,6 +456,15 @@ export default function SingleCourse() {
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
 
   const [openSections, setOpenSections] = useState<number[]>([0]);
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
+
+  // Get currency converter for real-time NGN conversion
+  const { convert: convertToNGN } = useCurrencyConverter();
+
+  // Detect currency on mount
+  useEffect(() => {
+    getCurrency().then(setCurrency);
+  }, []);
 
   const { data: course, isLoading, isError } = useQuery<PublicCourse>({
     queryKey: ["course-public", id],
@@ -726,7 +760,11 @@ export default function SingleCourse() {
           <div className="w-full lg:w-80 xl:w-96 flex-shrink-0">
             <div className="lg:sticky lg:top-8">
               <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                <PurchaseCard course={course} />
+                <PurchaseCard 
+                  course={course}
+                  currency={currency}
+                  convertToNGN={convertToNGN}
+                />
               </motion.div>
 
               {/* Tags */}

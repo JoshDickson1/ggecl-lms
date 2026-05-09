@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   ShoppingCart, Trash2, Tag, ArrowRight, Star,
   Shield, Zap, ChevronRight, X, CheckCircle2,
   Gift, Lock, BookOpen, Heart, Loader2, AlertCircle,
 } from "lucide-react";
-// import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCart } from "@/services/cart.service";
 import { type CartCourse } from "@/services/cart.service";
+import { useCheckout } from "@/services/checkout.service";
+import { getCurrency, formatCurrency, type CurrencyCode } from "@/lib/currency.utils";
+import { useCurrencyConverter } from "@/services/currency.service";
 
 // ─── Promo codes (local) ──────────────────────────────────────────────────────
 const PROMO_CODES: Record<string, number> = {
@@ -23,15 +25,24 @@ function CartItem({
   onSaveForLater,
   removing,
   saving,
+  currency,
+  convertToNGN,
 }: {
   item: CartCourse;
   onRemove: () => void;
   onSaveForLater: () => void;
   removing: boolean;
   saving: boolean;
+  currency: CurrencyCode;
+  convertToNGN: ((usdAmount: number) => number | null) | undefined;
 }) {
   const { course } = item;
   const rating = course.totalRating > 0 ? (course.totalStar / course.totalRating).toFixed(1) : "—";
+  
+  // Calculate price in user's currency
+  const displayPrice = currency === 'NGN' && convertToNGN 
+    ? convertToNGN(course.price) 
+    : course.price;
 
   return (
     <motion.div
@@ -99,7 +110,7 @@ function CartItem({
           {removing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
         </button>
         <p className="text-base font-black text-gray-900 dark:text-white">
-          ${course.price.toFixed(2)}
+          {displayPrice !== null ? formatCurrency(displayPrice, currency) : formatCurrency(course.price, 'USD')}
         </p>
       </div>
     </motion.div>
@@ -112,17 +123,26 @@ function OrderSummary({
   onCheckout,
   clearing,
   onClear,
+  currency,
+  convertToNGN,
 }: {
   items: CartCourse[];
-  onCheckout: () => void;
+  onCheckout: (promoCode?: string) => void;
   clearing: boolean;
   onClear: () => void;
+  currency: CurrencyCode;
+  convertToNGN: ((usdAmount: number) => number | null) | undefined;
 }) {
   const [promoCode, setPromoCode] = useState("");
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
   const [promoError, setPromoError] = useState(false);
 
-  const subtotal = items.reduce((s, i) => s + i.course.price, 0);
+  // Calculate subtotal in user's currency
+  const subtotalUSD = items.reduce((s, i) => s + i.course.price, 0);
+  const subtotal = currency === 'NGN' && convertToNGN 
+    ? convertToNGN(subtotalUSD) || subtotalUSD 
+    : subtotalUSD;
+    
   const discountRate = appliedCode ? (PROMO_CODES[appliedCode] ?? 0) : 0;
   const promoDiscount = subtotal * discountRate;
   const total = subtotal - promoDiscount;
@@ -206,7 +226,7 @@ function OrderSummary({
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
             <span>Subtotal ({items.length} course{items.length !== 1 ? "s" : ""})</span>
-            <span>${subtotal.toFixed(2)}</span>
+            <span>{formatCurrency(subtotal, currency)}</span>
           </div>
           <AnimatePresence>
             {appliedCode && (
@@ -217,7 +237,7 @@ function OrderSummary({
                 <span className="flex items-center gap-1.5">
                   <Gift className="w-3.5 h-3.5" />Promo ({appliedCode})
                 </span>
-                <span>-${promoDiscount.toFixed(2)}</span>
+                <span>-{formatCurrency(promoDiscount, currency)}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -226,9 +246,9 @@ function OrderSummary({
         <div className="flex justify-between items-end mb-5">
           <span className="text-base font-black text-gray-900 dark:text-white">Total</span>
           <div className="text-right">
-            <span className="text-2xl font-black text-gray-900 dark:text-white">${total.toFixed(2)}</span>
+            <span className="text-2xl font-black text-gray-900 dark:text-white">{formatCurrency(total, currency)}</span>
             {appliedCode && (
-              <p className="text-xs text-gray-400 line-through">${subtotal.toFixed(2)}</p>
+              <p className="text-xs text-gray-400 line-through">{formatCurrency(subtotal, currency)}</p>
             )}
           </div>
         </div>
@@ -236,7 +256,7 @@ function OrderSummary({
         <motion.button
           whileHover={{ scale: 1.02, boxShadow: "0 10px 32px rgba(59,130,246,0.5)" }}
           whileTap={{ scale: 0.97 }}
-          onClick={onCheckout}
+          onClick={() => onCheckout(appliedCode || undefined)}
           className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl
             bg-blue-600 hover:bg-blue-500 text-white font-black text-sm
             shadow-[0_6px_24px_rgba(59,130,246,0.42)] transition-colors duration-200"
@@ -311,7 +331,7 @@ function EmptyCart() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function StudentDashboardCart() {
-  const navigate = useNavigate();
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
   
   // Use new optimistic hooks
   const { 
@@ -326,36 +346,41 @@ export default function StudentDashboardCart() {
     isClearing
   } = useCart();
 
-  const handleRemove = async (courseId: string) => {
-    try {
-      await removeFromCart(courseId);
-    } catch (error) {
-      console.error('Failed to remove from cart:', error);
-    }
+  const { initiateCheckout, isLoading: isCheckingOut } = useCheckout();
+  
+  // Get currency converter for real-time NGN conversion
+  const { convert: convertToNGN } = useCurrencyConverter();
+
+  // Detect currency on mount
+  useEffect(() => {
+    getCurrency().then(setCurrency);
+  }, []);
+
+  const handleRemove = (courseId: string) => {
+    removeFromCart(courseId);
   };
 
-  const handleMoveToWishlist = async (courseId: string) => {
-    try {
-      await moveToWishlist(courseId);
-    } catch (error) {
-      console.error('Failed to move to wishlist:', error);
-    }
+  const handleMoveToWishlist = (courseId: string) => {
+    moveToWishlist(courseId);
   };
 
-  const handleClearCart = async () => {
-    try {
-      await clearCart();
-    } catch (error) {
-      console.error('Failed to clear cart:', error);
-    }
+  const handleClearCart = () => {
+    clearCart();
+  };
+
+  const handleCheckout = (promoCode?: string) => {
+    initiateCheckout(promoCode);
   };
 
   const items = cart?.items ?? [];
 
-  if (isLoading) {
+  if (isLoading || isCheckingOut) {
     return (
-      <div className="flex items-center justify-center py-40">
+      <div className="flex flex-col items-center justify-center py-40 gap-3">
         <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        {isCheckingOut && (
+          <p className="text-sm text-gray-500">Preparing checkout...</p>
+        )}
       </div>
     );
   }
@@ -414,6 +439,8 @@ export default function StudentDashboardCart() {
                     saving={isMoving}
                     onRemove={() => handleRemove(item.course.id)}
                     onSaveForLater={() => handleMoveToWishlist(item.course.id)}
+                    currency={currency}
+                    convertToNGN={convertToNGN}
                   />
                 ))}
               </AnimatePresence>
@@ -434,9 +461,11 @@ export default function StudentDashboardCart() {
             <div className="w-full lg:w-[360px] flex-shrink-0 lg:sticky lg:top-8">
               <OrderSummary
                 items={items}
-                onCheckout={() => navigate("/student/cart/checkout")}
+                onCheckout={handleCheckout}
                 clearing={isClearing}
-                onClear={() => handleClearCart()}
+                onClear={handleClearCart}
+                currency={currency}
+                convertToNGN={convertToNGN}
               />
             </div>
           </div>

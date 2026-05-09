@@ -1,5 +1,5 @@
 // src/landing/_components/CoursesPreview.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight, Star, Clock, BookOpen, Users,
@@ -9,6 +9,8 @@ import { useQuery } from "@tanstack/react-query";
 import { type Course } from "@/data/courses";
 import CoursesService from "@/services/course.service";
 import { Code } from "lucide-react";
+import { getCurrency, formatCurrency, type CurrencyCode } from "@/lib/currency.utils";
+import { useCurrencyConverter } from "@/services/currency.service";
 
 // ─── API DTOs (mirror backend shape exactly) ──────────────────────────────────
 
@@ -141,15 +143,34 @@ function CourseBadge({ badge }: { badge: Course["badge"] }) {
 
 // ─── Course Card ──────────────────────────────────────────────────────────────
 
-function CourseCard({ course, index }: { course: Course; index: number }) {
+function CourseCard({ 
+  course, 
+  index,
+  currency,
+  convertToNGN,
+}: { 
+  course: Course; 
+  index: number;
+  currency: CurrencyCode;
+  convertToNGN: ((usdAmount: number) => number | null) | undefined;
+}) {
   const [hovered, setHovered] = useState(false);
   const Icon = course.icon;
-  const discount = Math.round(
-    ((course.originalPrice - course.price) / course.originalPrice) * 100
-  );
+  
+  // Calculate prices in user's currency
+  const displayPrice = currency === 'NGN' && convertToNGN 
+    ? convertToNGN(course.price) 
+    : course.price;
+  const displayOriginalPrice = currency === 'NGN' && convertToNGN 
+    ? convertToNGN(course.originalPrice) 
+    : course.originalPrice;
+  
+  const discount = displayOriginalPrice && displayPrice
+    ? Math.round(((displayOriginalPrice - displayPrice) / displayOriginalPrice) * 100)
+    : 0;
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
       <motion.div
         layout
         initial={{ opacity: 0, y: 28 }}
@@ -157,7 +178,7 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
         transition={{ duration: 0.38, delay: index * 0.06, ease: "easeOut" }}
         onHoverStart={() => setHovered(true)}
         onHoverEnd={() => setHovered(false)}
-        className="relative flex flex-col rounded-[22px] overflow-hidden cursor-pointer
+        className="relative flex flex-col flex-1 rounded-[22px] overflow-hidden cursor-pointer
           bg-white dark:bg-[#0f1623]
           border border-gray-100 dark:border-white/[0.07]
           transition-shadow duration-300"
@@ -281,10 +302,10 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
       >
         <div className="flex items-baseline gap-2">
           <span className="text-lg font-black text-gray-900 dark:text-white">
-            ${course.price.toFixed(2)}
+            {displayPrice !== null ? formatCurrency(displayPrice, currency) : formatCurrency(course.price, 'USD')}
           </span>
           <span className="text-sm text-gray-400 dark:text-gray-500 line-through">
-            ${course.originalPrice.toFixed(2)}
+            {displayOriginalPrice !== null ? formatCurrency(displayOriginalPrice, currency) : formatCurrency(course.originalPrice, 'USD')}
           </span>
         </div>
         <Link to={`/courses/${course.id}`}>
@@ -334,6 +355,8 @@ function CardSkeleton({ index }: { index: number }) {
 const PREVIEW_COUNT = 8;
 
 export default function CoursesPreview() {
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  
   const { data: courses = [], isLoading } = useQuery<Course[]>({
     queryKey: ["courses-public-preview"],
     queryFn: async (): Promise<Course[]> => {
@@ -347,6 +370,14 @@ export default function CoursesPreview() {
     gcTime: 1000 * 60 * 30, // 30 minutes
     refetchOnWindowFocus: false,
   });
+
+  // Get currency converter for real-time NGN conversion
+  const { convert: convertToNGN } = useCurrencyConverter();
+
+  // Detect currency on mount
+  useEffect(() => {
+    getCurrency().then(setCurrency);
+  }, []);
 
   return (
     <section className="py-20 bg-white dark:bg-[#080d18]">
@@ -389,7 +420,15 @@ export default function CoursesPreview() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-6">
           {isLoading
             ? Array.from({ length: PREVIEW_COUNT }).map((_, i) => <CardSkeleton key={i} index={i} />)
-            : courses.map((course, i) => <CourseCard key={course.id} course={course} index={i} />)
+            : courses.map((course, i) => (
+                <CourseCard 
+                  key={course.id} 
+                  course={course} 
+                  index={i}
+                  currency={currency}
+                  convertToNGN={convertToNGN}
+                />
+              ))
           }
         </div>
       </div>
