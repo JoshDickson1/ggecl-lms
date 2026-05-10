@@ -13,7 +13,7 @@ export class APIError extends Error {
   // ==================== CONFIG ====================
   
   export class APIConfig {
-    static baseURL = import.meta.env.PROD ? window.location.origin : import.meta.env.VITE_API_URL;
+    static baseURL = import.meta.env.VITE_API_URL;
   
     /**
      * Fetch wrapper for all API calls.
