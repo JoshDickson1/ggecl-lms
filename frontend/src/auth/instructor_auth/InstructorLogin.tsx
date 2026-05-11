@@ -244,9 +244,21 @@ const InstructorLogin = () => {
       return;
     }
 
-    await new Promise(r => setTimeout(r, 800));
-    navigate("/instructor");
-    setIsPending(false);
+    // Poll until the session is confirmed before navigating.
+    // A fixed delay is unreliable in production (cross-origin cookie round-trip
+    // takes longer than in dev). We check every 300ms for up to 6 seconds.
+    let attempts = 0;
+    const poll = async () => {
+      const { data } = await authClient.getSession();
+      if (data?.user || attempts >= 20) {
+        navigate("/instructor");
+        setIsPending(false);
+      } else {
+        attempts++;
+        setTimeout(poll, 300);
+      }
+    };
+    poll();
   };
 
   const handleGoogleSignIn = async () => {
