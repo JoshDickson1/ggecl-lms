@@ -11,8 +11,10 @@ import {
   ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import { useQuery } from "@tanstack/react-query";
-import AdminDashboardService, { type AdminActivityItem, type SignupDaySeries } from "@/services/admin-dashboard.service";
+import AdminDashboardService, { type SignupDaySeries } from "@/services/admin-dashboard.service";
 import TransactionService from "@/services/transaction.service";
+import ProgressService from "@/services/progress.service";
+import ActivityService, { type ActivityItem } from "@/services/activity.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -118,12 +120,17 @@ export default function AdminHome() {
     queryFn: () => TransactionService.getAnalytics(),
   });
 
+  const { data: platformCompletion } = useQuery({
+    queryKey: ["admin-platform-completion-rate"],
+    queryFn: () => ProgressService.getPlatformCompletionRate(),
+  });
+
   const totalStudents   = summary?.students?.total      ?? 0;
   const activeInstr     = summary?.instructors?.active  ?? 0;
   const totalCourses    = summary?.courses?.total        ?? 0;
   const draftCourses    = summary?.courses?.draft        ?? 0;
   const totalRevenue    = txAnalytics?.totalRevenue      ?? 0;
-  const completionRate  = Number(summary?.completionRate?.rate) || 0;
+  const completionRate  = platformCompletion?.completionRate ?? (Number(summary?.completionRate?.rate) || 0);
 
   const platformStats = [
     { label: "Total Students",    value: totalStudents.toLocaleString(),                                icon: GraduationCap, color: "from-blue-500 to-blue-600"    },
@@ -157,10 +164,11 @@ export default function AdminHome() {
     signupsMeta?.instructors ?? 0,
   );
 
-  const { data: activities = [] } = useQuery<AdminActivityItem[]>({
-    queryKey: ["admin-activities-home"],
-    queryFn: () => AdminDashboardService.getRecentActivities(8),
+  const { data: activitiesFeed } = useQuery({
+    queryKey: ["activities-feed", 8],
+    queryFn: () => ActivityService.getFeed({ limit: 8 }),
   });
+  const activities: ActivityItem[] = activitiesFeed?.data ?? [];
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-5 pb-12">

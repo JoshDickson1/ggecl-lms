@@ -8,7 +8,7 @@ import {
   Clock, Search, Filter,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import AdminDashboardService, { type AdminActivityItem } from "@/services/admin-dashboard.service";
+import ActivityService, { type ActivityItem, type ActivityFeedResponse } from "@/services/activity.service";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ const AVATAR_BG = [
 
 // ─── Activity Row ─────────────────────────────────────────────────────────────
 
-function ActivityRow({ item, index }: { item: AdminActivityItem; index: number }) {
+function ActivityRow({ item, index }: { item: ActivityItem; index: number }) {
   const [hovered, setHovered] = useState(false);
   const { icon: Icon, color } = ICON_MAP.settings;
 
@@ -103,11 +103,13 @@ export default function AdminActivities() {
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [search, setSearch] = useState("");
 
-  const { data: activities = [], isLoading, isError, refetch, isFetching } = useQuery<AdminActivityItem[]>({
-    queryKey: ["admin-activities", limit, onlyUnread],
-    queryFn: () => AdminDashboardService.getRecentActivities(limit, onlyUnread),
+  const { data: feedResponse, isLoading, isError, refetch, isFetching } = useQuery<ActivityFeedResponse>({
+    queryKey: ["activities-feed", limit, onlyUnread],
+    queryFn: () => ActivityService.getFeed({ limit, ...(onlyUnread ? { isRead: false } : {}) }),
     refetchInterval: 60_000,
   });
+
+  const activities: ActivityItem[] = feedResponse?.data ?? [];
 
   const filtered = search.trim()
     ? activities.filter(a =>
