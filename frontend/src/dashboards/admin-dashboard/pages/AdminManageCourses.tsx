@@ -8,7 +8,7 @@ import {
   Plus, Search, Eye, Edit3, Trash2, BookOpen,
   Users, Star, Globe, ChevronDown,
   CheckCircle2, Clock, ArchiveIcon,
-  AlertTriangle, DollarSign,
+  AlertTriangle, DollarSign, Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService, { CourseStatus } from "@/services/course.service";

@@ -562,7 +562,7 @@ export default function AdminLiveLobby() {
     }
   };
 
-  const { mutate: deleteSession, isPending: isDeleting } = useMutation({
+  const { mutate: deleteSession } = useMutation({
     mutationFn: (sessionId: string) => SchedulingService.deleteSession(sessionId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-live-sessions"] }),
     onError: (err: unknown) => {
@@ -570,7 +570,7 @@ export default function AdminLiveLobby() {
     },
   });
 
-  const { mutate: cancelSession, isPending: isCancelling } = useMutation({
+  const { mutate: cancelSession } = useMutation({
     mutationFn: (sessionId: string) => SchedulingService.cancelSession(sessionId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-live-sessions"] }),
     onError: (err: unknown) => {
