@@ -1,5 +1,5 @@
 // src/dashboards/admin-dashboard/pages/AdminLiveLobby.tsx
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -7,6 +7,7 @@ import {
   Radio, BookOpen, Play, Settings, Loader2, AlertCircle, RefreshCw,
   Edit, Trash2, XCircle, MoreVertical, X, ChevronLeft, ChevronRight,
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import SchedulingService, { type LiveSession } from "@/services/scheduling.service";
 import CoursesService, { type CourseResponse } from "@/services/course.service";
 
@@ -69,11 +70,7 @@ function UpdateModal({ session, sessions, onClose, onUpdated }: UpdateModalProps
   const [step, setStep] = useState<"calendar" | "details">("details");
   const [selectedSlot, setSelectedSlot] = useState<Date>(() => new Date(session.scheduledAt));
   const [title, setTitle] = useState(session.title);
-  const [courseId, setCourseId] = useState(session.courseId);
-  const [instructorId, setInstructorId] = useState(session.instructorId);
-  const [courses, setCourses] = useState<CourseResponse[]>([]);
-  const [loadingCourses, setLoadingCourses] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [courseId] = useState(session.courseId);
   const [error, setError] = useState("");
   const [weekStart, setWeekStart] = useState(() => {
     const date = new Date(session.scheduledAt);
@@ -82,12 +79,26 @@ function UpdateModal({ session, sessions, onClose, onUpdated }: UpdateModalProps
     return new Date(date.getFullYear(), date.getMonth(), diff);
   });
 
-  useEffect(() => {
-    CoursesService.findAll<CourseResponse>({ limit: 100 })
-      .then(res => setCourses(Array.isArray(res.items) ? res.items : []))
-      .catch(() => setCourses([]))
-      .finally(() => setLoadingCourses(false));
-  }, []);
+  const { data: coursesData = [], isLoading: loadingCourses } = useQuery<CourseResponse[]>({
+    queryKey: ["courses-list-modal"],
+    queryFn: async () => {
+      const res = await CoursesService.findAll<CourseResponse>({ limit: 100 });
+      return Array.isArray(res.items) ? res.items : [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+  const courses = coursesData;
+
+  const { mutate: updateSession, isPending: submitting } = useMutation({
+    mutationFn: () => SchedulingService.updateSession(session.id, {
+      title: title.trim(),
+      scheduledAt: selectedSlot.toISOString(),
+    }),
+    onSuccess: () => { onUpdated(); onClose(); },
+    onError: (err: unknown) => {
+      setError(err instanceof Error ? err.message : "Failed to update session.");
+    },
+  });
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -137,19 +148,7 @@ function UpdateModal({ session, sessions, onClose, onUpdated }: UpdateModalProps
       setError("Title is required.");
       return;
     }
-    setSubmitting(true);
-    try {
-      await SchedulingService.updateSession(session.id, {
-        title: title.trim(),
-        scheduledAt: selectedSlot.toISOString(),
-      });
-      onUpdated();
-      onClose();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to update session.");
-    } finally {
-      setSubmitting(false);
-    }
+    updateSession();
   }
 
   function goToPrevWeek() {
@@ -530,25 +529,22 @@ export default function AdminLiveLobby() {
   const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [selectedSession, setSelectedSession] = useState<LiveSession | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const loadSessions = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
+  // Use TanStack Query for sessions
+  const { data: sessionsData, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["admin-live-sessions"],
+    queryFn: async () => {
       const res = await SchedulingService.listSessions({ limit: 100 });
-      setSessions(Array.isArray(res.data) ? res.data : []);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load sessions.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 1000 * 30,
+    retry: 2,
+  });
 
-  useEffect(() => { loadSessions(); }, [loadSessions]);
+  const sessions = sessionsData ?? [];
+
+  const qc = useQueryClient();
 
   const liveSessions     = sessions.filter(s => s.status === "LIVE");
   const upcomingSessions = sessions.filter(s => s.status === "SCHEDULED");
@@ -566,30 +562,30 @@ export default function AdminLiveLobby() {
     }
   };
 
-  const handleDelete = async (sessionId: string) => {
-    if (!window.confirm("Are you sure you want to delete this session? This action cannot be undone.")) {
-      return;
-    }
+  const { mutate: deleteSession, isPending: isDeleting } = useMutation({
+    mutationFn: (sessionId: string) => SchedulingService.deleteSession(sessionId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-live-sessions"] }),
+    onError: (err: unknown) => {
+      setMutationError(err instanceof Error ? err.message : "Failed to delete session.");
+    },
+  });
 
-    try {
-      await SchedulingService.deleteSession(sessionId);
-      loadSessions();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to delete session.");
-    }
+  const { mutate: cancelSession, isPending: isCancelling } = useMutation({
+    mutationFn: (sessionId: string) => SchedulingService.cancelSession(sessionId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-live-sessions"] }),
+    onError: (err: unknown) => {
+      setMutationError(err instanceof Error ? err.message : "Failed to cancel session.");
+    },
+  });
+
+  const handleDelete = (sessionId: string) => {
+    if (!window.confirm("Are you sure you want to delete this session? This action cannot be undone.")) return;
+    deleteSession(sessionId);
   };
 
-  const handleCancel = async (sessionId: string) => {
-    if (!window.confirm("Are you sure you want to cancel this session? Enrolled students will be notified.")) {
-      return;
-    }
-
-    try {
-      await SchedulingService.cancelSession(sessionId);
-      loadSessions();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to cancel session.");
-    }
+  const handleCancel = (sessionId: string) => {
+    if (!window.confirm("Are you sure you want to cancel this session? Enrolled students will be notified.")) return;
+    cancelSession(sessionId);
   };
 
   return (
@@ -616,8 +612,21 @@ export default function AdminLiveLobby() {
           </div>
         </motion.div>
 
+        {/* Mutation error banner */}
+        <AnimatePresence>
+          {mutationError && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+              className="mb-4 flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40"
+            >
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-600 dark:text-red-400 flex-1">{mutationError}</p>
+              <button onClick={() => setMutationError(null)} className="text-red-400 hover:text-red-600 transition-colors text-lg leading-none">×</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="max-w-4xl mx-auto">
-          {/* ── Session List ── */}
           <div className="space-y-4 sm:space-y-5">
 
             {/* Live NOW banner */}
@@ -632,14 +641,7 @@ export default function AdminLiveLobby() {
                   </div>
                   <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 sm:space-y-3">
                     {liveSessions.map(s => (
-                      <SessionCard 
-                        key={s.id} 
-                        session={s} 
-                        onJoin={handleJoin}
-                        onUpdate={handleUpdate}
-                        onDelete={handleDelete}
-                        onCancel={handleCancel}
-                      />
+                      <SessionCard key={s.id} session={s} onJoin={handleJoin} onUpdate={handleUpdate} onDelete={handleDelete} onCancel={handleCancel} />
                     ))}
                   </div>
                 </motion.div>
@@ -661,32 +663,42 @@ export default function AdminLiveLobby() {
               ))}
             </div>
 
-            {/* Loading */}
-            {loading && (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+            {/* Skeleton loading */}
+            {isLoading && (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="rounded-2xl border border-gray-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.02] p-4 sm:p-5 animate-pulse">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gray-200 dark:bg-white/[0.08] flex-shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 bg-gray-200 dark:bg-white/[0.08] rounded-lg w-1/4" />
+                        <div className="h-4 bg-gray-200 dark:bg-white/[0.08] rounded-lg w-2/3" />
+                        <div className="h-3 bg-gray-200 dark:bg-white/[0.08] rounded-lg w-1/2" />
+                      </div>
+                      <div className="w-24 h-9 rounded-xl bg-gray-200 dark:bg-white/[0.08] flex-shrink-0" />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
             {/* Error */}
-            {!loading && error && <ErrorState message={error} onRetry={loadSessions} />}
+            {!isLoading && isError && (
+              <ErrorState
+                message={error instanceof Error ? error.message : "Failed to load sessions."}
+                onRetry={() => refetch()}
+              />
+            )}
 
             {/* Session lists */}
-            {!loading && !error && (
+            {!isLoading && !isError && (
               <AnimatePresence mode="wait">
                 {tab === "upcoming" && (
                   <motion.div key="up" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-2 sm:space-y-3">
                     {upcomingSessions.length === 0
                       ? <EmptyState message="No upcoming sessions scheduled." />
                       : upcomingSessions.map(s => (
-                          <SessionCard 
-                            key={s.id} 
-                            session={s} 
-                            onJoin={handleJoin}
-                            onUpdate={handleUpdate}
-                            onDelete={handleDelete}
-                            onCancel={handleCancel}
-                          />
+                          <SessionCard key={s.id} session={s} onJoin={handleJoin} onUpdate={handleUpdate} onDelete={handleDelete} onCancel={handleCancel} />
                         ))
                     }
                   </motion.div>
@@ -696,14 +708,7 @@ export default function AdminLiveLobby() {
                     {pastSessions.length === 0
                       ? <EmptyState message="No past sessions yet." />
                       : pastSessions.map(s => (
-                          <SessionCard 
-                            key={s.id} 
-                            session={s} 
-                            onJoin={handleJoin}
-                            onUpdate={handleUpdate}
-                            onDelete={handleDelete}
-                            onCancel={handleCancel}
-                          />
+                          <SessionCard key={s.id} session={s} onJoin={handleJoin} onUpdate={handleUpdate} onDelete={handleDelete} onCancel={handleCancel} />
                         ))
                     }
                   </motion.div>
@@ -720,13 +725,8 @@ export default function AdminLiveLobby() {
           <UpdateModal
             session={selectedSession}
             sessions={sessions}
-            onClose={() => {
-              setShowUpdateModal(false);
-              setSelectedSession(null);
-            }}
-            onUpdated={() => {
-              loadSessions();
-            }}
+            onClose={() => { setShowUpdateModal(false); setSelectedSession(null); }}
+            onUpdated={() => { qc.invalidateQueries({ queryKey: ["admin-live-sessions"] }); }}
           />
         )}
       </AnimatePresence>

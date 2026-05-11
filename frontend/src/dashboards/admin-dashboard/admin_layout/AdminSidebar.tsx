@@ -3,10 +3,11 @@ import { useState, useEffect, useContext, createContext, type ReactNode } from "
 import { NavLink, useLocation, useNavigate, Link } from "react-router-dom";
 import {
   LayoutDashboard, BookOpen, Users, ArrowLeftRight,
-  Settings, ChevronDown, LogOut, ShieldCheck,
+  ChevronDown, LogOut, ShieldCheck,
   MessageSquare,
   UserCog,
   ClipboardCheckIcon,
+  TrendingUp,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -99,17 +100,13 @@ function getNavItems(_isSuperAdmin: boolean): NavItemDef[] {
     ],
   },
 
-  // ── Platform settings
+  // ── Activities
   {
-    to: "/admin/settings",
-    icon: Settings,
-    label: "Settings",
-    children: [
-      { to: "/admin/settings", label: "General Settings" },
-      { to: "/admin/notifications", label: "Notifications" },
-    ],
+    to: "/admin/activities",
+    icon: TrendingUp,
+    label: "Activities",
   },
-  
+
   {
     to: "/admin/profile",
     icon: UserCog,

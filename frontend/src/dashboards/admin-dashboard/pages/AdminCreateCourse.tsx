@@ -155,12 +155,16 @@ function StringListEditor({ items, onChange, placeholder }: {
 function ImageUpload({ value, onChange }: { value: string; onChange: (url: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleFile = async (file: File) => {
     setUploading(true);
+    setUploadError(null);
     try {
       const url = await StorageService.upload("course-images", file);
       onChange(url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -170,6 +174,11 @@ function ImageUpload({ value, onChange }: { value: string; onChange: (url: strin
     <div>
       <input ref={ref} type="file" accept="image/*" className="hidden"
         onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+      {uploadError && (
+        <p className="text-xs text-red-500 mb-1.5 flex items-center gap-1">
+          <span>⚠</span> {uploadError}
+        </p>
+      )}
       {value ? (
         <div className="relative rounded-2xl overflow-hidden h-36">
           <img src={value} alt="Thumbnail" className="w-full h-full object-cover" />
@@ -472,7 +481,7 @@ export default function AdminCreateCourse() {
   const [success,           setSuccess]           = useState(false);
   const [enrolledCount,     setEnrolledCount]     = useState(0);
 
-  const { data: instructors = [], isLoading: instructorsLoading } = useQuery<InstructorUser[]>({
+  const { data: instructors = [], isLoading: instructorsLoading, isError: instructorsError } = useQuery<InstructorUser[]>({
     queryKey: ["instructors-list"],
     queryFn: async () => {
       const res = await UserService.findAll({ role: UserRole.INSTRUCTOR, limit: 100 }) as { data?: InstructorUser[] } | InstructorUser[];
@@ -667,8 +676,12 @@ export default function AdminCreateCourse() {
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Loading instructors...
                 </div>
-              ) : instructors.length === 0 ? (
+              ) : instructorsError ? (
                 <div className="w-full px-4 py-2.5 rounded-xl text-sm bg-red-50/80 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400">
+                  Failed to load instructors. Please refresh the page.
+                </div>
+              ) : instructors.length === 0 ? (
+                <div className="w-full px-4 py-2.5 rounded-xl text-sm bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400">
                   No instructors available. Please contact support.
                 </div>
               ) : (

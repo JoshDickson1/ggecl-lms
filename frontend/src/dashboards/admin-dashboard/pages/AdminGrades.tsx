@@ -443,10 +443,21 @@ export default function AdminGrades() {
         </div>
       </Fade>
 
-      {/* Loading */}
+      {/* Loading skeleton */}
       {groupsLoading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        <div className="space-y-3 animate-pulse">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/[0.07] bg-white dark:bg-[#0f1623]">
+              <div className="flex -space-x-1.5">
+                {[1,2].map(j => <div key={j} className="w-6 h-6 rounded-full bg-gray-200 dark:bg-white/[0.08] border-2 border-white dark:border-[#0f1623]" />)}
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-32 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                <div className="h-3 w-24 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+              </div>
+              <div className="h-7 w-16 bg-gray-200 dark:bg-white/[0.08] rounded-xl" />
+            </div>
+          ))}
         </div>
       )}
 

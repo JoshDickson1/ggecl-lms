@@ -275,7 +275,20 @@ function StudentsTab({ courseId }: { courseId: string }) {
   );
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>;
+    return (
+      <div className="p-6 space-y-3 animate-pulse">
+        {[1,2,3,4].map(i => (
+          <div key={i} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 dark:border-white/[0.07]">
+            <div className="w-10 h-10 rounded-xl bg-gray-200 dark:bg-white/[0.08] flex-shrink-0" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-32 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+              <div className="h-3 w-48 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+            </div>
+            <div className="h-3 w-16 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -388,7 +401,32 @@ export default function AdminSingleCourse() {
   const toast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(""), 3000); };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="w-7 h-7 text-blue-500 animate-spin" /></div>;
+    return (
+      <div className="max-w-[1100px] mx-auto space-y-6 pb-10 animate-pulse">
+        {/* Hero card skeleton */}
+        <div className="rounded-[22px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] overflow-hidden">
+          <div className="h-28 bg-gray-200 dark:bg-white/[0.08]" />
+          <div className="px-6 pb-6 pt-4 space-y-4">
+            <div className="flex gap-2">
+              <div className="h-6 w-20 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+              <div className="h-6 w-16 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+            </div>
+            <div className="h-7 w-2/3 bg-gray-200 dark:bg-white/[0.08] rounded-xl" />
+            <div className="grid grid-cols-4 gap-3">
+              {[1,2,3,4].map(i => (
+                <div key={i} className="h-20 bg-gray-200 dark:bg-white/[0.08] rounded-2xl" />
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Tab skeleton */}
+        <div className="flex gap-2">
+          {[1,2,3,4].map(i => <div key={i} className="h-9 w-28 bg-gray-200 dark:bg-white/[0.08] rounded-xl" />)}
+        </div>
+        {/* Content skeleton */}
+        <div className="h-48 bg-gray-200 dark:bg-white/[0.08] rounded-[22px]" />
+      </div>
+    );
   }
 
   if (!course) {

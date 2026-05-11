@@ -5,24 +5,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, MapPin, Mail, Calendar, BookOpen,
   CheckCircle2, Award, TrendingUp, Play, Star, ClipboardList,
-  BarChart3, Flame, ShoppingBag, Clock,
-  Users, Zap, Target, Loader2,
+  BarChart3, Flame, Clock,
+  Users, Target, Loader2, Phone, Hash, Zap,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import UserService from "@/services/user.service";
-import { GRADE_META, type LetterGrade } from "@/data/academicData";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface ApiUser {
-  id: string;
-  name: string;
-  email: string;
-  image?: string | null;
-  bio?: string | null;
-  phone?: string | null;
-  createdAt: string;
-}
+import UserService, { type FullStudentProfile } from "@/services/user.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -30,13 +17,6 @@ const STATUS_STYLES: Record<string, string> = {
   Active:    "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/15 dark:text-emerald-400 dark:border-emerald-900/20",
   Inactive:  "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-700/30 dark:text-gray-400 dark:border-gray-600/20",
   Suspended: "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/15 dark:text-amber-400 dark:border-amber-800/30",
-};
-
-const ASSIGNMENT_STATUS_STYLES: Record<string, string> = {
-  Submitted: "bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/15 dark:text-blue-400 dark:border-blue-900/20",
-  Graded:    "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/15 dark:text-emerald-400 dark:border-emerald-900/20",
-  Late:      "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/15 dark:text-amber-400 dark:border-amber-800/30",
-  Missing:   "bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-950/15 dark:text-rose-400 dark:border-rose-900/20",
 };
 
 function initials(name: string) {
@@ -75,81 +55,113 @@ function ProgressBar({ pct }: { pct: number }) {
   );
 }
 
-function Stars({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1,2,3,4,5].map(i => (
-        <Star key={i} className={`w-3.5 h-3.5 ${i <= Math.floor(rating) ? "text-amber-400 fill-amber-400" : "text-gray-200 dark:text-gray-700"}`} />
-      ))}
-    </div>
-  );
-}
-
-const ACTIVITY_META: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  lesson:      { icon: Play,          color: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-100 dark:bg-blue-900/40"    },
-  quiz:        { icon: Target,        color: "text-violet-600 dark:text-violet-400",bg: "bg-violet-100 dark:bg-violet-900/40"},
-  assignment:  { icon: ClipboardList, color: "text-amber-600 dark:text-amber-400",  bg: "bg-amber-100 dark:bg-amber-900/40"  },
-  review:      { icon: Star,          color: "text-rose-600 dark:text-rose-400",    bg: "bg-rose-100 dark:bg-rose-900/40"    },
-  certificate: { icon: Award,         color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/40" },
-  enroll:      { icon: BookOpen,      color: "text-cyan-600 dark:text-cyan-400",    bg: "bg-cyan-100 dark:bg-cyan-900/40"    },
-  message:     { icon: Zap,           color: "text-gray-600 dark:text-gray-400",    bg: "bg-gray-100 dark:bg-gray-700/30"    },
-};
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function PreviewStudent() {
   const { id } = useParams<{ id: string }>();
-  const [activeTab, setActiveTab] = useState<"about" | "courses" | "grades" | "activity">("about");
+  const [activeTab, setActiveTab] = useState<"about" | "courses" | "submissions" | "quizzes">("about");
 
-  const { data: apiUser, isLoading, isError } = useQuery<ApiUser>({
-    queryKey: ["user", id],
-    queryFn: async () => {
-      const res = await UserService.findOne(id!) as ApiUser;
-      return res;
-    },
+  const { data: apiUser, isLoading, isError } = useQuery<FullStudentProfile>({
+    queryKey: ["student-profile", id],
+    queryFn: () => UserService.findOneStudent(id!),
     enabled: !!id,
   });
 
-  const joinedDate = apiUser?.createdAt
-    ? new Date(apiUser.createdAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+  const profile   = apiUser;
+  const userInfo  = apiUser?.user;
+
+  const joinedDate = userInfo?.createdAt
+    ? new Date(userInfo.createdAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
     : "";
 
-  const studentInitials = initials(apiUser?.name ?? "S");
+  const studentInitials = initials(userInfo?.name ?? "S");
 
   const student = {
-    name:           apiUser?.name ?? "Student",
+    name:           userInfo?.name ?? "Student",
     avatar:         studentInitials,
     avatarBg:       AVATAR_BG_LIST[0],
     title:          "Student",
-    bio:            apiUser?.bio ?? "No bio provided.",
-    location:       "-",
-    email:          apiUser?.email ?? "",
-    website:        undefined as string | undefined,
+    bio:            profile?.bio ?? userInfo?.studentProfile?.bio ?? "No bio provided.",
+    location:       userInfo?.location ?? "-",
+    email:          userInfo?.email ?? "",
     joined:         joinedDate,
-    status:         "Active" as const,
-    badges:         [] as string[],
-    streak:         0,
-    enrolled:       0,
-    completed:      0,
-    certificates:   0,
-    totalSpent:     0,
-    avgRatingGiven: 0,
-    reviewsGiven:   0,
-    learningGoals:  [] as { label: string; done: boolean }[],
-    enrolledCourses: [] as {
-      id: string; title: string; instructor: string; progress: number;
-      thumbnail: string; grade?: string;
-    }[],
-    grades:      [] as { courseName: string; percentage: number; letterGrade: string; gradedAt: string }[],
-    assignments: [] as { id: string; title: string; courseName: string; status: string; score?: number; maxScore?: number }[],
-    recentActivity: [] as { type: string; action: string; target: string; time: string }[],
+    status:         (userInfo?.status === "ACTIVE" ? "Active" : userInfo?.status === "BANNED" ? "Suspended" : "Active") as "Active" | "Inactive" | "Suspended",
+    matricNumber:   profile?.matricNumber ?? userInfo?.studentProfile?.matricNumber ?? null,
+    phoneNumber:    profile?.phoneNumber ?? userInfo?.studentProfile?.phoneNumber ?? null,
+    enrollmentDate: profile?.enrollmentDate ?? userInfo?.studentProfile?.enrollmentDate ?? null,
+    learningGoals:  (profile?.learningGoals ?? userInfo?.studentProfile?.learningGoals ?? []).map(g => ({ label: g })),
+    // streak / xp
+    streak:         profile?.learningStreak?.currentStreak ?? 0,
+    longestStreak:  profile?.learningStreak?.longestStreak ?? 0,
+    totalActiveDays: profile?.learningStreak?.totalActiveDays ?? 0,
+    xpTotal:        profile?.xp?.totalXp ?? 0,
+    xpLevel:        profile?.xp?.currentLevel ?? 0,
+    xpToNext:       profile?.xp?.xpToNextLevel ?? 0,
+    // courses
+    enrolled:       profile?.enrollments?.length ?? 0,
+    enrolledCourses: (profile?.enrollments ?? []).map(e => {
+      const prog = profile?.courseProgress?.find(p => p.courseId === e.course.id);
+      return {
+        id:             e.course.id,
+        title:          e.course.title,
+        thumbnailImage: e.course.img ?? null,
+        thumbnail:      e.course.img ? "" : "from-blue-500 to-indigo-600",
+        level:          e.course.level,
+        price:          e.course.price,
+        progress:       prog?.percentComplete ?? 0,
+        isCompleted:    prog?.isCompleted ?? false,
+        totalLessons:   prog?.totalLessons ?? 0,
+        completedLessons: prog?.completedLessons ?? 0,
+        enrolledAt:     e.enrolledAt,
+      };
+    }),
+    // certificates
+    certificates:   profile?.certificates ?? [],
+    // submissions / grades
+    submissions: (profile?.submissions ?? []).map(s => ({
+      id:         s.id,
+      title:      s.assignment.title,
+      courseName: s.assignment.course.title,
+      maxScore:   s.assignment.maxScore,
+      dueDate:    s.assignment.dueDate,
+      isLate:     s.isLate,
+      submittedAt: s.submittedAt,
+      score:      s.grade?.score ?? null,
+      resolvedGrade: s.grade?.resolvedGrade ?? null,
+      feedback:   s.grade?.feedback ?? null,
+      gradedAt:   s.grade?.gradedAt ?? null,
+    })),
+    // quiz attempts
+    quizAttempts: (profile?.quizAttempts ?? []).map(a => ({
+      id:             a.id,
+      quizTitle:      a.quiz.title,
+      sectionTitle:   a.quiz.section.title,
+      courseTitle:    a.quiz.section.course.title,
+      score:          a.score,
+      totalQuestions: a.totalQuestions,
+      resolvedGrade:  a.resolvedGrade,
+      passed:         a.passed,
+      passMark:       a.quiz.passMark,
+      submittedAt:    a.submittedAt,
+    })),
+    // reviews given
+    reviews: (profile?.reviews ?? []).map(r => ({
+      id:        r.id,
+      rating:    r.rating,
+      comment:   r.comment,
+      createdAt: r.createdAt,
+      courseTitle: r.course.title,
+      courseImg:   r.course.img,
+    })),
   };
 
+  const completedCount = student.enrolledCourses.filter(c => c.isCompleted).length;
+
   const TABS = [
-    { id: "about",    label: "About" },
-    { id: "courses",  label: `Courses (${student.enrolled})` },
-    { id: "grades",   label: "Grades & Assignments" },
-    { id: "activity", label: "Activity" },
+    { id: "about",       label: "About" },
+    { id: "courses",     label: `Courses (${student.enrolled})` },
+    { id: "submissions", label: `Submissions (${student.submissions.length})` },
+    { id: "quizzes",     label: `Quizzes (${student.quizAttempts.length})` },
   ] as const;
 
   if (isLoading) return (
@@ -186,8 +198,8 @@ export default function PreviewStudent() {
             <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-12 mb-5">
               <div className="relative flex-shrink-0">
                 <div className="w-24 h-24 rounded-2xl overflow-hidden ring-4 ring-white dark:ring-[#0f1623] shadow-xl">
-                  {apiUser?.image
-                    ? <img src={apiUser.image} alt={student.name} className="w-full h-full object-cover" />
+                  {userInfo?.image
+                    ? <img src={userInfo.image} alt={student.name} className="w-full h-full object-cover" />
                     : <div className={`w-full h-full flex items-center justify-center text-3xl font-black text-white ${student.avatarBg}`}>{student.avatar}</div>
                   }
                 </div>
@@ -196,9 +208,6 @@ export default function PreviewStudent() {
               <div className="flex-1 sm:pb-1">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-[11px] font-bold border ${STATUS_STYLES[student.status]}`}>{student.status}</span>
-                  {student.badges.map(b => (
-                    <span key={b} className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">{b}</span>
-                  ))}
                 </div>
                 <h1 className="text-2xl font-black text-gray-900 dark:text-white">{student.name}</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{student.title}</p>
@@ -215,6 +224,8 @@ export default function PreviewStudent() {
               {student.location !== "-" && <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-blue-500" />{student.location}</span>}
               <span className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-blue-500" />{student.email}</span>
               {student.joined && <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-blue-500" />Joined {student.joined}</span>}
+              {student.matricNumber && <span className="flex items-center gap-1.5"><Hash className="w-3.5 h-3.5 text-blue-500" />{student.matricNumber}</span>}
+              {student.phoneNumber && <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-blue-500" />{student.phoneNumber}</span>}
             </div>
           </div>
         </Card>
@@ -224,10 +235,10 @@ export default function PreviewStudent() {
       <Fade delay={0.05}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { icon: BookOpen,     value: student.enrolled,              label: "Enrolled",      color: "from-blue-500 to-blue-600"    },
-            { icon: CheckCircle2, value: student.completed,             label: "Completed",     color: "from-emerald-500 to-teal-600" },
-            { icon: Award,        value: student.certificates,          label: "Certificates",  color: "from-amber-400 to-orange-500" },
-            { icon: ShoppingBag,  value: `$${student.totalSpent.toFixed(0)}`, label: "Spent",  color: "from-violet-500 to-purple-600"},
+            { icon: BookOpen,     value: student.enrolled,      label: "Enrolled",     color: "from-blue-500 to-blue-600"    },
+            { icon: CheckCircle2, value: completedCount,         label: "Completed",    color: "from-emerald-500 to-teal-600" },
+            { icon: Award,        value: student.certificates.length, label: "Certificates", color: "from-amber-400 to-orange-500" },
+            { icon: Zap,          value: `Lv ${student.xpLevel}`, label: `${student.xpTotal} XP`, color: "from-violet-500 to-purple-600" },
           ].map(({ icon: Ic, value, label, color }) => (
             <Card key={label} className="p-5 flex items-center gap-4">
               <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center flex-shrink-0`}>
@@ -265,40 +276,105 @@ export default function PreviewStudent() {
                 <div className="flex items-center gap-2 mb-3"><Users className="w-4 h-4 text-blue-500" /><h2 className="font-black text-base text-gray-900 dark:text-white">Bio</h2></div>
                 <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{student.bio}</p>
               </Card>
-              <Card className="p-6">
-                <div className="flex items-center gap-2 mb-4"><TrendingUp className="w-4 h-4 text-blue-500" /><h2 className="font-black text-base text-gray-900 dark:text-white">Learning Goals</h2></div>
-                {student.learningGoals.length === 0
-                  ? <p className="text-sm text-gray-400 italic">No goals set.</p>
-                  : <div className="space-y-2">
-                      {student.learningGoals.map(goal => (
-                        <div key={goal.label} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${goal.done ? "bg-emerald-50/60 dark:bg-emerald-950/15 border-emerald-100/60 dark:border-emerald-900/20" : "bg-gray-50/60 dark:bg-white/[0.03] border-gray-100 dark:border-white/[0.06]"}`}>
-                          <CheckCircle2 className={`w-3.5 h-3.5 flex-shrink-0 ${goal.done ? "text-emerald-500" : "text-gray-300 dark:text-gray-600"}`} />
-                          <span className={`text-xs font-medium ${goal.done ? "text-emerald-700 dark:text-emerald-400 line-through opacity-60" : "text-gray-700 dark:text-gray-300"}`}>{goal.label}</span>
+              {student.learningGoals.length > 0 && (
+                <Card className="p-6">
+                  <div className="flex items-center gap-2 mb-4"><TrendingUp className="w-4 h-4 text-blue-500" /><h2 className="font-black text-base text-gray-900 dark:text-white">Learning Goals</h2></div>
+                  <div className="space-y-2">
+                    {student.learningGoals.map(goal => (
+                      <div key={goal.label} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border bg-gray-50/60 dark:bg-white/[0.03] border-gray-100 dark:border-white/[0.06]">
+                        <Target className="w-3.5 h-3.5 flex-shrink-0 text-blue-400" />
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{goal.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+              {student.reviews.length > 0 && (
+                <Card className="p-6">
+                  <div className="flex items-center gap-2 mb-4"><Star className="w-4 h-4 text-amber-400" /><h2 className="font-black text-base text-gray-900 dark:text-white">Reviews Given</h2></div>
+                  <div className="space-y-3">
+                    {student.reviews.map(r => (
+                      <div key={r.id} className="p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">{r.courseTitle}</p>
+                          <div className="flex items-center gap-0.5 flex-shrink-0">
+                            {[1,2,3,4,5].map(i => (
+                              <Star key={i} className={`w-3 h-3 ${i <= r.rating ? "text-amber-400 fill-amber-400" : "text-gray-200 dark:text-gray-700"}`} />
+                            ))}
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                }
-              </Card>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{r.comment}</p>
+                        <p className="text-[10px] text-gray-400 mt-1">{new Date(r.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
             </div>
             <div className="space-y-4">
-              <Card className="p-5">
-                <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Reviews Given</p>
-                <div className="flex items-center gap-4 mb-2">
-                  <span className="text-4xl font-black text-gray-900 dark:text-white">{student.avgRatingGiven.toFixed(1)}</span>
-                  <div><Stars rating={student.avgRatingGiven} /><p className="text-xs text-gray-400 mt-1">{student.reviewsGiven} courses reviewed</p></div>
-                </div>
-              </Card>
-              {student.badges.length > 0 && (
+              {student.streak > 0 && (
                 <Card className="p-5">
-                  <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Achievements</p>
+                  <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Learning Streak</p>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                      <Flame className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-black text-gray-900 dark:text-white">{student.streak} <span className="text-sm font-semibold text-gray-400">days</span></p>
+                      <p className="text-xs text-gray-400">Current streak</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 rounded-lg bg-gray-50 dark:bg-white/[0.03]">
+                      <p className="font-black text-gray-900 dark:text-white">{student.longestStreak}</p>
+                      <p className="text-gray-400">Longest streak</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-gray-50 dark:bg-white/[0.03]">
+                      <p className="font-black text-gray-900 dark:text-white">{student.totalActiveDays}</p>
+                      <p className="text-gray-400">Active days</p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+              {student.xpTotal > 0 && (
+                <Card className="p-5">
+                  <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">XP & Level</p>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                      <Zap className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-black text-gray-900 dark:text-white">Level {student.xpLevel}</p>
+                      <p className="text-xs text-gray-400">{student.xpTotal} XP total</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-gray-400">
+                      <span>Progress to next level</span>
+                      <span>{student.xpToNext} XP to go</span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-500"
+                        style={{ width: `${Math.max(5, 100 - (student.xpToNext / Math.max(student.xpToNext + 100, 1)) * 100)}%` }} />
+                    </div>
+                  </div>
+                </Card>
+              )}
+              {student.certificates.length > 0 && (
+                <Card className="p-5">
+                  <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Certificates</p>
                   <div className="space-y-2">
-                    {student.badges.map(b => (
-                      <div key={b} className="flex items-center gap-3 p-2.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/15 border border-blue-100/50 dark:border-blue-900/20">
-                        <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
-                          <Award className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    {student.certificates.map(cert => (
+                      <a key={cert.id} href={cert.fileUrl} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-2.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/15 border border-emerald-100/50 dark:border-emerald-900/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/25 transition-colors">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center flex-shrink-0">
+                          <Award className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         </div>
-                        <p className="text-xs font-bold text-gray-800 dark:text-white">{b}</p>
-                      </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-800 dark:text-white truncate">{cert.course.title}</p>
+                          <p className="text-[10px] text-gray-400">{new Date(cert.issuedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                        </div>
+                      </a>
                     ))}
                   </div>
                 </Card>
@@ -316,24 +392,28 @@ export default function PreviewStudent() {
                   <motion.div key={c.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                     <Card className="p-4">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                        <div className={`w-full sm:w-24 h-14 rounded-xl flex-shrink-0 bg-gradient-to-br ${c.thumbnail} flex items-center justify-center`}>
-                          <Play className="w-5 h-5 text-white" />
+                        <div className={`w-full sm:w-24 h-14 rounded-xl flex-shrink-0 overflow-hidden ${!c.thumbnailImage ? `bg-gradient-to-br ${c.thumbnail}` : ""} flex items-center justify-center`}>
+                          {c.thumbnailImage
+                            ? <img src={c.thumbnailImage} alt={c.title} className="w-full h-full object-cover" />
+                            : <Play className="w-5 h-5 text-white" />
+                          }
                         </div>
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">{c.title}</h3>
-                          <p className="text-xs text-gray-400 mt-0.5">by {c.instructor}</p>
+                          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            <span>{c.level}</span>
+                            <span>•</span>
+                            <span className="font-semibold text-blue-600 dark:text-blue-400">${c.price}</span>
+                            <span>•</span>
+                            <span>{c.completedLessons}/{c.totalLessons} lessons</span>
+                          </div>
                           <div className="flex items-center gap-2 mt-2">
                             <ProgressBar pct={c.progress} />
-                            <span className={`text-[11px] font-bold flex-shrink-0 ${c.progress === 100 ? "text-emerald-500" : "text-blue-500"}`}>{c.progress}%</span>
+                            <span className={`text-[11px] font-bold flex-shrink-0 ${c.isCompleted ? "text-emerald-500" : "text-blue-500"}`}>{c.progress}%</span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {c.grade && (
-                            <span className={`px-2.5 py-1 rounded-xl text-sm font-black border ${GRADE_META[c.grade as LetterGrade]?.color ?? ""} ${GRADE_META[c.grade as LetterGrade]?.bg ?? ""} ${GRADE_META[c.grade as LetterGrade]?.border ?? ""}`}>
-                              {c.grade}
-                            </span>
-                          )}
-                          {c.progress === 100
+                        <div className="flex-shrink-0">
+                          {c.isCompleted
                             ? <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50"><CheckCircle2 className="w-3.5 h-3.5" />Done</span>
                             : <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/30">In Progress</span>
                           }
@@ -346,85 +426,80 @@ export default function PreviewStudent() {
           </motion.div>
         )}
 
-        {/* GRADES & ASSIGNMENTS */}
-        {activeTab === "grades" && (
-          <motion.div key="grades" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Card className="p-6">
-              <div className="flex items-center gap-2 mb-4"><BarChart3 className="w-4 h-4 text-blue-500" /><h2 className="font-black text-base text-gray-900 dark:text-white">Grades</h2></div>
-              {student.grades.length === 0
-                ? <p className="text-sm text-gray-400 italic">No grades yet.</p>
-                : <div className="space-y-3">
-                    {student.grades.map((g, i) => {
-                      const meta = GRADE_META[g.letterGrade as LetterGrade];
-                      return (
-                        <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{g.courseName}</p>
-                            <p className="text-[10px] text-gray-400">{new Date(g.gradedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+        {/* SUBMISSIONS */}
+        {activeTab === "submissions" && (
+          <motion.div key="submissions" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+            {student.submissions.length === 0
+              ? <Card className="p-10 text-center text-gray-400 text-sm">No assignment submissions yet.</Card>
+              : student.submissions.map((s, i) => (
+                  <motion.div key={s.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
+                    <Card className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <ClipboardList className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{s.title}</p>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-xs font-semibold text-gray-500">{g.percentage}%</span>
-                            <span className={`px-2.5 py-1 rounded-xl text-sm font-black border ${meta?.color ?? ""} ${meta?.bg ?? ""} ${meta?.border ?? ""}`}>{g.letterGrade}</span>
+                          <p className="text-xs text-gray-400 mb-2">{s.courseName}</p>
+                          <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Submitted {new Date(s.submittedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                            {s.isLate && <span className="text-amber-500 font-semibold">Late</span>}
+                            <span>Max: {s.maxScore} pts</span>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-              }
-            </Card>
-            <Card className="p-6">
-              <div className="flex items-center gap-2 mb-4"><ClipboardList className="w-4 h-4 text-blue-500" /><h2 className="font-black text-base text-gray-900 dark:text-white">Assignments</h2></div>
-              {student.assignments.length === 0
-                ? <p className="text-sm text-gray-400 italic">No assignments yet.</p>
-                : <div className="space-y-3">
-                    {student.assignments.map(a => (
-                      <div key={a.id} className="p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <p className="text-xs font-semibold text-gray-800 dark:text-white leading-snug">{a.title}</p>
-                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border flex-shrink-0 ${ASSIGNMENT_STATUS_STYLES[a.status] ?? ""}`}>{a.status}</span>
+                        <div className="flex-shrink-0 text-right">
+                          {s.score !== null ? (
+                            <>
+                              <p className="text-lg font-black text-gray-900 dark:text-white">{s.resolvedGrade}<span className="text-xs text-gray-400">/{s.maxScore}</span></p>
+                              <p className="text-[10px] text-emerald-500 font-semibold">Graded</p>
+                            </>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/30">Pending</span>
+                          )}
                         </div>
-                        <p className="text-[10px] text-gray-400">{a.courseName}</p>
-                        {a.score !== undefined && (
-                          <p className="text-[10px] text-emerald-500 font-bold mt-1">Score: {a.score}/{a.maxScore}</p>
-                        )}
                       </div>
-                    ))}
-                  </div>
-              }
-            </Card>
+                      {s.feedback && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 italic">"{s.feedback}"</p>
+                        </div>
+                      )}
+                    </Card>
+                  </motion.div>
+                ))
+            }
           </motion.div>
         )}
 
-        {/* ACTIVITY */}
-        {activeTab === "activity" && (
-          <motion.div key="activity" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <Card className="p-6">
-              <div className="flex items-center gap-2 mb-5"><BarChart3 className="w-4 h-4 text-blue-500" /><h2 className="font-black text-base text-gray-900 dark:text-white">Recent Activity</h2></div>
-              {student.recentActivity.length === 0
-                ? <p className="text-sm text-gray-400 italic text-center py-6">No recent activity.</p>
-                : <div className="space-y-3">
-                    {student.recentActivity.map((a, i) => {
-                      const meta = ACTIVITY_META[a.type] ?? ACTIVITY_META.lesson;
-                      const Icon = meta.icon;
-                      return (
-                        <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                          className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06]">
-                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${meta.bg}`}>
-                            <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
+        {/* QUIZZES */}
+        {activeTab === "quizzes" && (
+          <motion.div key="quizzes" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+            {student.quizAttempts.length === 0
+              ? <Card className="p-10 text-center text-gray-400 text-sm">No quiz attempts yet.</Card>
+              : student.quizAttempts.map((a, i) => (
+                  <motion.div key={a.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
+                    <Card className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <BarChart3 className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{a.quizTitle}</p>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-gray-800 dark:text-white">{a.action}</p>
-                            <p className="text-[10px] text-gray-400 truncate">{a.target}</p>
+                          <p className="text-xs text-gray-400 mb-2">{a.sectionTitle} · {a.courseTitle}</p>
+                          <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+                            <span>{a.score}/{a.totalQuestions} correct</span>
+                            <span>Pass mark: {a.passMark}%</span>
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(a.submittedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
                           </div>
-                          <span className="text-[10px] text-gray-400 flex items-center gap-1 flex-shrink-0">
-                            <Clock className="w-3 h-3" />{a.time}
-                          </span>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-              }
-            </Card>
+                        </div>
+                        <div className="flex-shrink-0 text-right">
+                          <p className="text-lg font-black text-gray-900 dark:text-white">{a.resolvedGrade}%</p>
+                          <span className={`text-[11px] font-bold ${a.passed ? "text-emerald-500" : "text-rose-500"}`}>{a.passed ? "Passed" : "Failed"}</span>
+                        </div>
+                      </div>
+                    </Card>
+                  </motion.div>
+                ))
+            }
           </motion.div>
         )}
       </AnimatePresence>

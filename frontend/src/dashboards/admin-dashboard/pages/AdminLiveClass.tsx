@@ -363,6 +363,7 @@ export default function AdminLiveClass() {
 
   const [session, setSession] = useState<LiveSession | null>(null);
   const [error, setError] = useState("");
+  const [endError, setEndError] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Fetch session data and join token
@@ -404,7 +405,8 @@ export default function AdminLiveClass() {
         navigate("/admin/live");
       } catch (err) {
         console.error("Failed to end session:", err);
-        alert("Failed to end session. Please try again.");
+        setEndError(err instanceof Error ? err.message : "Failed to end session. Please try again.");
+        setTimeout(() => setEndError(""), 5000);
       }
     }
   };
@@ -456,6 +458,22 @@ export default function AdminLiveClass() {
         participantCount={students.length + 1} 
         onLeave={handleLeave}
       />
+
+      {/* End session error banner */}
+      <AnimatePresence>
+        {endError && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-950/80 border-b border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 text-xs font-semibold"
+          >
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            {endError}
+            <button onClick={() => setEndError("")} className="ml-auto text-red-400 hover:text-red-600 transition-colors">×</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 flex flex-col">

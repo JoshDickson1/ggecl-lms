@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 import {
   Plus, Search, Eye, Edit3, Trash2, BookOpen,
   Users, Star, Globe, ChevronDown,
-  Loader2, CheckCircle2, Clock, ArchiveIcon,
+  CheckCircle2, Clock, ArchiveIcon,
   AlertTriangle, DollarSign,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -276,11 +276,13 @@ export default function AdminManageCourses() {
   const [statusFilter, setStatusF]  = useState<"ALL" | "DRAFT" | "PUBLISHED" | "ARCHIVED">("ALL");
   const [levelFilter, setLevelF]    = useState<"ALL" | "BEGINNER" | "INTERMEDIATE" | "ADVANCED">("ALL");
   const [deleteTarget, setDeleteTarget] = useState<AdminCourse | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError: coursesError } = useQuery({
     queryKey: ["admin-courses"],
     queryFn: () => CoursesService.findAll({ limit: 200 }) as Promise<{ items: AdminCourse[]; nextCursor: string | null }>,
     staleTime: 1000 * 60 * 2,
+    retry: 2,
   });
 
   const courses = data?.items ?? [];
@@ -322,6 +324,11 @@ export default function AdminManageCourses() {
       return CoursesService.update(id, { status });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-courses"] }),
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to update course status.";
+      setMutationError(msg);
+      setTimeout(() => setMutationError(null), 5000);
+    },
   });
 
   const { mutate: deleteCourse, isPending: isDeleting } = useMutation({
@@ -329,6 +336,12 @@ export default function AdminManageCourses() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-courses"] });
       setDeleteTarget(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to delete course.";
+      setMutationError(msg);
+      setDeleteTarget(null);
+      setTimeout(() => setMutationError(null), 5000);
     },
   });
 
@@ -350,10 +363,11 @@ export default function AdminManageCourses() {
     revenue:   txAnalytics?.totalRevenue ?? 0,
   }), [courses, courseStats, txAnalytics]);
 
-  if (isLoading) {
+  if (coursesError) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
+      <div className="flex flex-col items-center gap-4 py-20 text-center">
+        <AlertTriangle className="w-10 h-10 text-red-400" />
+        <p className="text-sm text-red-600 dark:text-red-400">Failed to load courses. Please refresh the page.</p>
       </div>
     );
   }
@@ -368,6 +382,24 @@ export default function AdminManageCourses() {
             onClose={() => setDeleteTarget(null)}
             isPending={isDeleting}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Mutation error toast */}
+      <AnimatePresence>
+        {mutationError && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-2xl bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-800/50 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
+          >
+            <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+            <p className="text-sm font-semibold text-red-700 dark:text-red-300">{mutationError}</p>
+            <button onClick={() => setMutationError(null)} className="ml-2 text-red-400 hover:text-red-600 transition-colors">
+              <span className="text-lg leading-none">×</span>
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -392,24 +424,35 @@ export default function AdminManageCourses() {
         {/* Stats */}
         <Fade delay={0.06}>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-            {[
-              { icon: BookOpen,    label: "Total Courses",  value: String(stats.total),         sub: `${stats.archived} archived`,  color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-950/40"       },
-              { icon: Globe,      label: "Published",       value: String(stats.published),      sub: undefined,                     color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
-              { icon: Clock,      label: "Draft",           value: String(stats.draft),          sub: undefined,                     color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"     },
-              { icon: Users,      label: "Total Enrollments",  value: fmt(stats.students),          sub: undefined,                     color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40"   },
-              { icon: DollarSign, label: "Total Revenue",   value: `$${fmt(stats.revenue)}`,     sub: "from paid orders",            color: "text-teal-600",    bg: "bg-teal-50 dark:bg-teal-950/40"       },
-            ].map(({ icon: Icon, label, value, sub, color, bg }) => (
-              <Card key={label} className="p-5 flex items-center gap-3">
-                <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", bg)}>
-                  <Icon className={cn("w-5 h-5", color)} />
-                </div>
-                <div>
-                  <p className={cn("text-2xl font-black", color)}>{value}</p>
-                  <p className="text-[10px] text-gray-400">{label}</p>
-                  {sub && <p className="text-[9px] text-gray-400 mt-0.5">{sub}</p>}
-                </div>
-              </Card>
-            ))}
+            {isLoading
+              ? Array.from({ length: 5 }).map((_, i) => (
+                  <Card key={i} className="p-5 flex items-center gap-3 animate-pulse">
+                    <div className="w-10 h-10 rounded-xl bg-gray-200 dark:bg-white/[0.08] flex-shrink-0" />
+                    <div className="space-y-2">
+                      <div className="h-6 w-12 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                      <div className="h-3 w-20 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                    </div>
+                  </Card>
+                ))
+              : [
+                  { icon: BookOpen,    label: "Total Courses",     value: String(stats.total),      sub: `${stats.archived} archived`, color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-950/40"       },
+                  { icon: Globe,       label: "Published",          value: String(stats.published),  sub: undefined,                    color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+                  { icon: Clock,       label: "Draft",              value: String(stats.draft),      sub: undefined,                    color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"     },
+                  { icon: Users,       label: "Total Enrollments",  value: fmt(stats.students),      sub: undefined,                    color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40"   },
+                  { icon: DollarSign,  label: "Total Revenue",      value: `$${fmt(stats.revenue)}`, sub: "from paid orders",           color: "text-teal-600",    bg: "bg-teal-50 dark:bg-teal-950/40"       },
+                ].map(({ icon: Icon, label, value, sub, color, bg }) => (
+                  <Card key={label} className="p-5 flex items-center gap-3">
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", bg)}>
+                      <Icon className={cn("w-5 h-5", color)} />
+                    </div>
+                    <div>
+                      <p className={cn("text-2xl font-black", color)}>{value}</p>
+                      <p className="text-[10px] text-gray-400">{label}</p>
+                      {sub && <p className="text-[9px] text-gray-400 mt-0.5">{sub}</p>}
+                    </div>
+                  </Card>
+                ))
+            }
           </div>
         </Fade>
 
@@ -468,16 +511,36 @@ export default function AdminManageCourses() {
                 </thead>
                 <tbody>
                   <AnimatePresence>
-                    {filtered.map((course, i) => (
-                      <CourseRow
-                        key={course.id}
-                        course={course}
-                        index={i}
-                        instructorImageMap={instructorImageMap}
-                        onChangeStatus={(id, status) => changeStatus({ id, status })}
-                        onDelete={setDeleteTarget}
-                      />
-                    ))}
+                    {isLoading
+                      ? Array.from({ length: 6 }).map((_, i) => (
+                          <tr key={i} className="border-b border-gray-50 dark:border-white/[0.03] animate-pulse">
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-gray-200 dark:bg-white/[0.08] flex-shrink-0" />
+                                <div className="space-y-1.5">
+                                  <div className="h-3 w-36 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                                  <div className="h-3 w-20 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                                </div>
+                              </div>
+                            </td>
+                            {[80, 40, 50, 30, 60, 60].map((w, j) => (
+                              <td key={j} className="px-4 py-4">
+                                <div className="h-3 bg-gray-200 dark:bg-white/[0.08] rounded-lg" style={{ width: w }} />
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      : filtered.map((course, i) => (
+                          <CourseRow
+                            key={course.id}
+                            course={course}
+                            index={i}
+                            instructorImageMap={instructorImageMap}
+                            onChangeStatus={(id, status) => changeStatus({ id, status })}
+                            onDelete={setDeleteTarget}
+                          />
+                        ))
+                    }
                   </AnimatePresence>
                 </tbody>
               </table>

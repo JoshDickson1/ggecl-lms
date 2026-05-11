@@ -48,8 +48,6 @@ import AdminInstructorManagement from "./dashboards/admin-dashboard/pages/AdminI
 import AdminStudentManagement    from "./dashboards/admin-dashboard/pages/AdminStudentManagement";
 import AdminProfile              from "./dashboards/admin-dashboard/pages/AdminProfile";
 import AdminSupport              from "./dashboards/admin-dashboard/pages/AdminSupport";
-import AdminSettings             from "./dashboards/admin-dashboard/pages/AdminSettings";
-import AdminAllNotifications     from "./dashboards/admin-dashboard/pages/AdminAllNotifications";
 import AdminGrades               from "./dashboards/admin-dashboard/pages/AdminGrades";
 import AdminAssignment           from "./dashboards/admin-dashboard/pages/AdminAssignment";
 import AdminCreateAssignment     from "./dashboards/admin-dashboard/pages/AdminCreateAssignment";
@@ -180,8 +178,7 @@ const router = createBrowserRouter([
           { path: "admins/:id",                       element: <PreviewAdmin /> },
           { path: "students/:id",                     element: <PreviewStudent /> },
           { path: "support",                          element: <AdminSupport /> },
-          { path: "settings",                         element: <AdminSettings /> },
-          { path: "notifications",                    element: <AdminAllNotifications /> },
+          { path: "notifications",                    element: <AdminActivities /> },
           { path: "grades",                           element: <AdminGrades /> },
           { path: "assignments",                      element: <AdminAssignment /> },
           { path: "assignments/:id/submissions",      element: <SingleSubmittedAssignment /> },

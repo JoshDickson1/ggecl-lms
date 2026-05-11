@@ -14,7 +14,6 @@ import TransactionService, {
   type OrderStatus,
   type Gateway,
   type TransactionAnalytics,
-  type CurrencyBreakdown,
 } from "@/services/transaction.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -417,9 +416,25 @@ export default function AdminTransactions() {
 
         <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
           {listLoading ? (
-            <div className="flex items-center justify-center py-20 gap-3">
-              <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-              <span className="text-sm text-gray-400">Loading transactions…</span>
+            <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="grid grid-cols-[2fr_1.4fr_1fr_1fr_auto] gap-4 px-5 py-4 items-center animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-gray-200 dark:bg-white/[0.08] flex-shrink-0" />
+                    <div className="space-y-1.5">
+                      <div className="h-3 w-28 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                      <div className="h-3 w-20 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="h-3 w-32 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                    <div className="h-3 w-20 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                  </div>
+                  <div className="h-4 w-16 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                  <div className="h-6 w-16 bg-gray-200 dark:bg-white/[0.08] rounded-xl" />
+                  <div className="w-8 h-8 rounded-xl bg-gray-200 dark:bg-white/[0.08]" />
+                </div>
+              ))}
             </div>
           ) : (
             <AnimatePresence mode="popLayout">

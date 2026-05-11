@@ -13,14 +13,12 @@ import {
 import AssignmentService, {
   type InstructorSubmission,
   type GradeSubmissionPayload,
-  type LetterGrade,
+  type AssignmentStats,
 } from "@/services/AssignmentService";
 import { GRADE_META, FILE_META, getFileType } from "@/data/academicData";
 import { FilePreviewModal, type PreviewFile } from "@/components/FilePreviewModal";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const LETTER_GRADES: LetterGrade[] = ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D", "F"];
 
 function cn(...c: (string | false | undefined)[]) { return c.filter(Boolean).join(" "); }
 
@@ -42,42 +40,29 @@ function Fade({ children, delay = 0 }: { children: React.ReactNode; delay?: numb
 }
 
 // ─── Safe grade meta lookup ───────────────────────────────────────────────────
-// The API grade field can be:
-//   • a letter string "A", "B+", etc.
-//   • a grade object { id, score, resolvedGrade, feedback, gradedAt }
-//   • undefined / null
-// Returns { letter, meta } when resolvable, otherwise null.
+// resolvedGrade is a percentage (0–100) returned by the API as
+// (score / maxScore) * 100. Derive a display letter from it.
 
-function safeGradeMeta(grade: unknown): { letter: LetterGrade; meta: typeof GRADE_META[LetterGrade] } | null {
-  if (!grade) return null;
+import { type LetterGrade } from "@/services/AssignmentService";
 
-  // Plain letter string
-  if (typeof grade === "string") {
-    const m = GRADE_META[grade as LetterGrade];
-    if (m) return { letter: grade as LetterGrade, meta: m };
-  }
+function resolvedGradeToLetter(pct: number): LetterGrade {
+  if (pct >= 97) return "A+";
+  if (pct >= 93) return "A";
+  if (pct >= 90) return "A-";
+  if (pct >= 87) return "B+";
+  if (pct >= 83) return "B";
+  if (pct >= 80) return "B-";
+  if (pct >= 77) return "C+";
+  if (pct >= 73) return "C";
+  if (pct >= 70) return "C-";
+  if (pct >= 60) return "D";
+  return "F";
+}
 
-  // Grade object — derive letter from resolvedGrade (percentage 0‑100)
-  if (typeof grade === "object") {
-    const g = grade as Record<string, unknown>;
-    const pct = typeof g.resolvedGrade === "number" ? g.resolvedGrade : null;
-    if (pct !== null) {
-      let letter: LetterGrade = "F";
-      if (pct >= 97)      letter = "A+";
-      else if (pct >= 93) letter = "A";
-      else if (pct >= 90) letter = "A-";
-      else if (pct >= 87) letter = "B+";
-      else if (pct >= 83) letter = "B";
-      else if (pct >= 80) letter = "B-";
-      else if (pct >= 77) letter = "C+";
-      else if (pct >= 73) letter = "C";
-      else if (pct >= 70) letter = "C-";
-      else if (pct >= 60) letter = "D";
-      return { letter, meta: GRADE_META[letter] };
-    }
-  }
-
-  return null;
+function safeGradeMeta(resolvedGrade: number | null | undefined): { letter: LetterGrade; meta: typeof GRADE_META[LetterGrade] } | null {
+  if (resolvedGrade == null) return null;
+  const letter = resolvedGradeToLetter(resolvedGrade);
+  return { letter, meta: GRADE_META[letter] };
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -133,10 +118,10 @@ function FileChip({ file, onPreview }: { file: { name: string; url: string; size
 }
 
 // ─── Normalised submission shape ──────────────────────────────────────────────
-// The raw API response for GET /api/assignments/{id}/submissions returns:
-//   { id, assignmentId, studentId, attachments: string[], isLate, submittedAt,
-//     grade: { id, score, resolvedGrade, feedback, gradedAt } }
-// Student name/email may be joined by the service layer or may be absent.
+// Matches GET /api/assignments/{id}/submissions response shape:
+//   { id, assignmentId, studentId, attachments: string[], note, isLate,
+//     submittedAt, grade: { id, score, resolvedGrade, feedback, gradedAt } | null }
+// studentName / studentEmail / studentAvatar may be joined by the backend.
 
 interface NormalisedSub {
   id: string;
@@ -148,81 +133,55 @@ interface NormalisedSub {
   submittedAt: string;
   isLate: boolean;
   note?: string;
-  status: string;         // "submitted" | "late" | "graded"
-  gradeLetter?: LetterGrade;
+  status: string;           // "submitted" | "late" | "graded"
+  resolvedGrade?: number;   // percentage from API (score / maxScore * 100)
   score?: number;
   feedback?: string;
-  gradeRaw?: unknown;
 }
 
 function normalise(raw: InstructorSubmission): NormalisedSub {
-  const r = raw as unknown as Record<string, unknown>;
-
-  // ── Attachments → files ──
-  const attachments: string[] = Array.isArray(r.attachments)
-    ? (r.attachments as string[])
-    : Array.isArray(raw.files)
-      ? raw.files.map((f: { url: string }) => f.url)
-      : [];
+  // attachments come as string[] URLs; files[] is the normalised shape
+  const attachments: string[] = Array.isArray((raw as unknown as Record<string, unknown>).attachments)
+    ? (raw as unknown as Record<string, unknown>).attachments as string[]
+    : (raw.files ?? []).map((f: { url: string }) => f.url);
 
   const files = attachments.map((url, i) => {
     const name = decodeURIComponent(url.split("?")[0].split("/").pop() ?? `file-${i + 1}`);
     return { id: String(i), name, url };
   });
 
-  // ── Grade ──
-  const gradeRaw = r.grade ?? raw.grade;
-  let gradeLetter: LetterGrade | undefined;
-  let score: number | undefined;
-  let feedback: string | undefined;
+  // grade object from API: { id, score, resolvedGrade, feedback, gradedAt }
+  const gradeObj = (raw as unknown as Record<string, unknown>).grade as
+    { score?: number; resolvedGrade?: number; feedback?: unknown } | null | undefined;
 
-  if (gradeRaw) {
-    const resolved = safeGradeMeta(gradeRaw);
-    if (resolved) gradeLetter = resolved.letter;
+  const resolvedGrade = gradeObj?.resolvedGrade ?? undefined;
+  const score         = gradeObj?.score ?? (typeof raw.score === "number" ? raw.score : undefined);
+  const feedback      = gradeObj?.feedback != null
+    ? String(gradeObj.feedback)
+    : (raw.feedback ?? undefined);
 
-    if (typeof gradeRaw === "object") {
-      const g = gradeRaw as Record<string, unknown>;
-      if (typeof g.score    === "number") score    = g.score;
-      if (typeof g.feedback === "string") feedback = g.feedback;
-    } else {
-      if (typeof raw.score === "number") score = raw.score;
-      feedback = raw.feedback ?? undefined;
-    }
-  } else {
-    if (typeof raw.score === "number") score = raw.score;
-    feedback = raw.feedback ?? undefined;
-    if (raw.grade && typeof raw.grade === "string") gradeLetter = raw.grade as LetterGrade;
-  }
-
-  // ── Status ──
-  let status = (r.status ?? raw.status ?? "") as string;
+  // derive status
+  let status = (raw.status ?? "") as string;
   if (!status) {
-    if (gradeLetter || (gradeRaw && typeof gradeRaw === "object")) status = "graded";
-    else if (raw.isLate) status = "late";
-    else status = "submitted";
+    if (resolvedGrade != null) status = "graded";
+    else if (raw.isLate)       status = "late";
+    else                       status = "submitted";
   }
-
-  // ── Student info ──
-  // These fields come from the service layer join; fall back gracefully.
-  const studentName  = (r.studentName  ?? raw.studentName  ?? "") as string;
-  const studentEmail = (r.studentEmail ?? raw.studentEmail ?? "") as string;
-  const studentAvatar = (r.studentAvatar ?? raw.studentAvatar) as string | undefined;
 
   return {
     id:            raw.id,
-    studentId:     (r.studentId ?? raw.studentId ?? "") as string,
-    studentName,
-    studentEmail,
-    studentAvatar,
+    studentId:     raw.studentId ?? "",
+    studentName:   raw.studentName ?? "",
+    studentEmail:  raw.studentEmail ?? "",
+    studentAvatar: raw.studentAvatar ?? undefined,
     files,
-    submittedAt:   (r.submittedAt ?? raw.submittedAt ?? new Date().toISOString()) as string,
-    isLate:        (r.isLate ?? raw.isLate ?? false) as boolean,
-    note:          (r.note ?? raw.note) as string | undefined,
+    submittedAt:   raw.submittedAt ?? new Date().toISOString(),
+    isLate:        raw.isLate ?? false,
+    note:          raw.note ?? undefined,
     status,
-    gradeLetter,
+    resolvedGrade,
     score,
     feedback,
-    gradeRaw,
   };
 }
 
@@ -237,22 +196,24 @@ function MarkingPanel({
   onGraded: (id: string) => void;
   isAdmin?: boolean;
 }) {
-  const [letter, setLetter]   = useState<LetterGrade>(submission.gradeLetter ?? "B");
-  const [score,  setScore]    = useState(submission.score ?? Math.round(assignmentMaxScore * 0.75));
+  const [score,    setScore]  = useState(submission.score ?? Math.round(assignmentMaxScore * 0.75));
   const [feedback, setFb]     = useState(submission.feedback ?? "");
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ files: PreviewFile[]; index: number } | null>(null);
+  const [saving,   setSaving] = useState(false);
+  const [error,    setError]  = useState<string | null>(null);
+  const [preview,  setPreview] = useState<{ files: PreviewFile[]; index: number } | null>(null);
 
-  const meta = GRADE_META[letter];
   const previewFiles: PreviewFile[] = submission.files.map(f => ({ name: f.name, url: f.url, size: f.size }));
+
+  // Derive a display letter from the current score for visual feedback only
+  const pct         = assignmentMaxScore > 0 ? (score / assignmentMaxScore) * 100 : 0;
+  const displayInfo = safeGradeMeta(pct);
 
   const save = async () => {
     if (!feedback.trim()) return;
     setSaving(true);
     setError(null);
     try {
-      const payload: GradeSubmissionPayload = { score, grade: letter, feedback: feedback.trim() };
+      const payload: GradeSubmissionPayload = { score, feedback: feedback.trim() };
       await AssignmentService.gradeSubmission(submission.id, payload);
       onGraded(submission.id);
     } catch (err) {
@@ -339,28 +300,6 @@ function MarkingPanel({
 
             <div className="h-px bg-gray-100 dark:bg-white/[0.06]" />
 
-            {/* Letter grade */}
-            <div>
-              <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-2">Letter Grade</p>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {LETTER_GRADES.map(g => {
-                  const m = GRADE_META[g];
-                  return (
-                    <button key={g} onClick={() => setLetter(g)}
-                      className={cn("px-2 py-1 rounded-lg text-xs font-bold border transition-all",
-                        letter === g ? `${m.color} ${m.bg} ${m.border} scale-105 shadow` : "border-gray-200 dark:border-white/[0.08] text-gray-400 hover:border-blue-300"
-                      )}>
-                      {g}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={`text-2xl font-black rounded-xl border px-3 py-1 ${meta.color} ${meta.bg} ${meta.border}`}>{letter}</span>
-                <span className={`text-sm font-semibold ${meta.color}`}>{meta.label} · GPA {meta.gpa.toFixed(1)}</span>
-              </div>
-            </div>
-
             {/* Score */}
             <div>
               <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-2">Score — {score}/{assignmentMaxScore}</p>
@@ -375,6 +314,17 @@ function MarkingPanel({
                     score >= assignmentMaxScore * 0.7 ? "bg-emerald-500" : score >= assignmentMaxScore * 0.5 ? "bg-amber-500" : "bg-red-500"
                   )} />
               </div>
+              {/* Derived letter grade — display only, not sent to API */}
+              {displayInfo && (
+                <div className="flex items-center gap-2 mt-3">
+                  <span className={`text-2xl font-black rounded-xl border px-3 py-1 ${displayInfo.meta.color} ${displayInfo.meta.bg} ${displayInfo.meta.border}`}>
+                    {displayInfo.letter}
+                  </span>
+                  <span className={`text-sm font-semibold ${displayInfo.meta.color}`}>
+                    {displayInfo.meta.label} · GPA {displayInfo.meta.gpa.toFixed(1)}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Feedback */}
@@ -398,7 +348,7 @@ function MarkingPanel({
               )}>
               {saving
                 ? <><Loader2 className="w-4 h-4 animate-spin" />Saving…</>
-                : <><Save className="w-4 h-4" />{submission.gradeLetter ? "Update Grade" : "Submit Grade"}</>
+                : <><Save className="w-4 h-4" />{submission.resolvedGrade != null ? "Update Grade" : "Submit Grade"}</>
               }
             </motion.button>
           </div>
@@ -436,11 +386,26 @@ export default function SingleSubmittedAssignment() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: submissionsData, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["submissions", id],
+  // GET /api/assignments/{id}/stats — authoritative counts from the server
+  const { data: stats, refetch: refetchStats } = useQuery<AssignmentStats>({
+    queryKey: ["assignment-stats", id],
+    queryFn: () => AssignmentService.getAssignmentStats(id!),
+    enabled: !!id,
+    retry: false,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  // GET /api/assignments/{id}/submissions — full list for the table
+  // When the "late" filter is active, use lateOnly=true for a server-side filter
+  const { data: submissionsData, isLoading, isFetching, refetch: refetchSubs } = useQuery({
+    queryKey: ["submissions", id, filter === "late"],
     queryFn: async () => {
-      try { return await AssignmentService.getSubmissions(id!, { limit: 200 }); }
-      catch { return { data: [], meta: { total: 0, page: 1, limit: 200, totalPages: 1 } }; }
+      try {
+        return await AssignmentService.getSubmissions(id!, {
+          limit: 200,
+          lateOnly: filter === "late" ? true : undefined,
+        });
+      } catch { return { data: [], meta: { total: 0, page: 1, limit: 200, totalPages: 1 } }; }
     },
     enabled: !!id,
     retry: false,
@@ -448,21 +413,30 @@ export default function SingleSubmittedAssignment() {
     refetchOnWindowFocus: true,
   });
 
-  // Normalise every submission — this is the single place that handles API shape variation
+  console.log("submission data", submissionsData)
+
+  const refetch = () => { refetchSubs(); refetchStats(); };
+
   const submissions: NormalisedSub[] = (submissionsData?.data ?? []).map(normalise);
 
-  const filtered = filter === "all" ? submissions : submissions.filter(s => s.status === filter);
-  const graded   = submissions.filter(s => s.status === "graded").length;
-  const pending  = submissions.filter(s => s.status === "submitted" || s.status === "late").length;
+  // For client-side filtering of "submitted" and "graded" tabs
+  const filtered = filter === "all" || filter === "late"
+    ? submissions
+    : submissions.filter(s => s.status === filter);
+
+  // Use server stats when available, fall back to counting from the loaded page
+  const graded  = stats?.graded          ?? submissions.filter(s => s.status === "graded").length;
+  const pending = stats != null
+    ? stats.totalSubmissions - stats.graded
+    : submissions.filter(s => s.status === "submitted" || s.status === "late").length;
+  const total   = stats?.totalSubmissions ?? submissions.length;
   const maxScore = assignment?.maxScore ?? 100;
 
   const handleGraded = (updatedId: string) => {
-    // Refetch to get fresh data (status change, grade populated, etc.)
     refetch();
-    // Close the panel if the submission that was just graded is the open one
     if (marking?.id === updatedId) setMarking(null);
-    // Update the assignment list page counts
     qc.invalidateQueries({ queryKey: ["instructor-assignments"] });
+    qc.invalidateQueries({ queryKey: ["assignment-stats", id] });
   };
 
   return (
@@ -509,23 +483,31 @@ export default function SingleSubmittedAssignment() {
                 <p className="text-lg font-black text-amber-600 dark:text-amber-400">{pending}</p>
                 <p className="text-[10px] text-gray-400">Pending</p>
               </div>
+              {stats && (
+                <div className="text-center px-4 py-2 rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-100 dark:border-orange-900/30">
+                  <p className="text-lg font-black text-orange-600 dark:text-orange-400">{stats.lateSubmissions}</p>
+                  <p className="text-[10px] text-gray-400">Late</p>
+                </div>
+              )}
               <div className="text-center px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/30">
-                <p className="text-lg font-black text-blue-600 dark:text-blue-400">{submissions.length}</p>
-                <p className="text-[10px] text-gray-400">Total</p>
+                <p className="text-lg font-black text-blue-600 dark:text-blue-400">{total}</p>
+                <p className="text-[10px] text-gray-400">
+                  {stats ? `${Math.round(stats.submissionRate)}% rate` : "Total"}
+                </p>
               </div>
             </div>
           </div>
 
-          {submissions.length > 0 && (
+          {total > 0 && (
             <div className="mt-5">
               <div className="flex justify-between text-xs text-gray-400 mb-1.5">
                 <span>Grading progress</span>
-                <span>{graded}/{submissions.length} graded</span>
+                <span>{graded}/{total} graded</span>
               </div>
               <div className="h-2 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${submissions.length ? (graded / submissions.length) * 100 : 0}%` }}
+                  animate={{ width: `${total ? (graded / total) * 100 : 0}%` }}
                   transition={{ duration: 0.8 }}
                   className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400"
                 />
@@ -575,8 +557,8 @@ export default function SingleSubmittedAssignment() {
         ) : (
           filtered.map((sub, i) => {
             const previewFileList: PreviewFile[] = sub.files.map(f => ({ name: f.name, url: f.url, size: f.size }));
-            // Safely resolve grade display — never crashes even if gradeRaw is malformed
-            const gradeInfo = safeGradeMeta(sub.gradeLetter ?? sub.gradeRaw);
+            // Derive letter grade from resolvedGrade for display
+            const gradeInfo = safeGradeMeta(sub.resolvedGrade ?? null);
             const displayName = sub.studentName || `Student …${sub.studentId.slice(-6)}`;
 
             return (

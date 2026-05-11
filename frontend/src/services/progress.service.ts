@@ -62,6 +62,13 @@ export interface InstructorCourseAnalyticsItem {
   avgWatchMinutesPerStudent: number;
 }
 
+export interface PlatformCompletionRate {
+  avgCompletionPercent: number;
+  totalEnrollments: number;
+  completedEnrollments: number;
+  completionRate: number;
+}
+
 // ==================== SERVICE ====================
 
 export default class ProgressService {
@@ -169,6 +176,16 @@ export default class ProgressService {
    */
   static async getInstructorWatchTime(period: "daily" | "weekly" | "monthly" | "all" = "all"): Promise<InstructorWatchTimeResponse> {
     const response = await APIConfig.fetch(`/progress/instructor/watch-time?period=${period}`);
+    return response.json();
+  }
+
+  /**
+   * Get platform-wide completion rate across all enrolled students.
+   * Returns avg completion %, total enrollments, completed enrollments, and overall rate.
+   * ADMIN only.
+   */
+  static async getPlatformCompletionRate(): Promise<PlatformCompletionRate> {
+    const response = await APIConfig.fetch("/progress/admin/platform/completion-rate");
     return response.json();
   }
 

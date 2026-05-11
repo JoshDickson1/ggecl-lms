@@ -19,6 +19,8 @@ export type UserRole = "student" | "instructor" | "admin";
 
 export interface ManagedUser {
   id: string;
+  /** For students: studentProfile.id. For instructors: instructorProfile.id. For admins: userId. */
+  profileId: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -65,8 +67,15 @@ function mapPublicUser(u: PublicUserListItem, role: UserRole): ManagedUser {
     ? (u.instructorProfile?.courses?.length ?? 0)
     : undefined;
 
+  // For students/instructors the preview pages expect the profile id, not the userId
+  const profileId =
+    role === "student"    ? (u.studentProfile?.id    ?? u.id) :
+    role === "instructor" ? (u.instructorProfile?.id ?? u.id) :
+    u.id;
+
   return {
     id:        u.id,
+    profileId,
     firstName: firstName || u.name,
     lastName:  rest.join(" ") || "",
     email:     u.email,
@@ -244,7 +253,7 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
           .map(u => {
             const [firstName, ...rest] = u.name.split(" ");
             return {
-              id: u.id, firstName: firstName || u.name, lastName: rest.join(" ") || "",
+              id: u.id, profileId: u.id, firstName: firstName || u.name, lastName: rest.join(" ") || "",
               email: u.email, image: u.image, gender: "Other" as const,
               status: "Active" as const, createdAt: new Date(u.createdAt),
               permissions: "Read Only",
@@ -351,7 +360,7 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
   const handleCreate = () => { if (validate()) createMutation.mutate(); };
 
   const handleAction = (action: string, user: ManagedUser) => {
-    if (action === "View Profile") { navigate(`/admin/${role}s/${user.id}`); return; }
+    if (action === "View Profile") { navigate(`/admin/${role}s/${user.profileId}`); return; }
     if (action === "Delete")       { setConfirmDelete(user.id); return; }
     // Other actions (Suspend, Reset Password, etc.) can be wired up as needed
   };
@@ -393,7 +402,14 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
       {(role === "student" || role === "instructor") && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
           className="grid grid-cols-3 gap-3">
-          {role === "student" && [
+          {isLoading
+            ? Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i} className="p-4 text-center animate-pulse">
+                  <div className="h-7 w-16 bg-gray-200 dark:bg-white/[0.08] rounded-lg mx-auto mb-1" />
+                  <div className="h-3 w-24 bg-gray-200 dark:bg-white/[0.08] rounded-lg mx-auto" />
+                </Card>
+              ))
+            : role === "student" && [
             { label: "Total Students", value: studentStats?.total    ?? rawUsers.length, color: "text-blue-600 dark:text-blue-400"       },
             { label: "Active",         value: studentStats?.active   ?? "—",             color: "text-emerald-600 dark:text-emerald-400" },
             { label: "Inactive",       value: studentStats?.inactive ?? "—",             color: "text-gray-500 dark:text-gray-400"       },
@@ -403,7 +419,7 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
               <p className="text-[11px] text-gray-400 mt-0.5">{s.label}</p>
             </Card>
           ))}
-          {role === "instructor" && [
+          {!isLoading && role === "instructor" && [
             { label: "Total Instructors",     value: instructorStats?.total               ?? rawUsers.length, color: "text-violet-600 dark:text-violet-400"   },
             { label: "Active",                value: instructorStats?.active              ?? "—",             color: "text-emerald-600 dark:text-emerald-400" },
             { label: "With Published Course", value: instructorStats?.withPublishedCourse ?? "—",             color: "text-blue-600 dark:text-blue-400"       },
@@ -544,11 +560,24 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
               <tbody className="divide-y divide-gray-50 dark:divide-white/[0.04]">
                 <AnimatePresence initial={false}>
                   {isLoading ? (
-                    <tr>
-                      <td colSpan={7} className="px-5 py-10 text-center">
-                        <Loader2 className="w-5 h-5 animate-spin mx-auto text-gray-400" />
-                      </td>
-                    </tr>
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={i} className="border-b border-gray-50 dark:border-white/[0.04]">
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-gray-200 dark:bg-white/[0.08] animate-pulse flex-shrink-0" />
+                            <div className="space-y-1.5">
+                              <div className="h-3 w-24 bg-gray-200 dark:bg-white/[0.08] rounded-lg animate-pulse" />
+                              <div className="h-3 w-14 bg-gray-200 dark:bg-white/[0.08] rounded-lg animate-pulse" />
+                            </div>
+                          </div>
+                        </td>
+                        {[120, 60, 80, 60, 60, 40].map((w, j) => (
+                          <td key={j} className="px-5 py-3.5">
+                            <div className={`h-3 bg-gray-200 dark:bg-white/[0.08] rounded-lg animate-pulse`} style={{ width: w }} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
                   ) : isError ? (
                     <tr>
                       <td colSpan={7} className="px-5 py-10 text-center text-rose-400 text-sm">
@@ -626,7 +655,7 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
                             <div className="flex items-center gap-2">
                               {/* Quick view */}
                               <button title="View Profile"
-                                onClick={() => navigate(`/admin/${role}s/${user.id}`)}
+                                onClick={() => navigate(`/admin/${role}s/${user.profileId}`)}
                                 className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all opacity-0 group-hover:opacity-100">
                                 <Eye className="w-4 h-4" />
                               </button>

@@ -98,6 +98,12 @@ export interface UserQuery {
   sortOrder?: "asc" | "desc";
 }
 
+export interface StudentListQuery {
+  page?: number;
+  limit?: number;
+  order?: "asc" | "desc";
+}
+
 export interface InstructorListQuery {
   page?: number;
   limit?: number;
@@ -157,6 +163,43 @@ export interface PublicInstructorUser {
   createdAt: string;
 }
 
+export interface InstructorAssignment {
+  id: string;
+  title: string;
+  maxScore: number;
+  dueDate: string;
+  allowLate: boolean;
+  isPublished: boolean;
+  createdAt: string;
+  course: { id: string; title: string; img: string | null };
+  _count: { submissions: number };
+}
+
+export interface InstructorReviewReply {
+  id: string;
+  comment: string;
+  isEdited: boolean;
+  createdAt: string;
+  review: {
+    id: string;
+    rating: number;
+    comment: string;
+    createdAt: string;
+    course: { id: string; title: string; img: string | null };
+    student: { id: string; user: { id: string; name: string; image: string | null } };
+  };
+}
+
+export interface InstructorLiveSession {
+  id: string;
+  title: string;
+  roomName: string;
+  scheduledAt: string;
+  endsAt: string;
+  status: string;
+  course: { id: string; title: string; img: string | null };
+}
+
 export interface PublicInstructorProfile {
   id: string;
   userId: string;
@@ -190,6 +233,9 @@ export interface PublicInstructorProfile {
     };
     createdAt: string;
   }>;
+  assignments?: InstructorAssignment[];
+  reviewReplies?: InstructorReviewReply[];
+  liveSessions?: InstructorLiveSession[];
   user: PublicInstructorUser;
 }
 
@@ -226,6 +272,172 @@ export interface FullInstructorUser extends PublicInstructorUser {
 
 export interface FullInstructorProfile extends Omit<PublicInstructorProfile, "user"> {
   user: FullInstructorUser;
+}
+
+// ─── STUDENT PROFILE TYPES ───────────────────────────────────────────────────
+
+export interface PublicStudentCourse {
+  id: string;
+  title: string;
+  img: string | null;
+  price: number;
+  level: string;
+  status: string;
+  instructorId: string;
+}
+
+export interface PublicStudentEnrollment {
+  id: string;
+  enrolledAt: string;
+  course: PublicStudentCourse;
+}
+
+export interface PublicStudentUser {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  role: string;
+  gender: string | null;
+  location: string | null;
+  createdAt: string;
+}
+
+/** Shape returned by GET /api/users/students/public and GET /api/users/students/public/:studentId */
+export interface PublicStudentProfile {
+  id: string;
+  userId: string;
+  matricNumber: string | null;
+  enrollmentDate: string | null;
+  bio: string | null;
+  learningGoals: string[];
+  enrollments: PublicStudentEnrollment[];
+  courseProgress: Array<{
+    id: string;
+    courseId: string;
+    completedLessons: number;
+    totalLessons: number;
+    percentComplete: number;
+    totalTimeSpent: number;
+    isCompleted: boolean;
+    completedAt: string | null;
+    lastActivityAt: string | null;
+    course: {
+      id: string;
+      title: string;
+      img: string | null;
+      level: string;
+      status: string;
+      totalDuration: number;
+    };
+  }>;
+  submissions: Array<{
+    id: string;
+    isLate: boolean;
+    submittedAt: string;
+    assignment: {
+      id: string;
+      title: string;
+      maxScore: number;
+      dueDate: string;
+      course: { id: string; title: string };
+    };
+    grade: {
+      id: string;
+      score: number;
+      resolvedGrade: number;
+      feedback: string | null;
+      gradedAt: string;
+    } | null;
+  }>;
+  certificates: Array<{
+    id: string;
+    fileUrl: string;
+    issuedAt: string;
+    course: {
+      id: string;
+      title: string;
+      img: string | null;
+      certification: string;
+    };
+  }>;
+  quizAttempts: Array<{
+    id: string;
+    score: number;
+    totalQuestions: number;
+    resolvedGrade: number;
+    passed: boolean;
+    submittedAt: string;
+    quiz: {
+      id: string;
+      title: string;
+      passMark: number;
+      section: {
+        id: string;
+        title: string;
+        course: { id: string; title: string };
+      };
+    };
+  }>;
+  reviews: Array<{
+    id: string;
+    rating: number;
+    comment: string;
+    isEdited: boolean;
+    createdAt: string;
+    course: { id: string; title: string; img: string | null };
+  }>;
+  learningStreak: {
+    currentStreak: number;
+    longestStreak: number;
+    totalActiveDays: number;
+    lastActiveDate: string | null;
+  } | null;
+  xp: {
+    totalXp: number;
+    currentLevel: number;
+    xpToNextLevel: number;
+  } | null;
+  user: PublicStudentUser;
+}
+
+export interface PublicStudentListResponse {
+  data: PublicStudentProfile[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
+/** Full user shape nested inside the authenticated student profile response */
+export interface FullStudentUser extends PublicStudentUser {
+  emailVerified: boolean;
+  status: string;
+  banned: boolean;
+  banReason: string | null;
+  banExpires: string | null;
+  updatedAt: string;
+  studentProfile: {
+    id: string;
+    userId: string;
+    matricNumber: string | null;
+    enrollmentDate: string | null;
+    bio: string | null;
+    phoneNumber: string | null;
+    learningGoals: string[];
+    enrollments: PublicStudentEnrollment[];
+  } | null;
+  instructorProfile: PublicInstructorProfile | null;
+}
+
+/** Shape returned by GET /api/users/students/:studentId (authenticated) */
+export interface FullStudentProfile extends Omit<PublicStudentProfile, "user"> {
+  phoneNumber: string | null;
+  user: FullStudentUser;
 }
 
 // ==================== SERVICE ====================
@@ -321,6 +533,57 @@ export default class UserService {
   ): Promise<FullInstructorProfile> {
     const response = await APIConfig.fetch(
       `/users/instructors/${instructorId}`
+    );
+    return response.json();
+  }
+
+  // ─── STUDENT PUBLIC ───────────────────────────────────────────────────────────
+
+  /**
+   * List all active student profiles publicly (no auth required).
+   * Keyed by studentProfile.id, not userId.
+   * @param query - Optional pagination and sort options
+   */
+  static async findAllStudentsPublic(
+    query?: StudentListQuery
+  ): Promise<PublicStudentListResponse> {
+    const params = new URLSearchParams();
+    if (query?.page !== undefined)  params.append("page",  String(query.page));
+    if (query?.limit !== undefined) params.append("limit", String(query.limit));
+    if (query?.order)               params.append("order", query.order);
+    const qs = params.toString();
+    const response = await APIConfig.fetch(
+      `/users/students/public${qs ? `?${qs}` : ""}`
+    );
+    return response.json();
+  }
+
+  /**
+   * Get a single student's public profile by studentProfile.id (no auth required).
+   * Only returns ACTIVE students.
+   * @param studentId - StudentProfile ID (not userId)
+   */
+  static async findOneStudentPublic(
+    studentId: string
+  ): Promise<PublicStudentProfile> {
+    const response = await APIConfig.fetch(
+      `/users/students/public/${studentId}`
+    );
+    return response.json();
+  }
+
+  // ─── STUDENT AUTHENTICATED ────────────────────────────────────────────────────
+
+  /**
+   * Get a full student profile by studentProfile.id (auth required).
+   * ADMIN: any profile. STUDENT: own profile only. INSTRUCTOR: any active profile.
+   * @param studentId - StudentProfile ID (not userId)
+   */
+  static async findOneStudent(
+    studentId: string
+  ): Promise<FullStudentProfile> {
+    const response = await APIConfig.fetch(
+      `/users/students/${studentId}`
     );
     return response.json();
   }

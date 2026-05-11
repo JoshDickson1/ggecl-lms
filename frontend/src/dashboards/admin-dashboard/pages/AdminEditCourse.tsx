@@ -63,6 +63,7 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [open, setOpen] = useState(false);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const qc = useQueryClient();
@@ -109,6 +110,10 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
       qc.invalidateQueries({ queryKey: ["course-enrollments", courseId] });
       qc.invalidateQueries({ queryKey: ["admin-courses"] });
     },
+    onError: (error: unknown) => {
+      console.error("Enroll failed:", error);
+      setEnrollError(error instanceof Error ? error.message : "Failed to enroll student. Please try again.");
+    },
   });
 
   const unenrollMutation = useMutation({
@@ -123,9 +128,9 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
       qc.invalidateQueries({ queryKey: ["course-enrollments", courseId] });
       qc.invalidateQueries({ queryKey: ["admin-courses"] });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       console.error('Unenroll failed:', error);
-      alert(`Failed to unenroll: ${error.message || 'Unknown error'}.\n\nThe backend needs to implement:\nDELETE /api/enrollments/admin/unenroll\nBody: { courseId, studentId }`);
+      setEnrollError(error instanceof Error ? error.message : "Failed to unenroll student. Please try again.");
     },
   });
 
@@ -142,6 +147,15 @@ function StudentEnrollmentManager({ courseId }: { courseId: string }) {
 
   return (
     <div className="space-y-6">
+      {/* Enrollment error */}
+      {enrollError && (
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40">
+          <span className="text-red-500 text-sm flex-shrink-0">⚠</span>
+          <p className="text-xs text-red-600 dark:text-red-400 flex-1">{enrollError}</p>
+          <button onClick={() => setEnrollError(null)} className="text-red-400 hover:text-red-600 transition-colors text-sm leading-none flex-shrink-0">×</button>
+        </div>
+      )}
+
       {/* Currently Enrolled Students */}
       <div>
         <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
@@ -389,12 +403,16 @@ function StringListEditor({ items, onChange, placeholder }: {
 function ImageUpload({ value, onChange }: { value: string; onChange: (url: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleFile = async (file: File) => {
     setUploading(true);
+    setUploadError(null);
     try {
       const url = await StorageService.upload("course-images", file);
       onChange(url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -404,6 +422,11 @@ function ImageUpload({ value, onChange }: { value: string; onChange: (url: strin
     <div>
       <input ref={ref} type="file" accept="image/*" className="hidden"
         onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+      {uploadError && (
+        <p className="text-xs text-red-500 mb-1.5 flex items-center gap-1">
+          <span>⚠</span> {uploadError}
+        </p>
+      )}
       {value ? (
         <div className="relative rounded-2xl overflow-hidden h-36">
           <img src={value} alt="Thumbnail" className="w-full h-full object-cover" />
@@ -522,7 +545,29 @@ export default function AdminEditCourse() {
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 4000);
     },
-    onError: () => setErrors(p => ({ ...p, submit: "Failed to save changes. Please try again." })),
+    onError: (err: unknown) => {
+      let message = "Failed to save changes. Please try again.";
+      if (err instanceof Error) {
+        if (err.message.includes("400")) {
+          if (err.message.includes("videoUrl")) {
+            message = "Invalid video URL. Please enter a valid HTTP/HTTPS URL or leave it empty.";
+          } else if (err.message.includes("Instructor profile")) {
+            message = "The selected instructor does not have a complete profile.";
+          } else {
+            message = "Invalid course data. Please check all required fields.";
+          }
+        } else if (err.message.includes("403")) {
+          message = "You don't have permission to edit this course.";
+        } else if (err.message.includes("401")) {
+          message = "Please log in to edit courses.";
+        } else if (err.message.includes("404")) {
+          message = "Course not found. It may have been deleted.";
+        } else {
+          message = err.message;
+        }
+      }
+      setErrors(p => ({ ...p, submit: message }));
+    },
   });
 
   const addTag = () => {

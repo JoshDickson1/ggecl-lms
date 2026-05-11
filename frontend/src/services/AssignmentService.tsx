@@ -350,30 +350,62 @@ export default class AssignmentService {
     await APIConfig.fetch(`/assignments/${id}`, { method: "DELETE" });
   }
 
-  // ─── INSTRUCTOR: list submissions for an assignment ───────────────────────
+  // ─── INSTRUCTOR / ADMIN: get submission stats for an assignment ──────────
+  /**
+   * GET /api/assignments/{id}/stats
+   * Returns { totalEnrolled, totalSubmissions, submissionRate, lateSubmissions, graded }
+   */
+  static async getAssignmentStats(assignmentId: string): Promise<AssignmentStats> {
+    const response = await APIConfig.fetch(`/assignments/${assignmentId}/stats`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(
+        (err as { message?: string }).message ?? `Failed to fetch stats: ${response.status}`,
+      );
+    }
+    return response.json();
+  }
+
+  // ─── INSTRUCTOR / ADMIN: list submissions for an assignment ──────────────
+  /**
+   * GET /api/assignments/{id}/submissions
+   * Returns paginated list of student submissions.
+   * Use lateOnly=true to filter for late submissions.
+   */
   static async getSubmissions(assignmentId: string, query?: {
-    page?: number; limit?: number; status?: string;
+    page?: number; limit?: number; lateOnly?: boolean;
   }): Promise<InstructorSubmissionsResponse> {
     const params = new URLSearchParams();
     if (query?.page !== undefined) params.append("page", String(query.page));
     if (query?.limit !== undefined) params.append("limit", String(query.limit));
-    if (query?.status) params.append("status", query.status);
+    if (query?.lateOnly) params.append("lateOnly", "true");
     const qs = params.toString();
     const response = await APIConfig.fetch(`/assignments/${assignmentId}/submissions${qs ? `?${qs}` : ""}`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(
+        (err as { message?: string }).message ?? `Failed to fetch submissions: ${response.status}`,
+      );
+    }
     return response.json();
   }
 
-  // ─── INSTRUCTOR: grade a submission ──────────────────────────────────────
+  // ─── INSTRUCTOR / ADMIN: grade a submission ───────────────────────────────
+  /**
+   * PATCH /api/assignments/submissions/{submissionId}/grade
+   * Payload: { score, feedback }
+   * The API calculates resolvedGrade automatically as (score / maxScore) * 100.
+   */
   static async gradeSubmission(
     submissionId: string,
     payload: GradeSubmissionPayload,
-  ): Promise<InstructorSubmission> {
+  ): Promise<GradeResult> {
     const response = await APIConfig.fetch(
       `/assignments/submissions/${submissionId}/grade`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ score: payload.score, feedback: payload.feedback }),
       },
     );
     if (!response.ok) {
@@ -465,9 +497,25 @@ export interface CreateAssignmentPayload {
 
 export interface GradeSubmissionPayload {
   score: number;
-  grade: LetterGrade;
   feedback: string;
-  rubric?: { id: string; label: string; maxScore: number; score: number }[];
+}
+
+/** Response from PATCH /api/assignments/submissions/{id}/grade */
+export interface GradeResult {
+  id: string;
+  score: number;
+  resolvedGrade: number;
+  feedback: string;
+  gradedAt: string;
+}
+
+/** Response from GET /api/assignments/{id}/stats */
+export interface AssignmentStats {
+  totalEnrolled: number;
+  totalSubmissions: number;
+  submissionRate: number;
+  lateSubmissions: number;
+  graded: number;
 }
 
 // ─── INSTRUCTOR: grade a submission ──────────────────────────────────────────

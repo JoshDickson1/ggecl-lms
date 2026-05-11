@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import AdminDashboardService, { type SignupDaySeries } from "@/services/admin-dashboard.service";
+import ProgressService from "@/services/progress.service";
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -86,6 +87,21 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   return (
     <div className={`rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)] ${className}`}>
       {children}
+    </div>
+  );
+}
+
+function SkeletonBox({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse bg-gray-200 dark:bg-white/[0.08] rounded-xl ${className}`} />;
+}
+
+function KpiCardSkeleton() {
+  return (
+    <div className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] p-4 animate-pulse">
+      <SkeletonBox className="w-8 h-8 rounded-xl mb-2.5" />
+      <SkeletonBox className="h-6 w-16 mb-1" />
+      <SkeletonBox className="h-3 w-20 mb-1" />
+      <SkeletonBox className="h-3 w-24" />
     </div>
   );
 }
@@ -205,6 +221,13 @@ export default function AdminAnalytics() {
     staleTime: 1000 * 60 * 5,
   });
 
+  // Accurate platform-wide completion rate (same source as AdminHome)
+  const { data: platformCompletion } = useQuery({
+    queryKey: ["admin-platform-completion-rate"],
+    queryFn:  () => ProgressService.getPlatformCompletionRate(),
+    staleTime: 1000 * 60 * 5,
+  });
+
   // Revenue data sourced from the range-scoped summary (revSummary), falls back to global summary
   const revenueData = revSummary?.revenue ?? summary?.revenue;
 
@@ -212,7 +235,8 @@ export default function AdminAnalytics() {
 
   // Derived values from summary
   const completion        = summary?.completion;
-  const completionRate    = completion?.completionRate ??  0;
+  // Prefer the dedicated platform completion endpoint (same as AdminHome) for accuracy
+  const completionRate    = platformCompletion?.completionRate ?? completion?.completionRate ?? 0;
   const topEnrollments    = summary?.topEnrollments ?? [];
 
   // Per-course completion from coursesByCompletionRate or completion.perCourse
@@ -314,21 +338,24 @@ export default function AdminAnalytics() {
       {/* KPI grid */}
       <Fade delay={0.04}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {kpiSummary.map(({ label, value, sub, icon: Ic, color, trendUp }, i) => (
-            <motion.div key={label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.06 + i * 0.04 }}>
-              <Card className="p-4">
-                <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-2.5`}>
-                  <Ic className="w-4 h-4 text-white" />
-                </div>
-                <p className="text-xl font-black text-gray-900 dark:text-white leading-none">{value}</p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 leading-tight">{label}</p>
-                <p className={`flex items-center gap-0.5 text-[10px] font-bold mt-1.5 ${trendUp ? "text-emerald-500" : "text-rose-500"}`}>
-                  {trendUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}{sub}
-                </p>
-              </Card>
-            </motion.div>
-          ))}
+          {summaryLoading
+            ? Array.from({ length: 6 }).map((_, i) => <KpiCardSkeleton key={i} />)
+            : kpiSummary.map(({ label, value, sub, icon: Ic, color, trendUp }, i) => (
+              <motion.div key={label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.06 + i * 0.04 }}>
+                <Card className="p-4">
+                  <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-2.5`}>
+                    <Ic className="w-4 h-4 text-white" />
+                  </div>
+                  <p className="text-xl font-black text-gray-900 dark:text-white leading-none">{value}</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 leading-tight">{label}</p>
+                  <p className={`flex items-center gap-0.5 text-[10px] font-bold mt-1.5 ${trendUp ? "text-emerald-500" : "text-rose-500"}`}>
+                    {trendUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}{sub}
+                  </p>
+                </Card>
+              </motion.div>
+            ))
+          }
         </div>
       </Fade>
 

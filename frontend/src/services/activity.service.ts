@@ -70,6 +70,18 @@ export interface SendStudentMessageResponse {
   recipientCount: number;
 }
 
+export interface SendAnnouncementPayload {
+  title: string;
+  message: string;
+  /** Omit or leave empty to broadcast to all users */
+  recipientUserIds?: string[];
+}
+
+export interface SendAnnouncementResponse {
+  message: string;
+  recipientCount: number;
+}
+
 // ==================== SERVICE ====================
 
 export default class ActivityService {
@@ -143,6 +155,23 @@ export default class ActivityService {
   static async clearAll(): Promise<unknown> {
     const response = await APIConfig.fetch("/activities/bulk", {
       method: "DELETE",
+    });
+    return response.json();
+  }
+
+  /**
+   * Send an admin announcement to all users or a specific set of users.
+   * Broadcasts to everyone if recipientUserIds is omitted or empty. ADMIN only.
+   * POST /api/activities/announcements
+   * @param payload - title, message, and optional recipientUserIds
+   */
+  static async sendAnnouncement(
+    payload: SendAnnouncementPayload
+  ): Promise<SendAnnouncementResponse> {
+    const response = await APIConfig.fetch("/activities/announcements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
     return response.json();
   }

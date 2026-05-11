@@ -216,7 +216,7 @@ function CourseSelector({ selectedCourseId, onCourseChange, error }: {
         <div className={cn("rounded-xl border overflow-hidden transition-all",
           error ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]")}>
           {isLoading ? (
-            <div className="px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 bg-gray-50/80 dark:bg-white/[0.04]">
+            <div className="px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 bg-white dark:bg-[#1a2235]">
               <Loader2 className="w-4 h-4 animate-spin" /> Loading courses…
             </div>
           ) : (
@@ -225,10 +225,10 @@ function CourseSelector({ selectedCourseId, onCourseChange, error }: {
                 const course = courses.find(c => c.id === e.target.value) ?? null;
                 onCourseChange(e.target.value, course);
               }}
-              className="w-full px-4 py-2.5 text-sm bg-gray-50/80 dark:bg-white/[0.04] text-gray-800 dark:text-white outline-none cursor-pointer">
-              <option value="">Select a course…</option>
+              className="w-full px-4 py-2.5 text-sm bg-white dark:bg-[#1a2235] text-gray-800 dark:text-white outline-none cursor-pointer [&>option]:bg-white [&>option]:dark:bg-[#1a2235] [&>option]:text-gray-800 [&>option]:dark:text-white">
+              <option value="" className="bg-white dark:bg-[#1a2235] text-gray-400 dark:text-gray-400">Select a course…</option>
               {courses.map(c => (
-                <option key={c.id} value={c.id}>{c.title}</option>
+                <option key={c.id} value={c.id} className="bg-white dark:bg-[#1a2235] text-gray-800 dark:text-white">{c.title}</option>
               ))}
             </select>
           )}

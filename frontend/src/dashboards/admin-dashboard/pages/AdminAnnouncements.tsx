@@ -1,5 +1,5 @@
 // src/dashboards/admin-dashboard/pages/AdminAnnouncements.tsx
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Megaphone, Send, Users, GraduationCap, User,
@@ -7,30 +7,14 @@ import {
   AlertCircle, RefreshCw, Star, Check, BookOpen,
   Info, Loader2, Mail,
 } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import UserService, { UserRole } from "@/services/user.service";
-import { APIConfig } from "@/lib/api.config";
-import { useDashboardUser } from "@/hooks/useDashboardUser";
+import ActivityService from "@/services/activity.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type AudienceType = "all_students" | "all_instructors" | "everyone" | "specific_student" | "specific_instructor";
 type AnnType      = "info" | "alert" | "update" | "promotion" | "maintenance";
-type AnnStatus    = "sent" | "draft";
-
-interface Announcement {
-  id:            string;
-  title:         string;
-  body:          string;
-  type:          AnnType;
-  audienceType:  AudienceType;
-  audienceLabel: string;
-  audienceCount: number;
-  status:        AnnStatus;
-  sentAt:        string;
-  sentBy:        string;
-  openRate?:     number;
-}
 
 interface RealUser {
   id:    string;
@@ -56,46 +40,6 @@ const AUDIENCE_CONFIG: Record<AudienceType, { label: string; icon: React.Element
   specific_student:    { label: "Specific Student",    icon: User,          desc: "1 student"              },
   specific_instructor: { label: "Specific Instructor", icon: User,          desc: "1 instructor"           },
 };
-
-// ─── Local storage persistence ────────────────────────────────────────────────
-
-const STORAGE_KEY = "ggecl_announcements";
-
-function loadAnnouncements(): Announcement[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveAnnouncements(list: Announcement[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-}
-
-// ─── Email send helper ────────────────────────────────────────────────────────
-// The backend POST /email/send uses a typed template system.
-// We use type "ANNOUNCEMENT" with a data payload containing subject and body.
-// If the backend doesn't support this type yet, the send will fail gracefully
-// and the announcement is still saved locally as a record.
-
-async function sendEmail(to: string, subject: string, body: string): Promise<void> {
-  await APIConfig.fetch("/email/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      type: "ANNOUNCEMENT",
-      to,
-      data: { subject, body },
-    }),
-  });
-}
-
-function buildEmailBody(title: string, body: string, type: AnnType): string {
-  const cfg = TYPE_CONFIG[type];
-  return `[${cfg.label.toUpperCase()}] ${title}\n\n${body}\n\n---\nYou received this because you are a member of the GGECL platform.`;
-}
 
 // ─── User search dropdown ─────────────────────────────────────────────────────
 
@@ -212,14 +156,12 @@ function UserSearchDropdown({
 
 function ComposeModal({
   onClose,
-  onSaved,
-  senderName,
+  onSent,
 }: {
   onClose: () => void;
-  onSaved: (ann: Announcement) => void;
-  senderName: string;
+  onSent: () => void;
 }) {
-  const [audience,       setAudience]       = useState<AudienceType>("all_students");
+  const [audience,       setAudience]       = useState<AudienceType>("everyone");
   const [annType,        setAnnType]        = useState<AnnType>("info");
   const [title,          setTitle]          = useState("");
   const [body,           setBody]           = useState("");
@@ -230,13 +172,9 @@ function ComposeModal({
   const typeCfg     = TYPE_CONFIG[annType];
   const audienceCfg = AUDIENCE_CONFIG[audience];
 
-  const recipientLabel = needsPerson && selectedPerson
-    ? selectedPerson.name
-    : audienceCfg.label;
-
   const canSend = title.trim().length > 0 && body.trim().length > 0 && (!needsPerson || selectedPerson);
 
-  // Fetch all users of the relevant role to get a count for display
+  // Fetch counts for display
   const { data: allStudents } = useQuery({
     queryKey: ["users-count-students"],
     queryFn: async () => {
@@ -262,63 +200,38 @@ function ComposeModal({
     audience === "all_instructors" ? instructorCount :
     everyoneCount;
 
-  // Send mutation — saves announcement locally + attempts email delivery
-  // Email delivery uses POST /email/send with type "ANNOUNCEMENT".
-  // If the backend doesn't support that type yet, email fails silently
-  // but the announcement is still recorded locally.
+  // Collect the recipient user IDs when targeting a specific person or a role subset.
+  // For "everyone" we omit recipientUserIds so the backend broadcasts to all.
   const sendMutation = useMutation({
-    mutationFn: async (draft: boolean) => {
-      if (draft) return { draft: true, emailErrors: 0 };
-
-      const subject = `[GGECL] ${title}`;
-      const emailBody = buildEmailBody(title, body, annType);
-      let emailErrors = 0;
-
-      const tryEmail = async (to: string) => {
-        try {
-          await sendEmail(to, subject, emailBody);
-        } catch {
-          emailErrors++;
-        }
-      };
+    mutationFn: async () => {
+      let recipientUserIds: string[] | undefined;
 
       if (needsPerson && selectedPerson) {
-        await tryEmail(selectedPerson.email);
-      } else {
-        const roles: UserRole[] =
-          audience === "all_students"    ? [UserRole.STUDENT] :
-          audience === "all_instructors" ? [UserRole.INSTRUCTOR] :
-          [UserRole.STUDENT, UserRole.INSTRUCTOR];
-
-        for (const role of roles) {
-          let cursor: string | undefined;
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const res = await UserService.findAll({ role, limit: 50, cursor }) as any;
-            const users: RealUser[] = res?.data ?? res?.items ?? [];
-            await Promise.all(users.map((u) => tryEmail(u.email)));
-            cursor = res?.meta?.nextCursor ?? res?.nextCursor;
-            if (!cursor || users.length === 0) break;
-          }
+        recipientUserIds = [selectedPerson.id];
+      } else if (audience === "all_students" || audience === "all_instructors") {
+        const role = audience === "all_students" ? UserRole.STUDENT : UserRole.INSTRUCTOR;
+        const ids: string[] = [];
+        let cursor: string | undefined;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const res = await UserService.findAll({ role, limit: 50, cursor }) as any;
+          const users: RealUser[] = res?.data ?? res?.items ?? [];
+          ids.push(...users.map((u) => u.id));
+          cursor = res?.meta?.nextCursor ?? res?.nextCursor;
+          if (!cursor || users.length === 0) break;
         }
+        recipientUserIds = ids;
       }
+      // audience === "everyone" → omit recipientUserIds → backend broadcasts to all
 
-      return { draft: false, emailErrors };
-    },
-    onSuccess: ({ draft }) => {
-      const ann: Announcement = {
-        id:            `ann-${Date.now()}`,
+      return ActivityService.sendAnnouncement({
         title,
-        body,
-        type:          annType,
-        audienceType:  audience,
-        audienceLabel: recipientLabel,
-        audienceCount: recipientCount,
-        status:        draft ? "draft" : "sent",
-        sentAt:        draft ? "—" : new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
-        sentBy:        draft ? "Draft" : senderName,
-      };
-      onSaved(ann);
+        message: body,
+        recipientUserIds,
+      });
+    },
+    onSuccess: () => {
+      onSent();
       setTimeout(onClose, 1200);
     },
   });
@@ -468,12 +381,6 @@ function ComposeModal({
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => sendMutation.mutate(true)}
-                    disabled={!title.trim() || isSending}
-                    className="px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-white/[0.08] text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-40">
-                    Save Draft
-                  </button>
-                  <button
                     disabled={!canSend}
                     onClick={() => canSend && setStep("preview")}
                     className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -517,11 +424,11 @@ function ComposeModal({
               </div>
 
               {sendMutation.isError && (
-                <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 text-sm text-amber-700 dark:text-amber-400">
+                <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 text-sm text-red-700 dark:text-red-400">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   <div>
-                    <p className="font-bold text-xs">Email delivery unavailable</p>
-                    <p className="text-[11px] mt-0.5">The backend email service doesn't support the ANNOUNCEMENT type yet. Ask your backend team to add it to the <code className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">SendEmailDto</code> type enum. The announcement will still be saved locally.</p>
+                    <p className="font-bold text-xs">Failed to send announcement</p>
+                    <p className="text-[11px] mt-0.5">Something went wrong. Please try again.</p>
                   </div>
                 </div>
               )}
@@ -533,7 +440,7 @@ function ComposeModal({
                   ← Edit
                 </button>
                 <motion.button
-                  onClick={() => sendMutation.mutate(false)}
+                  onClick={() => sendMutation.mutate()}
                   disabled={isSending || isSent}
                   whileHover={!isSending && !isSent ? { scale: 1.02 } : {}}
                   whileTap={!isSending && !isSent ? { scale: 0.97 } : {}}
@@ -562,11 +469,13 @@ function ComposeModal({
 // ─── Announcement row ─────────────────────────────────────────────────────────
 
 function AnnouncementRow({ ann, index, onDelete }: {
-  ann: Announcement; index: number; onDelete: (id: string) => void;
+  ann: import("@/services/activity.service").ActivityItem; index: number; onDelete: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const typeCfg = TYPE_CONFIG[ann.type];
-  const AIcon   = AUDIENCE_CONFIG[ann.audienceType].icon;
+  const annType = (ann.metadata?.annType as AnnType | undefined) ?? "info";
+  const typeCfg = TYPE_CONFIG[annType];
+  const sentAt  = new Date(ann.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const recipientCount = (ann.metadata?.recipientCount as number | undefined) ?? 0;
 
   return (
     <motion.div
@@ -575,11 +484,7 @@ function AnnouncementRow({ ann, index, onDelete }: {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.24, delay: index * 0.03 }}
-      className={`rounded-[18px] border transition-all duration-200 ${
-        ann.status === "draft"
-          ? "bg-gray-50 dark:bg-white/[0.02] border-dashed border-gray-200 dark:border-white/[0.08]"
-          : "bg-white dark:bg-[#0f1623] border-gray-100 dark:border-white/[0.07] shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
-      }`}
+      className="rounded-[18px] border bg-white dark:bg-[#0f1623] border-gray-100 dark:border-white/[0.07] shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
     >
       <div className="flex items-start gap-4 p-4 cursor-pointer" onClick={() => setExpanded((p) => !p)}>
         <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${typeCfg.bg} border ${typeCfg.border}`}>
@@ -588,27 +493,19 @@ function AnnouncementRow({ ann, index, onDelete }: {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className={`text-sm font-bold leading-snug ${ann.status === "draft" ? "text-gray-400" : "text-gray-900 dark:text-white"}`}>
+            <p className="text-sm font-bold leading-snug text-gray-900 dark:text-white">
               {ann.title}
-              {ann.status === "draft" && (
-                <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.07] text-gray-500">DRAFT</span>
-              )}
             </p>
-            <span className="text-[10px] text-gray-400 flex-shrink-0">{ann.sentAt}</span>
+            <span className="text-[10px] text-gray-400 flex-shrink-0">{sentAt}</span>
           </div>
 
           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
             <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
-              <AIcon className="w-3 h-3" /> {ann.audienceLabel}
+              <Globe className="w-3 h-3" /> All Users
             </span>
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${typeCfg.bg} ${typeCfg.border} ${typeCfg.color}`}>
               {typeCfg.label}
             </span>
-            {ann.openRate != null && (
-              <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                <Eye className="w-3 h-3" /> {ann.openRate}% open rate
-              </span>
-            )}
           </div>
         </div>
 
@@ -635,12 +532,13 @@ function AnnouncementRow({ ann, index, onDelete }: {
           >
             <div className="px-4 pb-4 pt-0">
               <div className={`rounded-xl p-4 ${typeCfg.bg} border ${typeCfg.border}`}>
-                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-wrap">{ann.body}</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-wrap">{ann.message}</p>
               </div>
-              <div className="flex items-center gap-4 mt-3 text-[10px] text-gray-400">
-                <span>Sent by {ann.sentBy}</span>
-                <span>{ann.audienceCount} recipient{ann.audienceCount !== 1 ? "s" : ""}</span>
-              </div>
+              {recipientCount > 0 && (
+                <div className="flex items-center gap-4 mt-3 text-[10px] text-gray-400">
+                  <span>{recipientCount} recipient{recipientCount !== 1 ? "s" : ""}</span>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -652,42 +550,37 @@ function AnnouncementRow({ ann, index, onDelete }: {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AdminAnnouncements() {
-  const { user } = useDashboardUser();
-  const senderName = user ? `${user.firstName} ${user.lastName}`.trim() : "Admin";
+  const queryClient = useQueryClient();
 
-  const [announcements, setAnnouncements] = useState<Announcement[]>(loadAnnouncements);
-  const [composing,      setComposing]     = useState(false);
-  const [search,         setSearch]        = useState("");
-  const [filterType,     setFilterType]    = useState<AnnType | "all">("all");
-  const [filterAudience, setFilterAudience]= useState<AudienceType | "all">("all");
-  const [filterStatus,   setFilterStatus]  = useState<AnnStatus | "all">("all");
+  const [composing,      setComposing]      = useState(false);
+  const [search,         setSearch]         = useState("");
+  const [filterType,     setFilterType]     = useState<AnnType | "all">("all");
 
-  // Persist to localStorage whenever list changes
-  useEffect(() => { saveAnnouncements(announcements); }, [announcements]);
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin-announcements"],
+    queryFn: () => ActivityService.getFeed({ type: "ADMIN_ANNOUNCEMENT", limit: 100 }),
+  });
 
-  const hasFilters = search.trim() !== "" || filterType !== "all" || filterAudience !== "all" || filterStatus !== "all";
-  const clearFilters = () => { setSearch(""); setFilterType("all"); setFilterAudience("all"); setFilterStatus("all"); };
+  const announcements = data?.data ?? [];
+
+  const handleDelete = async (id: string) => {
+    await ActivityService.remove(id);
+    queryClient.invalidateQueries({ queryKey: ["admin-announcements"] });
+  };
+
+  const hasFilters = search.trim() !== "" || filterType !== "all";
+  const clearFilters = () => { setSearch(""); setFilterType("all"); };
 
   const filtered = useMemo(() => {
     return announcements.filter((a) => {
-      if (search && !a.title.toLowerCase().includes(search.toLowerCase()) && !a.body.toLowerCase().includes(search.toLowerCase())) return false;
-      if (filterType     !== "all" && a.type        !== filterType)     return false;
-      if (filterAudience !== "all" && a.audienceType !== filterAudience) return false;
-      if (filterStatus   !== "all" && a.status       !== filterStatus)  return false;
+      if (search && !a.title.toLowerCase().includes(search.toLowerCase()) && !a.message.toLowerCase().includes(search.toLowerCase())) return false;
+      const annType = (a.metadata?.annType as AnnType | undefined) ?? "info";
+      if (filterType !== "all" && annType !== filterType) return false;
       return true;
     });
-  }, [announcements, search, filterType, filterAudience, filterStatus]);
+  }, [announcements, search, filterType]);
 
-  const sentCount  = announcements.filter((a) => a.status === "sent").length;
-  const draftCount = announcements.filter((a) => a.status === "draft").length;
-  const totalReach = announcements.filter((a) => a.status === "sent").reduce((acc, a) => acc + a.audienceCount, 0);
-  const avgOpen    = Math.round(
-    announcements.filter((a) => a.openRate != null).reduce((acc, a) => acc + (a.openRate ?? 0), 0) /
-    (announcements.filter((a) => a.openRate != null).length || 1)
-  );
-
-  const handleSaved = (ann: Announcement) => setAnnouncements((p) => [ann, ...p]);
-  const handleDelete = (id: string) => setAnnouncements((p) => p.filter((a) => a.id !== id));
+  const totalReach = announcements.reduce((acc, a) => acc + ((a.metadata?.recipientCount as number | undefined) ?? 0), 0);
 
   return (
     <div className="max-w-[1000px] mx-auto pb-10 space-y-6">
@@ -711,10 +604,10 @@ export default function AdminAnnouncements() {
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
         className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: Send,     value: String(sentCount),                                label: "Sent",          color: "blue"    },
-          { icon: BookOpen, value: String(draftCount),                               label: "Drafts",        color: "amber"   },
-          { icon: Users,    value: totalReach >= 1000 ? `${(totalReach/1000).toFixed(1)}k` : String(totalReach), label: "Total Reach", color: "emerald" },
-          { icon: Eye,      value: announcements.some((a) => a.openRate != null) ? `${avgOpen}%` : "—", label: "Avg Open Rate", color: "violet" },
+          { icon: Send,     value: String(announcements.length),                                                                    label: "Sent",        color: "blue"    },
+          { icon: Users,    value: totalReach >= 1000 ? `${(totalReach/1000).toFixed(1)}k` : String(totalReach),                    label: "Total Reach", color: "emerald" },
+          { icon: BookOpen, value: String(data?.meta?.total ?? announcements.length),                                               label: "Total",       color: "violet"  },
+          { icon: Globe,    value: announcements.length > 0 ? new Date(announcements[0].createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—", label: "Last Sent", color: "amber" },
         ].map(({ icon: Icon, value, label, color }) => {
           const p: Record<string, string> = {
             blue:    "bg-blue-50/60 dark:bg-blue-950/20 border-blue-100/60 dark:border-blue-900/20 [&_.ic]:bg-blue-100 dark:[&_.ic]:bg-blue-900/40 [&_.ic_svg]:text-blue-600 dark:[&_.ic_svg]:text-blue-400",
@@ -750,14 +643,6 @@ export default function AdminAnnouncements() {
               value: filterType, onChange: (v: string) => setFilterType(v as AnnType | "all"),
               options: [["all","All Types"],["info","Info"],["alert","Alert"],["update","Update"],["promotion","Promotion"],["maintenance","Maintenance"]],
             },
-            {
-              value: filterAudience, onChange: (v: string) => setFilterAudience(v as AudienceType | "all"),
-              options: [["all","All Audiences"],["all_students","All Students"],["all_instructors","All Instructors"],["everyone","Everyone"],["specific_student","Specific Student"],["specific_instructor","Specific Instructor"]],
-            },
-            {
-              value: filterStatus, onChange: (v: string) => setFilterStatus(v as AnnStatus | "all"),
-              options: [["all","All Status"],["sent","Sent"],["draft","Draft"]],
-            },
           ].map((sel, i) => (
             <div key={i} className="relative">
               <select value={sel.value} onChange={(e) => sel.onChange(e.target.value)}
@@ -787,7 +672,12 @@ export default function AdminAnnouncements() {
       {/* List */}
       <div className="flex flex-col gap-3">
         <AnimatePresence mode="popLayout">
-          {filtered.length > 0 ? (
+          {isLoading ? (
+            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="flex items-center justify-center py-20">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </motion.div>
+          ) : filtered.length > 0 ? (
             filtered.map((ann, i) => (
               <AnnouncementRow key={ann.id} ann={ann} index={i} onDelete={handleDelete} />
             ))
@@ -811,8 +701,7 @@ export default function AdminAnnouncements() {
         {composing && (
           <ComposeModal
             onClose={() => setComposing(false)}
-            onSaved={handleSaved}
-            senderName={senderName}
+            onSent={() => queryClient.invalidateQueries({ queryKey: ["admin-announcements"] })}
           />
         )}
       </AnimatePresence>

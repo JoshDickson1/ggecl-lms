@@ -1,4 +1,4 @@
-// src/dashboards/shared/PreviewInstructor.tsx
+﻿// src/dashboards/shared/PreviewInstructor.tsx
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -13,24 +13,17 @@ import {
   BookOpen,
   Users,
   Award,
-  TrendingUp,
-  ChevronRight,
-  Link,
-  Edit3,
   Loader2,
   MapPin,
   Building,
   Briefcase,
   GraduationCap,
-  Trophy,
   Hash,
+  Edit3,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import UserService, { type PublicInstructorProfile } from "@/services/user.service";
-
-function fmt(n: number) {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
 
 function initials(name: string) {
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -50,9 +43,9 @@ function formatRelativeTime(dateString: string): string {
   return `${Math.floor(diffInDays / 365)} years ago`;
 }
 
-// ─── (data loaded dynamically below) ─────────────────────────────────────────
+// â”€â”€â”€ (data loaded dynamically below) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const Fade = ({
   children,
@@ -127,7 +120,7 @@ function Stars({
   );
 }
 
-// ─── Review Modal ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Review Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ReviewModal({ onClose, name, avatar }: { onClose: () => void; name: string; avatar: string }) {
   const [rating, setRating] = useState(0);
@@ -284,7 +277,7 @@ function ReviewModal({ onClose, name, avatar }: { onClose: () => void; name: str
   );
 }
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Stat Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function StatCard({
   icon: Icon,
@@ -314,11 +307,11 @@ function StatCard({
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function PreviewInstructor() {
   const { id } = useParams<{ id: string }>();
-  const [activeTab, setActiveTab] = useState<"about" | "courses" | "students" | "reviews">("about");
+  const [activeTab, setActiveTab] = useState<"about" | "courses" | "assignments" | "reviews">("about");
   const [showModal, setShowModal] = useState(false);
 
   const { data: apiUser, isLoading } = useQuery<PublicInstructorProfile>({
@@ -327,135 +320,52 @@ export default function PreviewInstructor() {
     enabled: !!id,
   });
 
-  // Fetch instructor dashboard data
-  const { data: instructorStats } = useQuery({
-    queryKey: ["instructor-dashboard", "summary", id],
-    queryFn: async () => {
-      const response = await fetch(`/api/dashboard/instructor/summary`, {
-        credentials: 'include'
-      });
-      return response.json();
-    },
-    enabled: !!id,
-  });
-
-  // Fetch instructor courses
-  const { data: instructorCourses } = useQuery({
-    queryKey: ["instructor-courses", id],
-    queryFn: async () => {
-      const response = await fetch(`/api/courses`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-      return data.data || [];
-    },
-    enabled: !!id,
-  });
-
-  // Fetch instructor students
-  const { data: instructorStudents } = useQuery({
-    queryKey: ["instructor-students", id],
-    queryFn: async () => {
-      const response = await fetch(`/api/dashboard/instructor/students/all`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-      // Handle different response structures
-      return Array.isArray(data) ? data : data?.data || data?.students || [];
-    },
-    enabled: !!id,
-  });
-
-  // Fetch instructor reviews
-  const { data: instructorReviews } = useQuery({
-    queryKey: ["instructor-reviews", id],
-    queryFn: async () => {
-      const response = await fetch(`/api/reviews/instructors/${id}`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-      // Handle different response structures
-      return {
-        data: Array.isArray(data) ? data : data?.data || data?.reviews || [],
-        meta: data?.meta || { total: data?.total || 0 }
-      };
-    },
-    enabled: !!id,
-  });
-
   const profile = apiUser;
+  const courses = profile?.courses ?? [];
   const ins = {
     name:           apiUser?.user?.name ?? "Instructor",
     avatar:         initials(apiUser?.user?.name ?? "I"),
     avatarBg:       "bg-gradient-to-br from-blue-600 to-indigo-700",
     title:          profile?.professionalTitle ?? profile?.specialization ?? "Instructor",
     bio:            profile?.bio ?? profile?.description ?? "No bio provided.",
-    location:       apiUser?.user?.location ?? "—",
+    location:       apiUser?.user?.location ?? "â€”",
     email:          apiUser?.user?.email ?? "",
-    phoneNumber:    profile?.phoneNumber ?? "—",
-    website:        profile?.website ?? undefined as string | undefined,
-    github:         profile?.github ?? undefined as string | undefined,
-    twitter:        profile?.twitter ?? undefined as string | undefined,
-    linkedin:       profile?.linkedin ?? undefined as string | undefined,
-    youtube:        profile?.youtube ?? undefined as string | undefined,
-    department:     profile?.department ?? "—",
-    professionalExperience: profile?.professionalExperience ?? "—",
+    phoneNumber:    profile?.phoneNumber ?? null,
+    website:        profile?.website ?? null,
+    github:         profile?.github ?? null,
+    twitter:        profile?.twitter ?? null,
+    linkedin:       profile?.linkedin ?? null,
+    youtube:        profile?.youtube ?? null,
+    department:     profile?.department ?? null,
+    professionalExperience: profile?.professionalExperience ?? null,
     areasOfExpertise: profile?.areasOfExpertise ?? [],
     tags:           profile?.tags ?? [],
     teachingCategories: profile?.teachingCategories ?? [],
-    recognitions:   [], // Not available in API
-    // Use real API data or fallback to empty arrays
-    badges:         instructorStats?.badges || [],
-    rating:         instructorStats?.averageRating || 0,
-    totalReviews:   instructorReviews?.meta?.total || 0,
-    students:       instructorStats?.totalStudents || 0,
-    courses:        instructorCourses?.length || 0,
-    completionRate: instructorStats?.completionRate || 0,
-    courseList:     instructorCourses?.map((course: any) => ({
-      id: course.id,
-      title: course.title,
-      thumbnail: course.thumbnail ? `bg-cover bg-center` : "bg-gradient-to-br from-blue-500 to-purple-600",
-      thumbnailImage: course.thumbnail || null,
-      students: course.enrollmentCount || 0,
-      rating: course.averageRating || 0,
-      duration: course.duration || "TBD",
-      level: course.level || "All Levels",
-      price: course.price ? `$${course.price}` : "Free",
-      enrolled: course.isEnrolled || false,
-      progress: course.progress || 0,
-      published: course.published || false
-    })) || [],
-    studentList:    Array.isArray(instructorStudents) ? instructorStudents?.map((student: any) => ({
-      id: student.id,
-      name: student.name,
-      avatar: student.image ? null : initials(student.name),
-      avatarImage: student.image || null,
-      email: student.email,
-      enrolledDate: student.enrollmentDate || student.createdAt,
-      progress: student.progress || 0,
-      color: `bg-gradient-to-br from-blue-500 to-purple-600`,
-      matricNumber: student.studentProfile?.matricNumber
-    })) : [],
-    reviews:        Array.isArray(instructorReviews?.data) ? instructorReviews?.data?.map((review: any) => ({
-      id: review.id,
-      name: review.user?.name || "Anonymous",
-      avatar: review.user?.image ? null : initials(review.user?.name || "A"),
-      avatarImage: review.user?.image || null,
-      color: `bg-gradient-to-br from-blue-500 to-purple-600`,
-      text: review.comment || review.content,
-      time: formatRelativeTime(review.createdAt),
-      rating: review.rating,
-      course: review.course?.title || "Course",
-      helpful: review.helpful || 0,
-      replies: review.replies || []
-    })) : [],
+    courses:        courses.length,
+    totalStudents:  courses.reduce((sum, c) => sum + (c._count?.enrollments ?? 0), 0),
+    courseList:     courses.map(c => ({
+      id:             c.id,
+      title:          c.title,
+      img:            c.img,
+      price:          c.price,
+      level:          c.level,
+      status:         c.status,
+      certification:  c.certification,
+      publishedAt:    c.publishedAt,
+      totalDuration:  c.totalDuration,
+      enrollments:    c._count?.enrollments ?? 0,
+      createdAt:      c.createdAt,
+    })),
+    assignments:    profile?.assignments ?? [],
+    reviewReplies:  profile?.reviewReplies ?? [],
+    liveSessions:   profile?.liveSessions ?? [],
   };
 
   const tabs = [
-    { id: "about",    label: "About"               },
-    { id: "courses",  label: `Courses (${ins.courses})` },
-    { id: "students", label: `Students (${ins.students})` },
-    { id: "reviews",  label: `Reviews (${ins.totalReviews})` },
+    { id: "about",       label: "About" },
+    { id: "courses",     label: `Courses (${ins.courses})` },
+    { id: "assignments", label: `Assignments (${ins.assignments.length})` },
+    { id: "reviews",     label: `Reviews (${ins.reviewReplies.length})` },
   ] as const;
 
   if (isLoading && id) return (
@@ -470,7 +380,7 @@ export default function PreviewInstructor() {
 
       <div className="max-w-[1150px] mx-auto space-y-5 pb-12">
 
-        {/* ── Hero card ─────────────────────────────────────────────────── */}
+        {/* â”€â”€ Hero card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Fade>
         <Card>
           {/* Top gradient strip */}
@@ -512,36 +422,19 @@ export default function PreviewInstructor() {
                   shadow-[0_0_10px_rgba(52,211,153,0.5)]" />
               </div>
 
-              {/* Name + badges */}
+              {/* Name */}
               <div className="flex-1 mt-0 md:mt-20 sm:pb-1">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  {ins.badges.map((b: string) => (
-                    <span key={b} className="px-2.5 py-1 rounded-lg text-[10px] font-bold
-                      bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300
-                      border border-blue-200 dark:border-blue-800/50">
-                      {b}
-                    </span>
-                  ))}
-                </div>
                 <h1 className="text-2xl font-black text-gray-900 dark:text-white">{ins.name}</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{ins.title}</p>
-              </div>
-
-              {/* Rating pill */}
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl
-                bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/30">
-                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span className="text-lg font-black text-gray-900 dark:text-white">{ins.rating}</span>
-                <span className="text-xs text-gray-400">({fmt(ins.totalReviews)})</span>
               </div>
             </div>
 
             {/* Quick meta row */}
             <div className="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400 mb-5">
               {ins.email && <span className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-blue-500" />{ins.email}</span>}
-              {ins.phoneNumber !== "—" && <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-green-500" />{ins.phoneNumber}</span>}
-              {ins.location !== "—" && <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-red-500" />{ins.location}</span>}
-              {ins.department !== "—" && <span className="flex items-center gap-1.5"><Building className="w-3.5 h-3.5 text-purple-500" />{ins.department}</span>}
+              {ins.phoneNumber && <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-green-500" />{ins.phoneNumber}</span>}
+              {ins.location && ins.location !== "â€”" && <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-red-500" />{ins.location}</span>}
+              {ins.department && <span className="flex items-center gap-1.5"><Building className="w-3.5 h-3.5 text-purple-500" />{ins.department}</span>}
             </div>
 
             {/* Social links */}
@@ -588,37 +481,15 @@ export default function PreviewInstructor() {
         </Card>
       </Fade>
 
-        {/* ── Stats ── */}
         <Fade delay={0.05}>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard
-              icon={Users}
-              value={ins.students}
-              label="Students"
-              color="bg-gradient-to-br from-blue-500 to-blue-600"
-            />
-            <StatCard
-              icon={BookOpen}
-              value={ins.courses}
-              label="Courses"
-              color="bg-gradient-to-br from-violet-500 to-purple-600"
-            />
-            <StatCard
-              icon={Award}
-              value={ins.rating}
-              label="Avg Rating"
-              color="bg-gradient-to-br from-amber-400 to-orange-500"
-            />
-            <StatCard
-              icon={TrendingUp}
-              value={`${ins.completionRate}%`}
-              label="Completion"
-              color="bg-gradient-to-br from-emerald-500 to-teal-600"
-            />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <StatCard icon={Users}    value={ins.totalStudents} label="Total Students" color="bg-gradient-to-br from-blue-500 to-blue-600" />
+            <StatCard icon={BookOpen} value={ins.courses}       label="Courses"        color="bg-gradient-to-br from-violet-500 to-purple-600" />
+            <StatCard icon={Award}    value={ins.assignments.length} label="Assignments" color="bg-gradient-to-br from-amber-400 to-orange-500" />
           </div>
         </Fade>
 
-        {/* ── Tabs ── */}
+        {/* â”€â”€ Tabs â”€â”€ */}
         <Fade delay={0.08}>
           <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
             {tabs.map((tab) => (
@@ -637,7 +508,7 @@ export default function PreviewInstructor() {
           </div>
         </Fade>
 
-        {/* ── Tab Content ── */}
+        {/* â”€â”€ Tab Content â”€â”€ */}
         <AnimatePresence mode="wait">
 
           {/* ABOUT */}
@@ -661,7 +532,7 @@ export default function PreviewInstructor() {
               </Card>
 
               {/* Professional Experience */}
-              {ins.professionalExperience !== "—" && (
+              {ins.professionalExperience && (
                 <Card className="p-6">
                   <h3 className="font-black text-lg text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                     <Briefcase className="w-5 h-5 text-blue-500" />
@@ -724,23 +595,7 @@ export default function PreviewInstructor() {
                 </Card>
               )}
 
-              {/* Recognitions */}
-              {ins.recognitions.length > 0 && (
-                <Card className="p-6">
-                  <h3 className="font-black text-lg text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                    <Trophy className="w-5 h-5 text-yellow-500" />
-                    Recognitions & Awards
-                  </h3>
-                  <ul className="space-y-2">
-                    {ins.recognitions.map((recognition: string, index: number) => (
-                      <li key={index} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
-                        <Trophy className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
-                        <span>{recognition}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              )}
+              {/* Recognitions — not available in API */}
             </motion.div>
           )}
 
@@ -755,129 +610,32 @@ export default function PreviewInstructor() {
               className="space-y-4"
             >
               {/* Course Stats Summary */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard
-                  icon={BookOpen}
-                  value={ins.courses}
-                  label="Total Courses"
-                  color="bg-gradient-to-br from-blue-500 to-blue-600"
-                />
-                <StatCard
-                  icon={Users}
-                  value={ins.students.toLocaleString()}
-                  label="Total Students"
-                  color="bg-gradient-to-br from-green-500 to-green-600"
-                />
-                <StatCard
-                  icon={Star}
-                  value={ins.rating}
-                  label="Avg Rating"
-                  color="bg-gradient-to-br from-amber-400 to-orange-500"
-                />
-                <StatCard
-                  icon={TrendingUp}
-                  value={`${ins.completionRate}%`}
-                  label="Completion Rate"
-                  color="bg-gradient-to-br from-purple-500 to-purple-600"
-                />
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
+                <StatCard icon={BookOpen} value={ins.courses}        label="Total Courses"   color="bg-gradient-to-br from-blue-500 to-blue-600" />
+                <StatCard icon={Users}    value={ins.totalStudents}  label="Total Students"  color="bg-gradient-to-br from-green-500 to-green-600" />
               </div>
 
               {/* Course List */}
               {ins.courseList.length === 0 && (
-                <div className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] p-10 text-center text-gray-400 text-sm">
-                  No courses yet.
-                </div>
+                <div className="rounded-2xl bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] p-10 text-center text-gray-400 text-sm">No courses yet.</div>
               )}
-              {ins.courseList.map((course: any, i: number) => (
-                <motion.div
-                  key={course.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.06 }}
-                >
-                  <Card className="p-5 hover:shadow-lg transition-all group cursor-pointer">
-                    <div className="flex gap-5">
-                      {/* Course Thumbnail */}
-                      <div className="relative flex-shrink-0">
-                        <div
-                          className={`w-32 h-20 rounded-xl ${course.thumbnail}
-                            flex items-center justify-center overflow-hidden`}
-                          style={course.thumbnailImage ? { backgroundImage: `url(${course.thumbnailImage})` } : {}}
-                        >
-                          {!course.thumbnailImage && <Play className="w-8 h-8 text-white drop-shadow-lg" />}
-                        </div>
-                        {course.enrolled && (
-                          <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
-                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                        )}
+              {ins.courseList.map((course, i) => (
+                <motion.div key={course.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
+                  <Card className="p-4">
+                    <div className="flex gap-4">
+                      <div className="w-24 h-16 rounded-xl flex-shrink-0 overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                        {course.img ? <img src={course.img} alt={course.title} className="w-full h-full object-cover" /> : <Play className="w-6 h-6 text-white" />}
                       </div>
-
-                      {/* Course Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex-1">
-                            <h3 className="font-bold text-gray-900 dark:text-white text-lg leading-tight mb-1">
-                              {course.title}
-                            </h3>
-                            <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                              <span className="flex items-center gap-1">
-                                <BookOpen className="w-3 h-3" />
-                                {course.duration}
-                              </span>
-                              <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06]">
-                                {course.level}
-                              </span>
-                              <span className="font-semibold text-blue-600 dark:text-blue-400">
-                                {course.price}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Stars rating={Math.round(course.rating)} />
-                              <span className="text-sm font-bold text-amber-500">
-                                {course.rating}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-400">
-                              {course.students.toLocaleString()} students
-                            </p>
-                          </div>
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <h3 className="font-bold text-gray-900 dark:text-white text-sm leading-tight truncate">{course.title}</h3>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg flex-shrink-0 ${course.status === "PUBLISHED" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" : "bg-gray-100 dark:bg-white/[0.06] text-gray-500"}`}>{course.status}</span>
                         </div>
-
-                        {/* Progress Bar (if enrolled) */}
-                        {course.enrolled && (
-                          <div className="mb-2">
-                            <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                              <span>Your Progress</span>
-                              <span>{course.progress}%</span>
-                            </div>
-                            <div className="w-full h-2 bg-gray-200 dark:bg-white/[0.1] rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-300"
-                                style={{ width: `${course.progress}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2">
-                          {course.enrolled ? (
-                            <button className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                              Continue Learning
-                            </button>
-                          ) : (
-                            <button className="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-500 hover:to-indigo-500 transition-all">
-                              Enroll Now
-                            </button>
-                          )}
-                          <button className="px-3 py-2 rounded-lg text-sm font-semibold border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
-                            Preview
-                          </button>
+                        <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span>{course.level}</span><span>â€¢</span>
+                          <span className="font-semibold text-blue-600 dark:text-blue-400">${course.price}</span><span>â€¢</span>
+                          <span>{course.enrollments.toLocaleString()} students</span>
+                          {course.totalDuration > 0 && <><span>â€¢</span><span>{Math.round(course.totalDuration / 3600)}h</span></>}
                         </div>
                       </div>
                     </div>
@@ -887,308 +645,75 @@ export default function PreviewInstructor() {
             </motion.div>
           )}
 
-          {/* STUDENTS */}
-          {activeTab === "students" && (
-            <motion.div
-              key="students"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4"
-            >
-              {/* Student Stats Summary */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard
-                  icon={Users}
-                  value={ins.students.toLocaleString()}
-                  label="Total Students"
-                  color="bg-gradient-to-br from-blue-500 to-blue-600"
-                />
-                <StatCard
-                  icon={TrendingUp}
-                  value={`${ins.completionRate}%`}
-                  label="Avg Completion"
-                  color="bg-gradient-to-br from-green-500 to-green-600"
-                />
-                <StatCard
-                  icon={Award}
-                  value={ins.rating}
-                  label="Avg Rating"
-                  color="bg-gradient-to-br from-amber-400 to-orange-500"
-                />
-                <StatCard
-                  icon={BookOpen}
-                  value={ins.courses}
-                  label="Courses Taken"
-                  color="bg-gradient-to-br from-purple-500 to-purple-600"
-                />
-              </div>
-
-              {/* Student List */}
-              <Card className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="font-black text-lg text-gray-900 dark:text-white">
-                    Student Directory
-                  </h2>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Search students..."
-                      className="px-3 py-2 rounded-lg text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
-                    />
-                    <button className="px-3 py-2 rounded-lg text-sm font-semibold border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
-                      Filter
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {ins.studentList.map((student: any, index: number) => (
-                    <motion.div
-                      key={student.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <Card className="p-4 hover:shadow-md transition-all group cursor-pointer">
-                        <div className="flex items-center gap-3">
-                          {/* Student Avatar */}
-                          <div className="relative flex-shrink-0">
-                            {student.avatarImage ? (
-                              <img 
-                                src={student.avatarImage} 
-                                alt={student.name}
-                                className="w-12 h-12 rounded-xl object-cover"
-                              />
-                            ) : (
-                              <div className={`w-12 h-12 rounded-xl ${student.color} flex items-center justify-center text-white font-bold text-sm`}>
-                                {student.avatar}
-                              </div>
-                            )}
-                            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-400 border-2 border-white dark:border-[#0f1623]" />
-                          </div>
-
-                          {/* Student Info */}
+          {/* ASSIGNMENTS */}
+          {activeTab === "assignments" && (
+            <motion.div key="assignments" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="space-y-3">
+              {ins.assignments.length === 0
+                ? <Card className="p-10 text-center text-gray-400 text-sm">No assignments yet.</Card>
+                : ins.assignments.map((a, i) => (
+                    <motion.div key={a.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                      <Card className="p-4">
+                        <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate">
-                              {student.name}
-                            </h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                              {student.email}
-                            </p>
-                            <div className="flex items-center gap-3 mt-1">
-                              <span className="text-xs text-gray-400">
-                                Enrolled {formatRelativeTime(student.enrolledDate)}
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <div className="w-12 h-1 bg-gray-200 dark:bg-white/[0.1] rounded-full overflow-hidden">
-                                  <div 
-                                    className="h-full bg-blue-500 rounded-full"
-                                    style={{ width: `${student.progress}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs text-gray-400">{student.progress}%</span>
-                              </div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{a.title}</p>
+                              {a.isPublished
+                                ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 flex-shrink-0">Published</span>
+                                : <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-white/[0.06] text-gray-500 flex-shrink-0">Draft</span>
+                              }
+                            </div>
+                            <p className="text-xs text-gray-400 mb-2">{a.course.title}</p>
+                            <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+                              <span>Max: {a.maxScore} pts</span>
+                              <span>Due: {new Date(a.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                              {a.allowLate && <span className="text-amber-500">Late allowed</span>}
                             </div>
                           </div>
-
-                          {/* Action Button */}
-                          <button className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
+                          <div className="flex-shrink-0 text-right">
+                            <p className="text-lg font-black text-gray-900 dark:text-white">{a._count.submissions}</p>
+                            <p className="text-[10px] text-gray-400">submissions</p>
+                          </div>
                         </div>
                       </Card>
                     </motion.div>
-                  ))}
-                </div>
-
-                {/* Load More */}
-                <div className="flex justify-center mt-6">
-                  <button className="px-6 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
-                    Load More Students
-                  </button>
-                </div>
-              </Card>
+                  ))
+              }
             </motion.div>
           )}
 
           {/* REVIEWS */}
           {activeTab === "reviews" && (
-            <motion.div
-              key="reviews"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4"
-            >
-              {/* Rating Summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Overall score */}
-                <Card className="p-6 flex flex-col justify-center">
-                  <p className="text-xs uppercase tracking-widest text-gray-400 font-bold mb-3">
-                    Overall Rating
-                  </p>
-                  <p className="text-6xl font-black text-gray-900 dark:text-white leading-none">
-                    {ins.rating}
-                  </p>
-                  <div className="mt-2">
-                    <Stars rating={Math.round(ins.rating)} size="md" />
-                  </div>
-                  <p className="text-sm text-gray-400 mt-2">
-                    {ins.totalReviews.toLocaleString()} reviews
-                  </p>
-                </Card>
-
-                {/* Rating Distribution */}
-                <Card className="p-6">
-                  <h3 className="font-black text-gray-900 dark:text-white mb-4">Rating Distribution</h3>
-                  <div className="space-y-2">
-                    {[5, 4, 3, 2, 1].map((rating) => {
-                      const percentage = rating === 5 ? 72 : rating === 4 ? 18 : rating === 3 ? 7 : rating === 2 ? 2 : 1;
-                      return (
-                        <div key={rating} className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 w-3">{rating}</span>
-                          <div className="flex-1 h-2 bg-gray-200 dark:bg-white/[0.1] rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-amber-400 rounded-full"
-                              style={{ width: `${percentage}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-400 w-8 text-right">{percentage}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-
-                {/* Drop a review CTA */}
-                <Card className="p-6 flex flex-col justify-between bg-gradient-to-br from-blue-600 to-indigo-700 border-0">
-                  <div>
-                    <p className="text-blue-200 text-sm font-medium mb-1">
-                      Enjoyed learning from {ins.name}?
-                    </p>
-                    <h3 className="text-white font-black text-xl leading-tight">
-                      Share your experience with other students
-                    </h3>
-                  </div>
-                  <button
-                    onClick={() => setShowModal(true)}
-                    className="mt-4 self-start flex items-center gap-2 px-5 py-2.5 rounded-xl
-                      bg-white text-blue-700 font-bold text-sm
-                      hover:bg-blue-50 transition-colors shadow-lg shadow-blue-900/20"
-                  >
-                    <Star className="w-4 h-4 fill-blue-600 text-blue-600" />
-                    Drop a Review
-                  </button>
-                </Card>
-              </div>
-
-              {/* Filter and Sort */}
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Filter by:</span>
-                    <select className="px-3 py-1.5 rounded-lg text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-gray-200">
-                      <option>All Courses</option>
-                      {ins.courseList.map((course: any) => (
-                        <option key={course.id}>{course.title}</option>
-                      ))}
-                    </select>
-                    <select className="px-3 py-1.5 rounded-lg text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-gray-200">
-                      <option>Most Recent</option>
-                      <option>Most Helpful</option>
-                      <option>Highest Rated</option>
-                      <option>Lowest Rated</option>
-                    </select>
-                  </div>
-                  <span className="text-sm text-gray-500">
-                    {ins.totalReviews.toLocaleString()} reviews
-                  </span>
-                </div>
-              </Card>
-
-              {/* Individual Reviews */}
-              <div className="space-y-3">
-                {ins.reviews.map((review: any, index: number) => (
-                  <motion.div
-                    key={review.name}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.07 }}
-                  >
-                    <Card className="p-5 hover:shadow-md transition-shadow">
-                      <div className="flex gap-4">
-                        {/* Reviewer Avatar */}
-                        <div className="flex-shrink-0">
-                          {review.avatarImage ? (
-                            <img 
-                              src={review.avatarImage} 
-                              alt={review.name}
-                              className="w-12 h-12 rounded-xl object-cover"
-                            />
-                          ) : (
-                            <div className={`w-12 h-12 rounded-xl ${review.color} flex items-center justify-center text-white font-bold text-sm`}>
-                              {review.avatar}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Review Content */}
-                        <div className="flex-1">
-                          {/* Header */}
-                          <div className="flex items-start justify-between gap-3 mb-2">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-bold text-gray-900 dark:text-white">
-                                  {review.name}
-                                </h3>
-                                <Stars rating={review.rating} />
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-gray-500">
-                                <span>{review.time}</span>
-                                <span>•</span>
-                                <span className="text-blue-600 dark:text-blue-400">{review.course}</span>
+            <motion.div key="reviews" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="space-y-3">
+              {ins.reviewReplies.length === 0
+                ? <Card className="p-10 text-center text-gray-400 text-sm">No review replies yet.</Card>
+                : ins.reviewReplies.map((reply, i) => (
+                    <motion.div key={reply.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                      <Card className="p-5">
+                        <div className="flex items-start gap-3 mb-3">
+                          {reply.review.student.user.image
+                            ? <img src={reply.review.student.user.image} alt={reply.review.student.user.name} className="w-9 h-9 rounded-xl object-cover flex-shrink-0" />
+                            : <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black flex-shrink-0">{initials(reply.review.student.user.name)}</div>
+                          }
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="text-xs font-bold text-gray-900 dark:text-white">{reply.review.student.user.name}</p>
+                              <div className="flex items-center gap-0.5">
+                                {[1,2,3,4,5].map(s => <Star key={s} className={`w-3 h-3 ${s <= reply.review.rating ? "text-amber-400 fill-amber-400" : "text-gray-200 dark:text-gray-700"}`} />)}
                               </div>
                             </div>
-                            <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                              </svg>
-                            </button>
-                          </div>
-
-                          {/* Review Text */}
-                          <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-3">
-                            {review.text}
-                          </p>
-
-                          {/* Helpful Buttons */}
-                          <div className="flex items-center gap-4 text-xs">
-                            <button className="flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
-                              </svg>
-                              Helpful (24)
-                            </button>
-                            <button className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-                              Report
-                            </button>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{reply.review.comment}</p>
+                            <p className="text-[10px] text-gray-400">{reply.review.course.title} Â· {formatRelativeTime(reply.review.createdAt)}</p>
                           </div>
                         </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-
-              {/* Load More Reviews */}
-              <div className="flex justify-center">
-                <button className="px-6 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
-                  Load More Reviews
-                </button>
-              </div>
+                        <div className="ml-12 pl-3 border-l-2 border-blue-200 dark:border-blue-800/50">
+                          <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 mb-0.5">Your reply{reply.isEdited ? " (edited)" : ""}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">{reply.comment}</p>
+                          <p className="text-[10px] text-gray-400 mt-1">{formatRelativeTime(reply.createdAt)}</p>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  ))
+              }
             </motion.div>
           )}
         </AnimatePresence>

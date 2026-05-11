@@ -1,15 +1,14 @@
 // src/dashboards/admin-dashboard/pages/AdminProfile.tsx
-import { useState } from "react";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
 import {
-  Users, BookOpen, Award, Globe, Mail,
-  Calendar, Edit3, ExternalLink,
+  Users, BookOpen, Award, Mail,
+  Calendar,
   Shield, ShieldCheck, TrendingUp,
   Ticket, DollarSign, CheckCircle2, Clock, Zap,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import AdminDashboardService from "@/services/admin-dashboard.service";
+import ActivityService, { type ActivityItem } from "@/services/activity.service";
 import { useDashboardUser, getInitials } from "@/hooks/useDashboardUser";
 
 function fmt(n: number) {
@@ -92,17 +91,18 @@ function relTime(d: Date | string) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminProfile() {
-  const [activeTab, setActiveTab] = useState<"activity" | "permissions">("activity");
   const { user } = useDashboardUser();
 
-  const { data: summary } = useQuery({
+  const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["admin-summary"],
     queryFn: () => AdminDashboardService.getSummary(),
   });
-  const { data: activities = [] } = useQuery({
-    queryKey: ["admin-activities", 6],
-    queryFn: () => AdminDashboardService.getRecentActivities(6),
+
+  const { data: activitiesFeed, isLoading: activitiesLoading } = useQuery({
+    queryKey: ["activities-feed", 8],
+    queryFn: () => ActivityService.getFeed({ limit: 8 }),
   });
+  const activities: ActivityItem[] = activitiesFeed?.data ?? [];
 
   const fullName  = user ? `${user.firstName} ${user.lastName}`.trim() : "Admin";
   const email     = user?.email ?? "";
@@ -121,11 +121,6 @@ export default function AdminProfile() {
     coursesPublished: summary?.courses?.published ?? 0,
   };
 
-  const TABS = [
-    { id: "activity",    label: "Activity"    },
-    { id: "permissions", label: "Permissions" },
-  ] as const;
-
   return (
     <div className="max-w-[1100px] mx-auto space-y-6 pb-10">
 
@@ -138,12 +133,7 @@ export default function AdminProfile() {
               style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
             <div className="absolute inset-0"
               style={{ background: "radial-gradient(circle 500px at 90% 50%, rgba(99,102,241,0.3), transparent 70%)" }} />
-            <Link to="/admin/settings"
-              className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                bg-white/20 backdrop-blur-sm border border-white/30 text-white text-xs font-bold
-                hover:bg-white/30 transition-all">
-              <Edit3 className="w-3 h-3" /> Edit Profile
-            </Link>
+            
           </div>
 
           <div className="px-6 pb-6">
@@ -203,20 +193,7 @@ export default function AdminProfile() {
               </span>
             </div>
 
-            {/* Socials placeholder */}
-            <div className="flex flex-wrap gap-2">
-              <Link to="/admin/settings"
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
-                  border border-gray-200 dark:border-white/[0.08]
-                  text-gray-600 dark:text-gray-400
-                  hover:border-blue-300 dark:hover:border-blue-700
-                  hover:text-blue-600 dark:hover:text-blue-400
-                  transition-all group">
-                <Globe className="w-3.5 h-3.5" />
-                Edit Links
-                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </Link>
-            </div>
+            
           </div>
         </Card>
       </Fade>
@@ -224,57 +201,60 @@ export default function AdminProfile() {
       {/* ── Stats ─────────────────────────────────────────────────────── */}
       <Fade delay={0.06}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatTile icon={Users}      value={fmt(ad.usersManaged)}      label="Users Managed"      sub="on platform"    />
-          <StatTile icon={Ticket}     value={String(ad.ticketsResolved)} label="Tickets Resolved"   sub="this quarter"   />
-          <StatTile icon={DollarSign} value={ad.revenueOverseen}         label="Revenue Overseen"   sub="total platform" />
-          <StatTile icon={BookOpen}   value={String(ad.coursesPublished)} label="Courses Published" sub="live on GGECL"  />
+          {summaryLoading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex flex-col items-center py-5 px-3 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100/60 dark:border-blue-900/20 animate-pulse">
+                  <div className="w-9 h-9 rounded-xl bg-blue-200 dark:bg-blue-900/40 mb-2" />
+                  <div className="h-6 w-12 bg-blue-200 dark:bg-blue-900/40 rounded-lg mb-1" />
+                  <div className="h-3 w-20 bg-blue-200 dark:bg-blue-900/40 rounded-lg" />
+                </div>
+              ))
+            : <>
+                <StatTile icon={Users}      value={fmt(ad.usersManaged)}      label="Users Managed"      sub="on platform"    />
+                <StatTile icon={Ticket}     value={String(ad.ticketsResolved)} label="Tickets Resolved"   sub="this quarter"   />
+                <StatTile icon={DollarSign} value={ad.revenueOverseen}         label="Revenue Overseen"   sub="total platform" />
+                <StatTile icon={BookOpen}   value={String(ad.coursesPublished)} label="Courses Published" sub="live on GGECL"  />
+              </>
+          }
         </div>
       </Fade>
 
-      {/* ── Tabs ──────────────────────────────────────────────────────── */}
-      <Fade delay={0.1}>
-        <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-white/[0.05] w-fit">
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200 ${
-                activeTab === tab.id
-                  ? "bg-white dark:bg-[#0f1623] text-gray-900 dark:text-white shadow-sm"
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              }`}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </Fade>
-
-      {/* ── ACTIVITY tab ──────────────────────────────────────────────── */}
-      {activeTab === "activity" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
+      {/* ── Activity ──────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
           <div className="flex flex-col gap-3">
             <Fade delay={0.06}>
               <Card className="p-6">
                 <SectionHead icon={TrendingUp} title="Recent Activity" />
                 <div className="flex flex-col gap-2">
-                  {activities.map((a, i) => (
-                    <motion.div key={a.id}
-                      initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.08 + i * 0.04 }}
-                      className="flex items-center gap-3 p-3 rounded-xl
-                        bg-gray-50 dark:bg-white/[0.03]
-                        border border-gray-100 dark:border-white/[0.05]">
-                      <ActivityIcon type="settings" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">{a.title}</p>
-                        <p className="text-[10px] text-gray-400 truncate">{a.message}</p>
-                      </div>
-                      <span className="text-[10px] text-gray-400 flex-shrink-0 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />{relTime(a.createdAt)}
-                      </span>
-                    </motion.div>
-                  ))}
-                  {activities.length === 0 && (
-                    <p className="text-xs text-gray-400 text-center py-4">No recent activity</p>
-                  )}
+                  {activitiesLoading
+                    ? Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05] animate-pulse">
+                          <div className="w-8 h-8 rounded-xl bg-gray-200 dark:bg-white/[0.08] flex-shrink-0" />
+                          <div className="flex-1 space-y-1.5">
+                            <div className="h-3 w-40 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                            <div className="h-3 w-56 bg-gray-200 dark:bg-white/[0.08] rounded-lg" />
+                          </div>
+                          <div className="h-3 w-12 bg-gray-200 dark:bg-white/[0.08] rounded-lg flex-shrink-0" />
+                        </div>
+                      ))
+                    : activities.length === 0
+                    ? <p className="text-xs text-gray-400 text-center py-4">No recent activity</p>
+                    : activities.map((a, i) => (
+                        <motion.div key={a.id}
+                          initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.08 + i * 0.04 }}
+                          className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
+                          <ActivityIcon type={a.type ?? "settings"} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">{a.title}</p>
+                            <p className="text-[10px] text-gray-400 truncate">{a.message}</p>
+                          </div>
+                          <span className="text-[10px] text-gray-400 flex-shrink-0 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />{relTime(a.createdAt)}
+                          </span>
+                        </motion.div>
+                      ))
+                  }
                 </div>
               </Card>
             </Fade>
@@ -297,95 +277,9 @@ export default function AdminProfile() {
               </Card>
             </Fade>
 
-            <Fade delay={0.14}>
-              <Card className="p-5">
-                <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-3">Teaching Categories</p>
-                <div className="flex flex-wrap gap-2">
-                  {["Operations", "Platform", "Compliance", "Finance"].map(c => (
-                    <span key={c} className="px-3 py-1.5 rounded-xl text-xs font-semibold capitalize
-                      border border-gray-200 dark:border-white/[0.08]
-                      text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-white/[0.03]">
-                      {c}
-                    </span>
-                  ))}
-                </div>
-              </Card>
-            </Fade>
+
           </div>
         </div>
-      )}
-
-      {/* ── PERMISSIONS tab ───────────────────────────────────────────── */}
-      {activeTab === "permissions" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {[
-            {
-              group: "User Management",
-              perms: [
-                { label: "View all users",           granted: true              },
-                { label: "Create / edit users",      granted: true              },
-                { label: "Delete users",             granted: ad.isSuperAdmin   },
-                { label: "Assign roles",             granted: ad.isSuperAdmin   },
-              ],
-            },
-            {
-              group: "Content Management",
-              perms: [
-                { label: "View all courses",         granted: true  },
-                { label: "Approve / reject courses", granted: true  },
-                { label: "Delete courses",           granted: true  },
-                { label: "Feature courses",          granted: true  },
-              ],
-            },
-            {
-              group: "Finance",
-              perms: [
-                { label: "View transactions",        granted: true              },
-                { label: "Process payouts",          granted: true              },
-                { label: "Issue refunds",            granted: ad.isSuperAdmin   },
-                { label: "Export financial data",    granted: ad.isSuperAdmin   },
-              ],
-            },
-            {
-              group: "Platform Settings",
-              perms: [
-                { label: "Edit general settings",    granted: true              },
-                { label: "Manage features",          granted: true              },
-                { label: "Access audit logs",        granted: ad.isSuperAdmin   },
-                { label: "Super admin controls",     granted: ad.isSuperAdmin   },
-              ],
-            },
-          ].map((group, gi) => (
-            <Fade key={group.group} delay={gi * 0.07}>
-              <Card className="p-5">
-                <p className="text-[11px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase mb-3">
-                  {group.group}
-                </p>
-                <div className="flex flex-col gap-2">
-                  {group.perms.map((p, pi) => (
-                    <motion.div key={p.label}
-                      initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: gi * 0.07 + pi * 0.04 }}
-                      className="flex items-center justify-between px-3 py-2.5 rounded-xl
-                        bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.05]">
-                      <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{p.label}</span>
-                      {p.granted ? (
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Granted
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-gray-400">
-                          <ShieldCheck className="w-3.5 h-3.5" /> Super Admin only
-                        </span>
-                      )}
-                    </motion.div>
-                  ))}
-                </div>
-              </Card>
-            </Fade>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

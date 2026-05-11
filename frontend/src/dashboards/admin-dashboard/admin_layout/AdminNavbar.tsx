@@ -88,7 +88,7 @@ function NotificationBell() {
         ))}
         <div className="px-4 py-2.5">
           <button
-            onClick={()=> navigate("/admin/notifications")}
+            onClick={()=> navigate("/admin/activities")}
            className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">View all</button>
         </div>
       </PopoverContent>
@@ -154,7 +154,7 @@ function ProfileDropdown() {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to="/admin/settings" className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[14px] cursor-pointer text-[12.5px]">
+          <Link to="/admin/profile" className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[14px] cursor-pointer text-[12.5px]">
             <div className="w-7 h-7 rounded-xl bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center"><Settings className="w-3.5 h-3.5" /></div>Settings
           </Link>
         </DropdownMenuItem>

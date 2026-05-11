@@ -105,17 +105,34 @@ function CourseTooltip({ active, payload, label }: any) {
   );
 }
 
+// ─── Skeleton atoms ───────────────────────────────────────────────────────────
+
+function SkeletonBox({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse bg-gray-200 dark:bg-white/[0.08] rounded-xl ${className}`} />;
+}
+
+function StatCardSkeleton() {
+  return (
+    <Card className="p-4">
+      <SkeletonBox className="w-8 h-8 rounded-xl mb-2.5" />
+      <SkeletonBox className="h-6 w-16 mb-1" />
+      <SkeletonBox className="h-3 w-10 mb-1" />
+      <SkeletonBox className="h-3 w-20" />
+    </Card>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function AdminHome() {
-  const { data: summary } = useQuery({
+  const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["admin-summary"],
     queryFn: () => AdminDashboardService.getSummary(),
   });
 
   console.log('summary of data', summary)
 
-  const { data: txAnalytics } = useQuery({
+  const { data: txAnalytics, isLoading: txLoading } = useQuery({
     queryKey: ["transaction-analytics"],
     queryFn: () => TransactionService.getAnalytics(),
   });
@@ -124,6 +141,8 @@ export default function AdminHome() {
     queryKey: ["admin-platform-completion-rate"],
     queryFn: () => ProgressService.getPlatformCompletionRate(),
   });
+
+  const isLoading = summaryLoading || txLoading;
 
   const totalStudents   = summary?.students?.total      ?? 0;
   const activeInstr     = summary?.instructors?.active  ?? 0;
