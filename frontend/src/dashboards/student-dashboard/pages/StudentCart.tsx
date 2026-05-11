@@ -5,6 +5,7 @@ import {
   ShoppingCart, Trash2, Tag, ArrowRight, Star,
   Shield, Zap, ChevronRight, X, CheckCircle2,
   Gift, Lock, BookOpen, Heart, Loader2, AlertCircle,
+  XCircle, Info,
 } from "lucide-react";
 import { useCart } from "@/services/cart.service";
 import { type CartCourse } from "@/services/cart.service";
@@ -12,11 +13,100 @@ import { useCheckout } from "@/services/checkout.service";
 import { getCurrency, formatCurrency, type CurrencyCode } from "@/lib/currency.utils";
 import { useCurrencyConverter } from "@/services/currency.service";
 
+// ─── Toast notification types ──────────────────────────────────────────────────
+interface Toast {
+  id: string;
+  type: 'success' | 'error' | 'info';
+  message: string;
+  duration?: number;
+}
+
 // ─── Promo codes (local) ──────────────────────────────────────────────────────
 const PROMO_CODES: Record<string, number> = {
   LEARN10: 0.1,
   SAVE20: 0.2,
 };
+
+// ─── Error message helper ──────────────────────────────────────────────────────
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    // Handle specific API error messages
+    if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+      return 'Your session has expired. Please log in again.';
+    }
+    if (error.message.includes('403') || error.message.includes('Forbidden')) {
+      return 'You do not have permission to perform this action.';
+    }
+    if (error.message.includes('404') || error.message.includes('Not found')) {
+      return 'The requested item was not found.';
+    }
+    if (error.message.includes('500') || error.message.includes('Server error')) {
+      return 'Server error. Please try again later.';
+    }
+    if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
+      return 'Network error. Please check your connection.';
+    }
+    return error.message || 'An error occurred. Please try again.';
+  }
+  return 'An unexpected error occurred. Please try again.';
+}
+
+// ─── Toast notification component ──────────────────────────────────────────────
+function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: string) => void }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+      <AnimatePresence mode="popLayout">
+        {toasts.map((toast) => (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: 16, x: 24 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: 16, x: 24 }}
+            transition={{ duration: 0.2 }}
+            className="pointer-events-auto"
+          >
+            <div
+              className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg backdrop-blur-sm border ${
+                toast.type === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/40'
+                  : toast.type === 'error'
+                  ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800/40'
+                  : 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/40'
+              }`}
+            >
+              {toast.type === 'success' && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+              )}
+              {toast.type === 'error' && (
+                <XCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+              )}
+              {toast.type === 'info' && (
+                <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+              )}
+              <p
+                className={`text-sm font-medium ${
+                  toast.type === 'success'
+                    ? 'text-emerald-700 dark:text-emerald-300'
+                    : toast.type === 'error'
+                    ? 'text-red-700 dark:text-red-300'
+                    : 'text-blue-700 dark:text-blue-300'
+                }`}
+              >
+                {toast.message}
+              </p>
+              <button
+                onClick={() => onRemove(toast.id)}
+                className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 // ─── Cart item row ────────────────────────────────────────────────────────────
 function CartItem({
@@ -27,6 +117,8 @@ function CartItem({
   saving,
   currency,
   convertToNGN,
+  itemError,
+  onErrorDismiss,
 }: {
   item: CartCourse;
   onRemove: () => void;
@@ -35,6 +127,8 @@ function CartItem({
   saving: boolean;
   currency: CurrencyCode;
   convertToNGN: ((usdAmount: number) => number | null) | undefined;
+  itemError?: string | null;
+  onErrorDismiss: () => void;
 }) {
   const { course } = item;
   const rating = course.totalRating > 0 ? (course.totalStar / course.totalRating).toFixed(1) : "—";
@@ -51,67 +145,88 @@ function CartItem({
       animate={{ opacity: removing || saving ? 0.5 : 1, x: 0 }}
       exit={{ opacity: 0, x: -24, height: 0, paddingTop: 0, paddingBottom: 0 }}
       transition={{ duration: 0.28, ease: "easeInOut" }}
-      className="flex gap-4 p-4 rounded-[20px] bg-white dark:bg-[#0f1623]
-        border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)]"
+      className="flex flex-col gap-2"
     >
-      <Link to={`/student/courses/${course.id}`} className="flex-shrink-0">
-        {course.img ? (
-          <img
-            src={course.img}
-            alt={course.title}
-            className="w-[72px] h-[72px] rounded-2xl object-cover"
-          />
-        ) : (
-          <div className="w-[72px] h-[72px] rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600
-            flex items-center justify-center">
-            <BookOpen className="w-8 h-8 text-white" />
+      {itemError && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40"
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-600 dark:text-red-400 flex-1">{itemError}</p>
+            <button
+              onClick={onErrorDismiss}
+              className="text-red-400 hover:text-red-600 flex-shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
-        )}
-      </Link>
-
-      <div className="flex-1 min-w-0">
-        <Link to={`/student/courses/${course.id}`}>
-          <h3 className="text-sm font-bold text-gray-900 dark:text-white line-clamp-2 leading-snug
-            hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-            {course.title}
-          </h3>
+        </motion.div>
+      )}
+      <div className="flex gap-4 p-4 rounded-[20px] bg-white dark:bg-[#0f1623]
+        border border-gray-100 dark:border-white/[0.07] shadow-[0_2px_16px_rgba(0,0,0,0.05)]">
+        <Link to={`/student/courses/${course.id}`} className="flex-shrink-0">
+          {course.img ? (
+            <img
+              src={course.img}
+              alt={course.title}
+              className="w-[72px] h-[72px] rounded-2xl object-cover"
+            />
+          ) : (
+            <div className="w-[72px] h-[72px] rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600
+              flex items-center justify-center">
+              <BookOpen className="w-8 h-8 text-white" />
+            </div>
+          )}
         </Link>
-        <p className="text-xs text-gray-400 mt-0.5">{course.instructor.user.name}</p>
-        <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-          <span className="flex items-center gap-1">
-            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-            <span className="font-bold text-gray-700 dark:text-gray-300">{rating}</span>
-            <span>({course.totalRating})</span>
-          </span>
-          <span className="px-1.5 py-0.5 rounded-md bg-gray-50 dark:bg-white/[0.04]
-            border border-gray-100 dark:border-white/[0.06]">
-            {course.level}
-          </span>
-        </div>
-        <button
-          onClick={onSaveForLater}
-          disabled={saving}
-          className="mt-1.5 text-xs text-blue-500 hover:text-blue-600 dark:hover:text-blue-400
-            flex items-center gap-1 transition-colors disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Heart className="w-3 h-3" />}
-          Save for later
-        </button>
-      </div>
 
-      <div className="flex flex-col items-end justify-between flex-shrink-0">
-        <button
-          onClick={onRemove}
-          disabled={removing}
-          className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-300 dark:text-gray-600
-            hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all duration-200
-            disabled:opacity-50"
-        >
-          {removing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-        </button>
-        <p className="text-base font-black text-gray-900 dark:text-white">
-          {displayPrice !== null ? formatCurrency(displayPrice, currency) : formatCurrency(course.price, 'USD')}
-        </p>
+        <div className="flex-1 min-w-0">
+          <Link to={`/student/courses/${course.id}`}>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white line-clamp-2 leading-snug
+              hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              {course.title}
+            </h3>
+          </Link>
+          <p className="text-xs text-gray-400 mt-0.5">{course.instructor.user.name}</p>
+          <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+            <span className="flex items-center gap-1">
+              <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+              <span className="font-bold text-gray-700 dark:text-gray-300">{rating}</span>
+              <span>({course.totalRating})</span>
+            </span>
+            <span className="px-1.5 py-0.5 rounded-md bg-gray-50 dark:bg-white/[0.04]
+              border border-gray-100 dark:border-white/[0.06]">
+              {course.level}
+            </span>
+          </div>
+          <button
+            onClick={onSaveForLater}
+            disabled={saving}
+            className="mt-1.5 text-xs text-blue-500 hover:text-blue-600 dark:hover:text-blue-400
+              flex items-center gap-1 transition-colors disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Heart className="w-3 h-3" />}
+            Save for later
+          </button>
+        </div>
+
+        <div className="flex flex-col items-end justify-between flex-shrink-0">
+          <button
+            onClick={onRemove}
+            disabled={removing}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-300 dark:text-gray-600
+              hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all duration-200
+              disabled:opacity-50"
+          >
+            {removing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          </button>
+          <p className="text-base font-black text-gray-900 dark:text-white">
+            {displayPrice !== null ? formatCurrency(displayPrice, currency) : formatCurrency(course.price, 'USD')}
+          </p>
+        </div>
       </div>
     </motion.div>
   );
@@ -125,6 +240,10 @@ function OrderSummary({
   onClear,
   currency,
   convertToNGN,
+  checkoutError,
+  isCheckingOut,
+  clearError,
+  onClearErrorDismiss,
 }: {
   items: CartCourse[];
   onCheckout: (promoCode?: string) => void;
@@ -132,6 +251,10 @@ function OrderSummary({
   onClear: () => void;
   currency: CurrencyCode;
   convertToNGN: ((usdAmount: number) => number | null) | undefined;
+  checkoutError?: Error | null;
+  isCheckingOut?: boolean;
+  clearError?: string | null;
+  onClearErrorDismiss: () => void;
 }) {
   const [promoCode, setPromoCode] = useState("");
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
@@ -253,15 +376,59 @@ function OrderSummary({
           </div>
         </div>
 
+        <AnimatePresence>
+          {checkoutError && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-600 dark:text-red-400 flex-1">
+                  {getErrorMessage(checkoutError)}
+                </p>
+              </div>
+            </motion.div>
+          )}
+          {clearError && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-600 dark:text-red-400 flex-1">{clearError}</p>
+                <button
+                  onClick={onClearErrorDismiss}
+                  className="text-red-400 hover:text-red-600 flex-shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <motion.button
-          whileHover={{ scale: 1.02, boxShadow: "0 10px 32px rgba(59,130,246,0.5)" }}
-          whileTap={{ scale: 0.97 }}
+          whileHover={{ scale: isCheckingOut ? 1 : 1.02, boxShadow: isCheckingOut ? "none" : "0 10px 32px rgba(59,130,246,0.5)" }}
+          whileTap={{ scale: isCheckingOut ? 1 : 0.97 }}
           onClick={() => onCheckout(appliedCode || undefined)}
+          disabled={isCheckingOut}
           className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl
             bg-blue-600 hover:bg-blue-500 text-white font-black text-sm
-            shadow-[0_6px_24px_rgba(59,130,246,0.42)] transition-colors duration-200"
+            shadow-[0_6px_24px_rgba(59,130,246,0.42)] transition-colors duration-200
+            disabled:opacity-70 disabled:cursor-not-allowed"
         >
-          Proceed to Checkout <ArrowRight className="w-4 h-4" />
+          {isCheckingOut ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Processing...
+            </>
+          ) : (
+            <>
+              Proceed to Checkout <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </motion.button>
 
         <div className="flex items-center justify-center gap-5 mt-4">
@@ -332,6 +499,9 @@ function EmptyCart() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function StudentDashboardCart() {
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
+  const [clearError, setClearError] = useState<string | null>(null);
   
   // Use new optimistic hooks
   const { 
@@ -346,7 +516,7 @@ export default function StudentDashboardCart() {
     isClearing
   } = useCart();
 
-  const { initiateCheckout, isLoading: isCheckingOut } = useCheckout();
+  const { initiateCheckout, isLoading: isCheckingOut, error: checkoutError } = useCheckout();
   
   // Get currency converter for real-time NGN conversion
   const { convert: convertToNGN } = useCurrencyConverter();
@@ -356,16 +526,73 @@ export default function StudentDashboardCart() {
     getCurrency().then(setCurrency);
   }, []);
 
+  // Add toast notification
+  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info', duration = 3000) => {
+    const id = `${Date.now()}-${Math.random()}`;
+    setToasts(prev => [...prev, { id, message, type, duration }]);
+    
+    if (duration > 0) {
+      setTimeout(() => removeToast(id), duration);
+    }
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Handle item-level errors
+  useEffect(() => {
+    if (isRemoving && error) {
+      const errorMsg = getErrorMessage(error);
+      // Find which item failed (this is a limitation - we'd need to track per-item)
+      addToast(errorMsg, 'error');
+    }
+  }, [isRemoving, error]);
+
+  useEffect(() => {
+    if (isMoving && error) {
+      const errorMsg = getErrorMessage(error);
+      addToast(errorMsg, 'error');
+    }
+  }, [isMoving, error]);
+
+  useEffect(() => {
+    if (isClearing && error) {
+      const errorMsg = getErrorMessage(error);
+      setClearError(errorMsg);
+    }
+  }, [isClearing, error]);
+
+  useEffect(() => {
+    if (checkoutError) {
+      const errorMsg = getErrorMessage(checkoutError);
+      addToast(errorMsg, 'error', 5000);
+    }
+  }, [checkoutError]);
+
   const handleRemove = (courseId: string) => {
     removeFromCart(courseId);
+    // Clear any existing error for this item
+    setItemErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[courseId];
+      return newErrors;
+    });
   };
 
   const handleMoveToWishlist = (courseId: string) => {
     moveToWishlist(courseId);
+    // Clear any existing error for this item
+    setItemErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[courseId];
+      return newErrors;
+    });
   };
 
   const handleClearCart = () => {
     clearCart();
+    setClearError(null);
   };
 
   const handleCheckout = (promoCode?: string) => {
@@ -385,14 +612,14 @@ export default function StudentDashboardCart() {
     );
   }
 
-  if (error) {
+  if (error && !isRemoving && !isMoving && !isClearing) {
     return (
       <div className="flex flex-col items-center justify-center py-40 gap-3 text-center">
         <AlertCircle className="w-10 h-10 text-red-400" />
-        <p className="text-sm text-gray-500">Failed to load your cart. Please try again.</p>
+        <p className="text-sm text-gray-500">{getErrorMessage(error)}</p>
         <button
           onClick={() => window.location.reload()}
-          className="text-sm text-blue-500 hover:underline"
+          className="text-sm text-blue-500 hover:underline font-medium"
         >
           Retry
         </button>
@@ -441,6 +668,14 @@ export default function StudentDashboardCart() {
                     onSaveForLater={() => handleMoveToWishlist(item.course.id)}
                     currency={currency}
                     convertToNGN={convertToNGN}
+                    itemError={itemErrors[item.course.id]}
+                    onErrorDismiss={() => {
+                      setItemErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors[item.course.id];
+                        return newErrors;
+                      });
+                    }}
                   />
                 ))}
               </AnimatePresence>
@@ -466,11 +701,17 @@ export default function StudentDashboardCart() {
                 onClear={handleClearCart}
                 currency={currency}
                 convertToNGN={convertToNGN}
+                checkoutError={checkoutError}
+                isCheckingOut={isCheckingOut}
+                clearError={clearError}
+                onClearErrorDismiss={() => setClearError(null)}
               />
             </div>
           </div>
         )}
       </div>
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

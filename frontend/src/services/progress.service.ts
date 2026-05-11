@@ -28,6 +28,27 @@ export interface TopCourseItem {
   lastActivityAt: string | null;
 }
 
+export interface LastWatchedCourse {
+  courseId: string;
+  courseTitle: string;
+  courseImg?: string;
+  instructor: {
+    id: string;
+    user: {
+      id: string;
+      name: string;
+      image?: string | null;
+    };
+  };
+  completedLessons: number;
+  totalLessons: number;
+  percentComplete: number;
+  isCompleted: boolean;
+  lastLessonId?: string | null;
+  lastLessonTitle?: string | null;
+  lastActivityAt: string;
+}
+
 export interface WatchTimeByCourse {
   courseId: string;
   courseTitle: string;
@@ -90,6 +111,18 @@ export default class ProgressService {
    */
   static async getTopCourses(): Promise<TopCourseItem[]> {
     const response = await APIConfig.fetch("/progress/top-courses");
+    return response.json();
+  }
+
+  /**
+   * Get the last watched course (most recent activity).
+   * Returns the course the student most recently had activity on,
+   * with full course details including instructor info, progress stats,
+   * and the last lesson they were on. Returns null if no progress yet.
+   * STUDENT only.
+   */
+  static async getLastWatchedCourse(): Promise<LastWatchedCourse | null> {
+    const response = await APIConfig.fetch("/progress/last-watched-course");
     return response.json();
   }
 

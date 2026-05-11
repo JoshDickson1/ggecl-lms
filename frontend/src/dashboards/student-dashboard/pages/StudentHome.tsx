@@ -9,7 +9,7 @@ import {
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
-import ProgressService from "@/services/progress.service";
+import ProgressService, { LastWatchedCourse } from "@/services/progress.service";
 import ActivityService from "@/services/activity.service";
 import EnrollmentService, { MyEnrollment } from "@/services/enrollment.service";
 import { useAuth } from "@/context/AuthProvider";
@@ -217,12 +217,16 @@ export default function StudentHome() {
     queryFn: () => EnrollmentService.getMine(),
   });
 
+  const { data: lastWatchedCourse, isLoading: lastWatchedLoading } = useQuery<LastWatchedCourse | null>({
+    queryKey: ["progress-last-watched"],
+    queryFn: () => ProgressService.getLastWatchedCourse(),
+  });
+
   if (dashError) return <ApiErrorPage onRetry={refetchDash} message="Failed to load your dashboard." />;
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
   const stats        = dashboard?.stats;
-  const courses      = dashboard?.courses ?? [];
   const weeklyDays   = stats?.weeklyActivity.days ?? [];
   const totalMinutes = stats?.weeklyActivity.totalThisWeek ?? 0;
   const dailyAvg     = Number(stats?.weeklyActivity.dailyAverage) || 0;
@@ -230,13 +234,8 @@ export default function StudentHome() {
   const streak       = stats?.streak.currentStreak ?? 0;
   const completed    = stats?.completedCourses ?? 0;
 
-  // Top course for "Continue Learning":
-  // in-progress courses first (closest to 100%), completed sink to bottom — mirrors /top-courses ranking
-  const topCourse =
-    courses.find(c => !c.isCompleted && c.percentComplete > 0) ??
-    courses.find(c => !c.isCompleted) ??
-    courses[0] ??
-    null;
+  // Top course for "Continue Learning": use the dedicated last-watched endpoint
+  const topCourse = lastWatchedCourse;
 
   // XP
   const xpTotal     = xp?.totalXp ?? 0;
@@ -263,7 +262,7 @@ export default function StudentHome() {
 
   // Loading flags per section
   const heroDataLoading    = dashLoading || xpLoading || enrollLoading;
-  const continueLearning   = dashLoading;
+  const continueLearningLoading = lastWatchedLoading;
   const chartLoading       = dashLoading;
   const activityFeedLoading = activityLoading;
   const myCoursesLoading   = enrollLoading;
@@ -377,7 +376,7 @@ export default function StudentHome() {
       </Fade>
 
       {/* ── Continue Learning ──────────────────────────────────── */}
-      {continueLearning ? (
+      {continueLearningLoading ? (
         <Fade delay={0.06}>
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-4">

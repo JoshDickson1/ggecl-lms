@@ -9,11 +9,24 @@ export interface CheckoutRequest {
   promoCode?: string;
 }
 
+export interface OrderItem {
+  id: string;
+  courseId: string;
+  courseTitle: string;
+  priceAtPurchase: number;
+}
+
 export interface CheckoutResponse {
   orderId: string;
   paymentUrl: string;
-  amount: number;
   currency: CurrencyCode;
+  gateway: 'PAYSTACK' | 'STRIPE';
+  subtotal: number;
+  discountAmount: number;
+  total: number;
+  chargedAmount: number;
+  exchangeRate?: number;
+  items: OrderItem[];
 }
 
 export interface PromoValidationRequest {
@@ -47,7 +60,7 @@ export interface OrderStatus {
 export default class CheckoutService {
   /**
    * Initiate checkout from cart
-   * Automatically detects currency based on user location
+   * Converts the student's current cart into a pending Order and returns a payment URL
    * @param promoCode - Optional promo code to apply
    */
   static async initiateCheckout(promoCode?: string): Promise<CheckoutResponse> {
@@ -98,11 +111,13 @@ export default class CheckoutService {
 
 /**
  * Hook to initiate checkout with automatic currency detection
+ * Redirects to payment URL on success
  */
 export function useCheckout() {
   const mutation = useMutation({
     mutationFn: (promoCode?: string) => CheckoutService.initiateCheckout(promoCode),
     onSuccess: (data) => {
+      console.log('Checkout successful:', data);
       // Redirect to payment URL
       if (data.paymentUrl) {
         window.location.href = data.paymentUrl;
@@ -115,6 +130,7 @@ export function useCheckout() {
 
   return {
     initiateCheckout: mutation.mutate,
+    initiateCheckoutAsync: mutation.mutateAsync,
     isLoading: mutation.isPending,
     error: mutation.error,
     data: mutation.data,

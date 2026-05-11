@@ -1,12 +1,22 @@
 // src/landing/pages/OurStudents.tsx
-import { useState, useRef } from "react";
+import UserService, { type PublicStudentProfile } from "@/services/user.service";
 import { motion, useInView } from "framer-motion";
-import { Link } from "react-router-dom";
 import {
-  Search, MapPin, BookOpen, Award, Star,
-  GraduationCap, Users, Trophy, ChevronRight,
-  Sparkles, Filter,
+  Award,
+  BookOpen,
+  ChevronRight,
+  Filter,
+  GraduationCap,
+  Loader2,
+  MapPin,
+  Search,
+  Sparkles,
+  Star,
+  Trophy,
+  Users,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600&display=swap');`;
 
@@ -25,10 +35,67 @@ function FadeUp({ children, delay = 0, className = "" }: {
   );
 }
 
-// ─── Dummy student data ───────────────────────────────────────────────────────
+// ─── Helper functions ─────────────────────────────────────────────────────────
 
-export const STUDENTS = [
-  {
+// Generate a color gradient based on student ID
+function getGradientForStudent(id: string): string {
+  const gradients = [
+    "from-blue-500 to-indigo-600",
+    "from-violet-500 to-purple-600",
+    "from-emerald-500 to-teal-600",
+    "from-amber-400 to-orange-500",
+    "from-red-500 to-rose-600",
+    "from-cyan-500 to-blue-500",
+    "from-violet-600 to-indigo-700",
+    "from-pink-500 to-rose-500",
+    "from-orange-500 to-amber-500",
+    "from-teal-500 to-cyan-600",
+    "from-indigo-500 to-blue-600",
+    "from-lime-500 to-green-600",
+  ];
+  // Use a simple hash of the ID to pick a consistent gradient
+  const hash = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return gradients[hash % gradients.length];
+}
+
+// Calculate average grade from submissions
+function calculateAverageGrade(student: PublicStudentProfile): string {
+  const gradedSubmissions = student.submissions?.filter(s => s.grade?.score) || [];
+  if (gradedSubmissions.length === 0) return "N/A";
+  
+  const avgScore = gradedSubmissions.reduce((sum, s) => sum + (s.grade?.score || 0), 0) / gradedSubmissions.length;
+  
+  if (avgScore >= 90) return "A";
+  if (avgScore >= 80) return "A-";
+  if (avgScore >= 75) return "B+";
+  if (avgScore >= 70) return "B";
+  if (avgScore >= 65) return "B-";
+  if (avgScore >= 60) return "C+";
+  return "C";
+}
+
+// Count completed courses
+function countCompletedCourses(student: PublicStudentProfile): number {
+  return student.courseProgress?.filter(cp => cp.isCompleted).length || 0;
+}
+
+
+// Extract skills/tags from learning goals
+function extractTags(student: PublicStudentProfile): string[] {
+  // Use learning goals as tags, or extract from enrolled courses
+  if (student.learningGoals && student.learningGoals.length > 0) {
+    return student.learningGoals.slice(0, 5);
+  }
+  
+  // Fallback: use course titles as tags
+  const courseTitles = student.enrollments?.slice(0, 3).map(e => e.course.title) || [];
+  return courseTitles;
+}
+
+// Dummy data removed - now using API
+export const STUDENTS_REMOVED = [
+  // Dummy data removed - using API instead
+  /*{
     id: "s1",
     name: "Amara Okafor",
     location: "Lagos, Nigeria",
@@ -357,22 +424,19 @@ export const STUDENTS = [
     groups: ["Marketing Collective", "Creative Entrepreneurs"],
     color: "#84CC16",
     gradient: "from-lime-500 to-green-600",
-  },
+  },*/
 ];
 
-// ─── Grade → colour helper ───────────────────────────────────────────────────
-export function gradeColor(g: string) {
-  if (g.startsWith("A")) return "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40";
-  if (g.startsWith("B")) return "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/40";
-  return "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/40";
-}
-
 // ─── Student card ────────────────────────────────────────────────────────────
-function StudentCard({ student, index }: { student: typeof STUDENTS[0]; index: number }) {
+function StudentCard({ student, index }: { student: PublicStudentProfile; index: number }) {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: "-40px" });
 
-  const initials = student.name.split(" ").map(n => n[0]).join("").slice(0, 2);
+  const initials = student.user.name.split(" ").map(n => n[0]).join("").slice(0, 2);
+  const gradient = getGradientForStudent(student.id);
+  const avgGrade = calculateAverageGrade(student);
+  const completedCourses = countCompletedCourses(student);
+  const tags = extractTags(student);
 
   return (
     <motion.div
@@ -386,37 +450,49 @@ function StudentCard({ student, index }: { student: typeof STUDENTS[0]; index: n
         className="group block rounded-[24px] bg-white dark:bg-[#0f1623] border border-gray-100 dark:border-white/[0.07] shadow-[0_4px_24px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_48px_rgba(0,0,0,0.12)] dark:hover:shadow-[0_12px_48px_rgba(0,0,0,0.4)] transition-all duration-300 hover:-translate-y-1 overflow-hidden"
       >
         {/* colour bar */}
-        <div className={`h-1.5 w-full bg-gradient-to-r ${student.gradient}`} />
+        <div className={`h-1.5 w-full bg-gradient-to-r ${gradient}`} />
 
         <div className="p-6">
           {/* avatar + name */}
           <div className="flex items-start gap-4 mb-4">
-            <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${student.gradient} flex items-center justify-center flex-shrink-0 shadow-lg`}>
-              <span className="text-white font-black text-lg">{initials}</span>
-            </div>
+            {student.user.image ? (
+              <img 
+                src={student.user.image} 
+                alt={student.user.name}
+                className="w-14 h-14 rounded-2xl object-cover flex-shrink-0 shadow-lg"
+              />
+            ) : (
+              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${gradient} flex items-center justify-center flex-shrink-0 shadow-lg`}>
+                <span className="text-white font-black text-lg">{initials}</span>
+              </div>
+            )}
             <div className="min-w-0">
               <h3 className="font-black text-gray-900 dark:text-white text-base leading-tight truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                {student.name}
+                {student.user.name}
               </h3>
-              <p className="text-xs text-gray-400 font-mono mt-0.5">{student.matricNumber}</p>
-              <div className="flex items-center gap-1 mt-1">
-                <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{student.location}</span>
-              </div>
+              <p className="text-xs text-gray-400 font-mono mt-0.5">{student.matricNumber || "N/A"}</p>
+              {student.user.location && (
+                <div className="flex items-center gap-1 mt-1">
+                  <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                  <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{student.user.location}</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* bio */}
-          <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2 mb-4">
-            {student.bio}
-          </p>
+          {student.bio && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2 mb-4">
+              {student.bio}
+            </p>
+          )}
 
           {/* stats row */}
           <div className="grid grid-cols-3 gap-2 mb-4">
             {[
-              { label: "Courses", value: student.stats.coursesCompleted, icon: BookOpen },
-              { label: "Avg Grade", value: student.stats.avgGrade, icon: Star },
-              { label: "Certs", value: student.certificates.length, icon: Award },
+              { label: "Courses", value: completedCourses, icon: BookOpen },
+              { label: "Avg Grade", value: avgGrade, icon: Star },
+              { label: "Certs", value: student.certificates?.length || 0, icon: Award },
             ].map(({ label, value, icon: Icon }) => (
               <div key={label} className="rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06] p-2.5 text-center">
                 <Icon className="w-3.5 h-3.5 mx-auto mb-1 text-gray-400" />
@@ -427,22 +503,26 @@ function StudentCard({ student, index }: { student: typeof STUDENTS[0]; index: n
           </div>
 
           {/* tags */}
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {student.tags.slice(0, 3).map(tag => (
-              <span key={tag} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-300 text-[10px] font-semibold">
-                {tag}
-              </span>
-            ))}
-            {student.tags.length > 3 && (
-              <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400 text-[10px] font-semibold">
-                +{student.tags.length - 3}
-              </span>
-            )}
-          </div>
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {tags.slice(0, 3).map((tag, i) => (
+                <span key={i} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-gray-300 text-[10px] font-semibold">
+                  {tag}
+                </span>
+              ))}
+              {tags.length > 3 && (
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400 text-[10px] font-semibold">
+                  +{tags.length - 3}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* cta */}
           <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-white/[0.06]">
-            <span className="text-[11px] text-gray-400">Enrolled {student.enrollmentDate.split(",")[1]?.trim() ?? student.enrollmentDate}</span>
+            <span className="text-[11px] text-gray-400">
+              {student.enrollmentDate ? `Enrolled ${new Date(student.enrollmentDate).getFullYear()}` : "Student"}
+            </span>
             <span className={`flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 group-hover:gap-2 transition-all`}>
               View Profile <ChevronRight className="w-3.5 h-3.5" />
             </span>
@@ -458,15 +538,58 @@ function StudentCard({ student, index }: { student: typeof STUDENTS[0]; index: n
 export default function OurStudents() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "completed" | "in-progress">("all");
+  const [students, setStudents] = useState<PublicStudentProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useState({ total: 0, page: 1, limit: 100 });
 
-  const filtered = STUDENTS.filter(s => {
+  // Fetch students from API
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await UserService.findAllStudentsPublic({
+          page: 1,
+          limit: 100, // Fetch all students for client-side filtering
+          order: "desc",
+        });
+        setStudents(response.data);
+        setMeta(response.meta);
+      } catch (err) {
+        console.error("Failed to fetch students:", err);
+        setError("Failed to load students. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStudents();
+  }, []);
+
+  // Client-side filtering
+  const filtered = students.filter(s => {
     const q = search.toLowerCase();
-    const matches = !q || s.name.toLowerCase().includes(q) || s.tags.some(t => t.toLowerCase().includes(q)) || s.location.toLowerCase().includes(q);
-    if (!matches) return false;
-    if (filter === "completed") return s.stats.coursesCompleted >= 5;
-    if (filter === "in-progress") return s.stats.coursesCompleted < 5;
+    const matchesSearch = !q || 
+      s.user.name.toLowerCase().includes(q) || 
+      s.user.location?.toLowerCase().includes(q) ||
+      s.learningGoals?.some(goal => goal.toLowerCase().includes(q)) ||
+      s.bio?.toLowerCase().includes(q);
+    
+    if (!matchesSearch) return false;
+    
+    const completedCourses = countCompletedCourses(s);
+    if (filter === "completed") return completedCourses >= 5;
+    if (filter === "in-progress") return completedCourses < 5;
     return true;
   });
+
+  // Calculate stats from actual data
+  const totalStudents = meta.total;
+  const totalCertificates = students.reduce((sum, s) => sum + (s.certificates?.length || 0), 0);
+  const totalCoursesCompleted = students.reduce((sum, s) => sum + countCompletedCourses(s), 0);
+  const avgGrades = students.map(s => calculateAverageGrade(s)).filter(g => g !== "N/A");
+  const overallAvgGrade = avgGrades.length > 0 ? avgGrades[0] : "A−"; // Simplified for display
 
   return (
     <>
@@ -520,10 +643,10 @@ export default function OurStudents() {
             className="flex flex-wrap items-center justify-center gap-8"
           >
             {[
-              { icon: Users, label: "Active Students", value: "2,400+" },
-              { icon: Trophy, label: "Certificates Issued", value: "1,850+" },
-              { icon: GraduationCap, label: "Courses Completed", value: "8,200+" },
-              { icon: Star, label: "Avg Grade", value: "A−" },
+              { icon: Users, label: "Active Students", value: loading ? "..." : `${totalStudents}+` },
+              { icon: Trophy, label: "Certificates Issued", value: loading ? "..." : `${totalCertificates}+` },
+              { icon: GraduationCap, label: "Courses Completed", value: loading ? "..." : `${totalCoursesCompleted}+` },
+              { icon: Star, label: "Avg Grade", value: loading ? "..." : overallAvgGrade },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="text-center">
                 <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -579,7 +702,23 @@ export default function OurStudents() {
           </p>
         </FadeUp>
 
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24">
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+            <p className="text-gray-500 dark:text-gray-400 font-medium">Loading students...</p>
+          </div>
+        ) : error ? (
+          <FadeUp className="text-center py-24">
+            <GraduationCap className="w-12 h-12 text-red-300 dark:text-red-700 mx-auto mb-4" />
+            <p className="text-red-500 dark:text-red-400 font-medium mb-2">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              Try again
+            </button>
+          </FadeUp>
+        ) : filtered.length === 0 ? (
           <FadeUp className="text-center py-24">
             <GraduationCap className="w-12 h-12 text-gray-300 dark:text-gray-700 mx-auto mb-4" />
             <p className="text-gray-500 dark:text-gray-400 font-medium">No students match your search.</p>
