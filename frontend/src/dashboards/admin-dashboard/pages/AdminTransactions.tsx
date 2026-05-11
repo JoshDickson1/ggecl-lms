@@ -14,6 +14,7 @@ import TransactionService, {
   type OrderStatus,
   type Gateway,
   type TransactionAnalytics,
+  type CurrencyBreakdown,
 } from "@/services/transaction.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ function TxDetailModal({ orderId, onClose }: { orderId: string; onClose: () => v
                 <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Order</p>
                 {tx && (
                   <p className="text-lg font-black text-gray-900 dark:text-white">
-                    {fmtCurrency(tx.total, tx.currency)}
+                    {fmtCurrency(tx.total, "USD")}
                   </p>
                 )}
               </div>
@@ -152,20 +153,37 @@ function TxDetailModal({ orderId, onClose }: { orderId: string; onClose: () => v
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Breakdown</p>
                   <div className="flex justify-between text-xs">
                     <span className="text-gray-500">Subtotal</span>
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">{fmtCurrency(tx.subtotal, tx.currency)}</span>
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">{fmtCurrency(tx.subtotal, "USD")}</span>
                   </div>
                   {tx.discountAmount > 0 && (
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500 flex items-center gap-1">
                         Discount {tx.promoCodeSnapshot && <span className="text-[9px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-bold">{tx.promoCodeSnapshot}</span>}
                       </span>
-                      <span className="font-semibold text-red-500">−{fmtCurrency(tx.discountAmount, tx.currency)}</span>
+                      <span className="font-semibold text-red-500">−{fmtCurrency(tx.discountAmount, "USD")}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm border-t border-gray-200 dark:border-white/[0.08] pt-2 mt-1">
-                    <span className="font-bold text-gray-700 dark:text-gray-300">Total</span>
-                    <span className="font-black text-emerald-600 dark:text-emerald-400">{fmtCurrency(tx.total, tx.currency)}</span>
+                    <span className="font-bold text-gray-700 dark:text-gray-300">Total (USD)</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400">{fmtCurrency(tx.total, "USD")}</span>
                   </div>
+                  {/* Charged amount — what the customer actually paid */}
+                  {tx.chargedCurrency !== "USD" && (
+                    <div className="flex justify-between text-xs border-t border-gray-200 dark:border-white/[0.08] pt-2">
+                      <span className="text-gray-500">Charged ({tx.chargedCurrency})</span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                        {fmtCurrency(tx.chargedAmount, tx.chargedCurrency)}
+                      </span>
+                    </div>
+                  )}
+                  {tx.exchangeRateSnapshot && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Exchange Rate</span>
+                      <span className="font-semibold text-gray-500 dark:text-gray-400">
+                        1 USD = {tx.exchangeRateSnapshot.toLocaleString()} NGN
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Payment info */}

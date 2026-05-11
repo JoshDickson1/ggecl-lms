@@ -33,7 +33,10 @@ export interface Transaction {
   gateway: Gateway;
   subtotal: number;
   discountAmount: number;
-  total: number;
+  total: number;                        // always USD (source of truth)
+  chargedAmount: number;                // what customer was actually charged
+  chargedCurrency: string;              // NGN for Paystack, USD for Stripe
+  exchangeRateSnapshot: number | null;  // USD→NGN rate at purchase time (null for USD orders)
   promoCodeSnapshot: string | null;
   student: TransactionStudent;
   payment: TransactionPayment | null;
@@ -49,8 +52,20 @@ export interface TransactionListResponse {
   totalPages: number;
 }
 
+export interface CurrencyBreakdown {
+  usd?: {
+    revenue: number;
+    count: number;
+  };
+  ngn?: {
+    revenueUsd: number;   // USD equivalent (source of truth)
+    revenueNgn: number;   // actual naira collected
+    count: number;
+  };
+}
+
 export interface TransactionAnalytics {
-  totalRevenue: number;
+  totalRevenue: number;               // always USD: usd.revenue + ngn.revenueUsd
   totalCompletedOrders: number;
   averageOrderValue: number;
   totalEnrollments: number;
@@ -58,6 +73,7 @@ export interface TransactionAnalytics {
   pendingOrders: number;
   failedOrders: number;
   revenueByGateway: { gateway: string; revenue: number; count: number }[];
+  currencyBreakdown: CurrencyBreakdown;
 }
 
 export interface TransactionListQuery {

@@ -1,20 +1,49 @@
 // src/dashboards/admin-dashboard/pages/AdminLiveClass.tsx
 // Admin joins as co-host with moderation powers
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Users,
   Mic, MicOff, Video, VideoOff, MonitorUp, MonitorOff,
   PhoneOff, Clock, ChevronLeft,
-  Shield, Settings,
+  Shield, Settings, Loader2, AlertCircle,
 } from "lucide-react";
-import {
-  MOCK_SESSIONS, MOCK_PARTICIPANTS,
-  type LiveParticipant, type LiveSession,
-} from "@/data/liveTypes";
+import LiveService from "@/services/live.service";
+import SchedulingService, { type LiveSession } from "@/services/scheduling.service";
 
-// const MY_ID = "admin-1"; // Unused for now
+// Mock participant data - in real implementation, this would come from LiveKit
+interface LiveParticipant {
+  id: string;
+  name: string;
+  avatarBg: string;
+  role: "student" | "instructor" | "admin";
+  media: {
+    audio: boolean;
+    video: boolean;
+    screen: boolean;
+  };
+  isSpeaking?: boolean;
+}
+
+const MOCK_PARTICIPANTS: LiveParticipant[] = [
+  {
+    id: "s-1",
+    name: "Student A",
+    avatarBg: "bg-blue-600",
+    role: "student",
+    media: { audio: true, video: false, screen: false },
+    isSpeaking: false,
+  },
+  {
+    id: "s-2",
+    name: "Student B",
+    avatarBg: "bg-emerald-600",
+    role: "student",
+    media: { audio: false, video: true, screen: false },
+    isSpeaking: false,
+  },
+];
 
 interface FloatingReaction {
   id: string;
@@ -46,12 +75,12 @@ function MeetingHeader({ session, participantCount, onLeave }: {
   return (
     <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-[#0a1120] border-b border-gray-200 dark:border-white/[0.06] flex-shrink-0">
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${session.courseColor} flex items-center justify-center text-sm flex-shrink-0`}>
-          {session.courseIcon}
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-600 to-orange-600 flex items-center justify-center text-sm flex-shrink-0">
+          📡
         </div>
         <div className="min-w-0 hidden sm:block">
           <p className="text-xs font-black text-gray-900 dark:text-white truncate max-w-[200px]">{session.title}</p>
-          <p className="text-[10px] text-gray-400 dark:text-white/30 truncate">{session.courseName}</p>
+          <p className="text-[10px] text-gray-400 dark:text-white/30 truncate">{session.courseId}</p>
         </div>
       </div>
 
@@ -82,11 +111,10 @@ function MeetingHeader({ session, participantCount, onLeave }: {
 // ─── Admin Stage (shows admin as co-host) ─────────────────────────────────────
 
 function AdminStage({
-  video, audio, screen, floatingReactions, session,
+  video, audio, screen, floatingReactions,
 }: {
   video: boolean; audio: boolean; screen: boolean;
   floatingReactions: FloatingReaction[];
-  session: LiveSession;
 }) {
   const initials = "You";
 
@@ -95,7 +123,7 @@ function AdminStage({
       <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-[#0a1525] to-gray-950 dark:from-[#060d18] dark:via-[#080f1e] dark:to-[#030810]" />
       <div className="absolute inset-0 opacity-[0.025]"
         style={{ backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`, backgroundSize: "24px 24px" }} />
-      <div className={`absolute top-0 right-0 w-96 h-80 bg-gradient-to-br ${session.courseColor} opacity-[0.06] blur-3xl pointer-events-none`} />
+      <div className="absolute top-0 right-0 w-96 h-80 bg-gradient-to-br from-amber-600 to-orange-600 opacity-[0.06] blur-3xl pointer-events-none" />
 
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {screen ? (
@@ -277,10 +305,11 @@ function ControlBtn({ onClick, active, danger, off, children, label, badge }: {
   );
 }
 
-function Controls({ audio, video, screen, onToggleAudio, onToggleVideo, onToggleScreen, onLeave,
+function Controls({ audio, video, screen, onToggleAudio, onToggleVideo, onToggleScreen, onLeave, onEndSession,
   onOpenChat, onOpenParticipants, chatUnread }: {
   audio: boolean; video: boolean; screen: boolean;
   onToggleAudio: () => void; onToggleVideo: () => void; onToggleScreen: () => void; onLeave: () => void;
+  onEndSession: () => void;
   onOpenChat: () => void; onOpenParticipants: () => void;
   chatUnread?: number;
 }) {
@@ -310,6 +339,9 @@ function Controls({ audio, video, screen, onToggleAudio, onToggleVideo, onToggle
 
       <div className="w-px h-6 bg-gray-200 dark:bg-white/[0.08] mx-0.5" />
 
+      <ControlBtn onClick={onEndSession} danger label="End">
+        <Shield className="w-4 h-4" />
+      </ControlBtn>
       <ControlBtn onClick={onLeave} danger label="Leave">
         <PhoneOff className="w-4 h-4" />
       </ControlBtn>
@@ -321,31 +353,101 @@ function Controls({ audio, video, screen, onToggleAudio, onToggleVideo, onToggle
 
 export default function AdminLiveClass() {
   const navigate = useNavigate();
-  const { id: sessionId } = useParams();
-  const location = useLocation();
+  const { id: sessionId } = useParams<{ id: string }>();
 
-  const [audio, setAudio] = useState(location.state?.audio ?? true);
-  const [video, setVideo] = useState(location.state?.video ?? false);
+  const [audio, setAudio] = useState(true);
+  const [video, setVideo] = useState(false);
   const [screen, setScreen] = useState(false);
   const [panel, setPanel] = useState<"chat" | "participants" | null>(null);
   const [floatingReactions] = useState<FloatingReaction[]>([]);
 
-  const session = MOCK_SESSIONS.find(s => s.id === sessionId) || MOCK_SESSIONS[0];
+  const [session, setSession] = useState<LiveSession | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // Fetch session data and join token
+  useEffect(() => {
+    if (!sessionId) {
+      setError("No session ID provided.");
+      setLoading(false);
+      return;
+    }
+
+    Promise.all([
+      LiveService.joinSession(sessionId),
+      SchedulingService.getSession(sessionId),
+    ])
+      .then(([token, sess]) => {
+        // Store token for future LiveKit integration
+        console.log("Joined session with token:", token);
+        setSession(sess);
+        // In a real implementation, you would use token.token and token.url to connect to LiveKit
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Could not join session.");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [sessionId]);
+
   const students = MOCK_PARTICIPANTS.filter(p => p.role === "student");
 
   const handleLeave = () => {
     navigate("/admin/live");
   };
 
+  const handleEndSession = async () => {
+    if (sessionId && window.confirm("Are you sure you want to end this session for everyone?")) {
+      try {
+        await LiveService.endSession(sessionId);
+        navigate("/admin/live");
+      } catch (err) {
+        console.error("Failed to end session:", err);
+        alert("Failed to end session. Please try again.");
+      }
+    }
+  };
+
   const handleMuteStudent = (studentId: string) => {
     console.log("Mute student:", studentId);
-    // Mock: admin mutes student
+    // In real implementation, this would use LiveKit API to mute the participant
   };
 
   const handleRemoveStudent = (studentId: string) => {
     console.log("Remove student:", studentId);
-    // Mock: admin removes student
+    // In real implementation, this would use LiveKit API to remove the participant
   };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#0a1120]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+          <p className="text-sm text-gray-500 dark:text-white/50">Loading session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !session) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#0a1120]">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <AlertCircle className="w-12 h-12 text-red-400" />
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {error || "Session not found"}
+          </p>
+          <button
+            onClick={() => navigate("/admin/live")}
+            className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-amber-600 hover:bg-amber-500 transition-all"
+          >
+            Back to Lobby
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 flex flex-col bg-white dark:bg-[#0a1120]">
@@ -362,7 +464,6 @@ export default function AdminLiveClass() {
             audio={audio}
             screen={screen}
             floatingReactions={floatingReactions}
-            session={session}
           />
           <StudentRoster 
             students={students} 
@@ -377,6 +478,7 @@ export default function AdminLiveClass() {
             onToggleVideo={() => setVideo((p: boolean) => !p)}
             onToggleScreen={() => setScreen(p => !p)}
             onLeave={handleLeave}
+            onEndSession={handleEndSession}
             onOpenChat={() => setPanel(p => p === "chat" ? null : "chat")}
             onOpenParticipants={() => setPanel(p => p === "participants" ? null : "participants")}
           />
