@@ -396,7 +396,7 @@ export default function AdminManageCourses() {
               { icon: BookOpen,    label: "Total Courses",  value: String(stats.total),         sub: `${stats.archived} archived`,  color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-950/40"       },
               { icon: Globe,      label: "Published",       value: String(stats.published),      sub: undefined,                     color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
               { icon: Clock,      label: "Draft",           value: String(stats.draft),          sub: undefined,                     color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-950/40"     },
-              { icon: Users,      label: "Total Students",  value: fmt(stats.students),          sub: undefined,                     color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40"   },
+              { icon: Users,      label: "Total Enrollments",  value: fmt(stats.students),          sub: undefined,                     color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-950/40"   },
               { icon: DollarSign, label: "Total Revenue",   value: `$${fmt(stats.revenue)}`,     sub: "from paid orders",            color: "text-teal-600",    bg: "bg-teal-50 dark:bg-teal-950/40"       },
             ].map(({ icon: Icon, label, value, sub, color, bg }) => (
               <Card key={label} className="p-5 flex items-center gap-3">
