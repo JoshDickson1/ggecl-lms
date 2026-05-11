@@ -673,16 +673,17 @@ export default function AdminCreateCourse() {
                 </div>
               ) : (
                 <select value={instructorId} onChange={e => setInstructorId(e.target.value)}
-                  className={cn("w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border text-gray-800 dark:text-white outline-none cursor-pointer",
+                  className={cn("w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-[#1a2235] border text-gray-800 dark:text-white outline-none cursor-pointer",
                     errors.instructor ? "border-red-300 dark:border-red-700" : "border-gray-200 dark:border-white/[0.08]")}>
-                  <option value="">Select instructor...</option>
+                  <option value="" className="bg-white dark:bg-[#1a2235] text-gray-800 dark:text-white">Select instructor...</option>
                   {instructors.map(i => {
                     // Use instructor profile ID if available, otherwise fall back to user ID
                     const instructorProfileId = i.instructorProfile?.id || i.id;
                     const hasProfile = !!i.instructorProfile?.id;
                     
                     return (
-                      <option key={i.id} value={instructorProfileId} disabled={!hasProfile}>
+                      <option key={i.id} value={instructorProfileId} disabled={!hasProfile}
+                        className="bg-white dark:bg-[#1a2235] text-gray-800 dark:text-white disabled:text-gray-400 dark:disabled:text-gray-500">
                         {i.name}{i.instructorProfile?.specialization ? ` — ${i.instructorProfile.specialization}` : ""}{!hasProfile ? " (No profile)" : ""}
                       </option>
                     );
@@ -723,18 +724,18 @@ export default function AdminCreateCourse() {
               <div>
                 <Label required>Level</Label>
                 <select value={level} onChange={e => setLevel(e.target.value as CourseLevel)}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white outline-none cursor-pointer">
+                  className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-[#1a2235] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white outline-none cursor-pointer">
                   {Object.values(CourseLevel).map(l => (
-                    <option key={l} value={l}>{l.charAt(0) + l.slice(1).toLowerCase()}</option>
+                    <option key={l} value={l} className="bg-white dark:bg-[#1a2235] text-gray-800 dark:text-white">{l.charAt(0) + l.slice(1).toLowerCase()}</option>
                   ))}
                 </select>
               </div>
               <div>
                 <Label>Certificate Type</Label>
                 <select value={certification} onChange={e => setCert(e.target.value as CertificationType)}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white outline-none cursor-pointer">
+                  className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50/80 dark:bg-[#1a2235] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white outline-none cursor-pointer">
                   {Object.values(CertificationType).map(c => (
-                    <option key={c} value={c}>{c.charAt(0) + c.slice(1).toLowerCase()}</option>
+                    <option key={c} value={c} className="bg-white dark:bg-[#1a2235] text-gray-800 dark:text-white">{c.charAt(0) + c.slice(1).toLowerCase()}</option>
                   ))}
                 </select>
               </div>
