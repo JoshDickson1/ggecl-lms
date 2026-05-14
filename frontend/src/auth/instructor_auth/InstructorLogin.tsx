@@ -235,7 +235,7 @@ const InstructorLogin = () => {
     const { error } = await authClient.signIn.email({
       email,
       password,
-      callbackURL: "/instructor",
+      callbackURL: `${window.location.origin}/instructor`,
     });
 
     if (error) {
@@ -264,7 +264,7 @@ const InstructorLogin = () => {
   const handleGoogleSignIn = async () => {
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/instructor",
+      callbackURL: `${window.location.origin}/instructor`,
     });
   };
 

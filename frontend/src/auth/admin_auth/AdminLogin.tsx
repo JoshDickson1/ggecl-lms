@@ -496,7 +496,7 @@ const AdminLogin = () => {
       const { error } = await authClient.signIn.email({
           email,
           password,
-          callbackURL: "/admin",
+          callbackURL: `${window.location.origin}/admin`,
       });
 
       if (error) {

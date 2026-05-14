@@ -407,7 +407,7 @@ const Login = () => {
     const { error } = await authClient.signIn.email({
       email,
       password,
-      callbackURL: "/student",
+      callbackURL: `${window.location.origin}/student`,
     });
 
     if (error) {
@@ -436,7 +436,7 @@ const Login = () => {
   const handleGoogleSignIn = async () => {
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/student",
+      callbackURL: `${window.location.origin}/student`,
     });
   };
 
