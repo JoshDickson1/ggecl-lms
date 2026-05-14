@@ -16,9 +16,9 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "https://ggecl-lms-backend-production.up.railway.app",
+        target: "http://localhost:3000",
         changeOrigin: true,
-        secure: true,
+        secure: false,
       },
     },
   },
