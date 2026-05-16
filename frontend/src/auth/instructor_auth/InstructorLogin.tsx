@@ -216,11 +216,12 @@ const InstructorLogin = () => {
   const [authErr, setAuthErr] = useState("");
   const navigate = useNavigate();
 
-  // Clear any stale session when the login page is visited.
-  // Prevents a cached role from a previous user blocking the new login.
+  // Clear any stale session cache when the login page is visited.
+  // Don't call signOut() here — it's async and can race with a new sign-in,
+  // invalidating the session that was just created. The new signIn call
+  // overwrites the old session server-side automatically.
   useEffect(() => {
     clearSessionCache();
-    authClient.signOut().catch(() => {});
   }, []);
 
   const validate = () => {

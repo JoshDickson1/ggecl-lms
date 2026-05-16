@@ -27,6 +27,7 @@ export interface SessionUser {
 interface AuthContextValue {
   user: SessionUser | null;
   isLoading: boolean;
+  isPending: boolean;
   isAuthenticated: boolean;
   /** Role helpers */
   isAdmin: boolean;
@@ -98,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isLoading,
+        isPending,
         isAuthenticated: !!user,
         isAdmin,
         isInstructor,

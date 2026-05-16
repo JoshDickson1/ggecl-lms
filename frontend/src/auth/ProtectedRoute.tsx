@@ -10,13 +10,13 @@ export function ProtectedRoute({
   allowedRoles,
   redirectTo = "/login",
 }: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isPending } = useAuth();
   const location = useLocation();
 
-  // isLoading is only true on first-ever load with no cached session.
-  // Returning users have a cached user from localStorage, so isLoading
-  // is false immediately and the app renders without any loading screen.
-  if (isLoading) {
+  // Wait while the session is being verified — covers both:
+  // - First-ever load with no cache (isLoading)
+  // - Fresh login where cache was cleared and session is still resolving (isPending)
+  if (isLoading || isPending) {
     return (
       <div
         style={{
