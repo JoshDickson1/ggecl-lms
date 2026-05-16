@@ -12,6 +12,9 @@ import StudentCartSuccessFailure from "./dashboards/student-dashboard/pages/Stud
 import StudentProcessing         from "./dashboards/student-dashboard/pages/StudentProcessing";
 import StudentCheckout           from "./dashboards/student-dashboard/pages/StudentCheckout";
 import StudentProvider           from "./dashboards/student-dashboard/pages/StudentProvider";
+import StudentCheckoutVerify     from "./dashboards/student-dashboard/pages/StudentCheckoutVerify";
+import StudentCheckoutSuccess    from "./dashboards/student-dashboard/pages/StudentCheckoutSuccess";
+import StudentCheckoutCancelled  from "./dashboards/student-dashboard/pages/StudentCheckoutCancelled";
 // ── Landing pages ─────────────────────────────────────────────
 import Home             from "./landing/pages/Home";
 import Search           from "./landing/pages/Search";
@@ -271,6 +274,10 @@ const router = createBrowserRouter([
           { path: "cart/order-complete",          element: <StudentCartSuccessFailure /> },
           { path: "cart/checkout",                element: <StudentCheckout /> },
           { path: "cart/student-info",            element: <StudentStudentInfoForm /> },
+          // ── Payment gateway redirect callbacks ──────────────────────
+          { path: "checkout/verify",              element: <StudentCheckoutVerify /> },
+          { path: "checkout/success",             element: <StudentCheckoutSuccess /> },
+          { path: "checkout/cancelled",           element: <StudentCheckoutCancelled /> },
           { path: "assignments",                  element: <StudentAssignment /> },
           { path: "grades",                       element: <StudentGrades /> },
           { path: "messages",                     element: <StudentChat /> },

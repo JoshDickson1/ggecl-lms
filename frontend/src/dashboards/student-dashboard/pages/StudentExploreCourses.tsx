@@ -44,7 +44,7 @@ interface Course {
   };
   totalLectures?: number;
   totalDuration?: number;
-  instructorName: string;8
+  instructorName: string;
   instructor?: {
     id: string;
     department?: string | null;
