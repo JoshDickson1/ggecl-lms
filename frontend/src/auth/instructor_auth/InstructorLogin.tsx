@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { ArrowRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import PageNotifier from "../PageNotifier";
 import { authClient } from "@/lib/auth-client";
+import { clearSessionCache } from "@/lib/session-cache";
 
 /* ── Keyframe animations injected once ──────────────────────── */
 const ANIM_CSS = `
@@ -215,6 +216,13 @@ const InstructorLogin = () => {
   const [authErr, setAuthErr] = useState("");
   const navigate = useNavigate();
 
+  // Clear any stale session when the login page is visited.
+  // Prevents a cached role from a previous user blocking the new login.
+  useEffect(() => {
+    clearSessionCache();
+    authClient.signOut().catch(() => {});
+  }, []);
+
   const validate = () => {
     let valid = true;
     if (!email) { setEmailErr("Email is required"); valid = false; }
@@ -244,21 +252,8 @@ const InstructorLogin = () => {
       return;
     }
 
-    // Poll until the session is confirmed before navigating.
-    // A fixed delay is unreliable in production (cross-origin cookie round-trip
-    // takes longer than in dev). We check every 300ms for up to 6 seconds.
-    let attempts = 0;
-    const poll = async () => {
-      const { data } = await authClient.getSession();
-      if (data?.user || attempts >= 20) {
-        navigate("/instructor");
-        setIsPending(false);
-      } else {
-        attempts++;
-        setTimeout(poll, 300);
-      }
-    };
-    poll();
+    navigate("/instructor");
+    setIsPending(false);
   };
 
   const handleGoogleSignIn = async () => {

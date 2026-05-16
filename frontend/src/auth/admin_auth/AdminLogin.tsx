@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { Eye, EyeOff, Lock, Mail, Shield } from "lucide-react";
 import PageNotifier from "../PageNotifier";
-
-
 import { Link, useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
+import { clearSessionCache } from "@/lib/session-cache";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');`;
 
@@ -453,6 +452,13 @@ const AdminLogin = () => {
   const [authErr, setAuthErr] = useState("");
   const navigate = useNavigate();
 
+  // Clear any stale session when the login page is visited.
+  // Prevents a cached role from a previous user blocking the new login.
+  useEffect(() => {
+    clearSessionCache();
+    authClient.signOut().catch(() => {});
+  }, []);
+
   // Mobile-specific improvements
   useEffect(() => {
     // Add mobile-specific classes to body for better mobile handling
@@ -505,21 +511,8 @@ const AdminLogin = () => {
           return;
       }
 
-      // Poll until the session is confirmed before navigating.
-      // A fixed delay is unreliable in production (cross-origin cookie round-trip
-      // takes longer than in dev). We check every 300ms for up to 6 seconds.
-      let attempts = 0;
-      const poll = async () => {
-        const { data } = await authClient.getSession();
-        if (data?.user || attempts >= 20) {
-          navigate("/admin");
-          setIsPending(false);
-        } else {
-          attempts++;
-          setTimeout(poll, 300);
-        }
-      };
-      poll();
+      navigate("/admin");
+      setIsPending(false);
   };
 
   return (

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, Lock, Mail, ArrowRight } from "lucide-react";
 import PageNotifier from "../PageNotifier";
 import { useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
+import { clearSessionCache } from "@/lib/session-cache";
 
 import { Link } from "react-router-dom";
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');`;
@@ -399,6 +400,13 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Clear any stale session when the login page is visited.
+  // Prevents a cached role from a previous user blocking the new login.
+  useEffect(() => {
+    clearSessionCache();
+    authClient.signOut().catch(() => {});
+  }, []);
+
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -416,21 +424,8 @@ const Login = () => {
       return;
     }
 
-    // Poll until the session is confirmed before navigating.
-    // A fixed delay is unreliable in production (cross-origin cookie round-trip
-    // takes longer than in dev). We check every 300ms for up to 6 seconds.
-    let attempts = 0;
-    const poll = async () => {
-      const { data } = await authClient.getSession();
-      if (data?.user || attempts >= 20) {
-        navigate("/student");
-        setLoading(false);
-      } else {
-        attempts++;
-        setTimeout(poll, 300);
-      }
-    };
-    poll();
+    navigate("/student");
+    setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
