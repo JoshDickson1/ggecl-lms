@@ -3,13 +3,12 @@
 // Public endpoint  → /api/search/public  (landing page, no auth required)
 // Auth endpoint    → /api/search          (student / instructor / admin)
 //
-// Requires in your .env:
-//   VITE_API_URL=https://ggecl-lms-backend-production.up.railway.app
+// Uses relative /api/* paths — proxied through Vercel in production,
+// through Vite dev server in development. No env var needed.
 
 import type { SearchResult } from "@/data/searchUtils";
 
-// Reads VITE_API_URL at build time — trailing slash stripped for safety
-const BASE_URL = (import.meta.env.VITE_API_URL as string ?? "").replace(/\/$/, "");
+// All search requests use relative /api/* paths (no base URL needed)
 
 // ─── Raw API shapes (matches OpenAPI spec) ────────────────────────────────────
 
@@ -147,7 +146,7 @@ async function fetchSearch(
   isPublic: boolean
 ): Promise<ApiSearchResponse> {
   const path = isPublic ? "/api/search/public" : "/api/search";
-  const url = new URL(`${BASE_URL}${path}`);
+  const url = new URL(path, window.location.origin);
 
   url.searchParams.set("q", q);
   scopes.forEach((s) => url.searchParams.append("scope", s));

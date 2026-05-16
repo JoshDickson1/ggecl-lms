@@ -8,7 +8,9 @@ import { useEffect, useRef, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 import type { ChatMessage, MessageReaction } from "@/services/chat.service";
 
-const SOCKET_URL = import.meta.env.VITE_API_URL as string;
+// Socket.IO must connect directly to the backend — Vercel cannot proxy WebSockets.
+// Set VITE_SOCKET_URL=https://lms-services.ggecl.com in your .env / Vercel env vars.
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL as string;
 
 // ─── Event payloads ───────────────────────────────────────────────────────────
 

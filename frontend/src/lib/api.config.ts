@@ -13,7 +13,10 @@ export class APIError extends Error {
   // ==================== CONFIG ====================
   
   export class APIConfig {
-    static baseURL = import.meta.env.VITE_API_URL;
+    // Always empty — requests use relative /api/* paths so they stay same-origin.
+  // Dev:  Vite proxy rewrites /api/* → http://localhost:3000
+  // Prod: Vercel rewrites /api/* → https://lms-services.ggecl.com
+  static baseURL = '';
   
     /**
      * Fetch wrapper for all API calls.
