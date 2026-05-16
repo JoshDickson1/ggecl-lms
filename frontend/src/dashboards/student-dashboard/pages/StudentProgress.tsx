@@ -45,7 +45,16 @@ interface DashboardCourse {
   courseImg?: string;
   title?: string;
   img?: string;
-  instructor: { name: string; image?: string | null };
+  instructor: {
+    id?: string;
+    name?: string;        // flat shape (fallback)
+    image?: string | null; // flat shape (fallback)
+    user?: {              // nested shape (actual API response)
+      id?: string;
+      name: string;
+      image?: string | null;
+    };
+  };
   // API returns percentComplete, but some versions return progressPercent
   percentComplete?: number;
   progressPercent?: number;
@@ -154,6 +163,10 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
   const courseImg   = course.courseImg ?? course.img;
   const remaining = course.totalLessons - course.completedLessons;
 
+  // Instructor name/image — API returns nested { user: { name, image } } shape
+  const instructorName  = course.instructor?.user?.name  ?? course.instructor?.name  ?? "Instructor";
+  const instructorImage = course.instructor?.user?.image ?? course.instructor?.image ?? null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -208,20 +221,20 @@ function CourseProgressCard({ course, index }: { course: DashboardCourse; index:
 
             <div className="flex items-center gap-1.5 mb-3">
               {/* Instructor avatar — image or initial fallback */}
-              {course.instructor?.image ? (
+              {instructorImage ? (
                 <img
-                  src={course.instructor.image}
-                  alt={course.instructor.name}
+                  src={instructorImage}
+                  alt={instructorName}
                   className="w-5 h-5 rounded-full object-cover flex-shrink-0 ring-1 ring-gray-200 dark:ring-white/10"
                   onError={e => { e.currentTarget.style.display = "none"; }}
                 />
               ) : (
                 <span className={`w-5 h-5 rounded-full text-[9px] font-bold text-white
                   flex items-center justify-center flex-shrink-0 ${colorFor(INSTRUCTOR_COLORS, index)}`}>
-                  {(course.instructor?.name ?? "?")[0].toUpperCase()}
+                  {instructorName[0].toUpperCase()}
                 </span>
               )}
-              <span className="text-xs text-gray-400">{course.instructor?.name ?? "Instructor"}</span>
+              <span className="text-xs text-gray-400">{instructorName}</span>
             </div>
 
             <ProgressBar pct={pct} color={isCompleted ? "emerald" : "blue"} />

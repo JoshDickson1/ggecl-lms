@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import { useParams, Link } from "react-router-dom";
 import {
@@ -8,10 +8,12 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import CoursesService from "@/services/course.service";
-import ReviewService from "@/services/review.service";
+import ReviewService, { type CourseReviewsResponse } from "@/services/review.service";
 import CartService from "@/services/cart.service";
 import WishlistService from "@/services/wishlist.service";
 import UserService, { type PublicInstructorProfile } from "@/services/user.service";
+import { getCurrency, formatCurrency, type CurrencyCode } from "@/lib/currency.utils";
+import { useCurrencyConverter } from "@/services/currency.service";
 
 // ─── API Types ────────────────────────────────────────────────────────────────
 
@@ -51,18 +53,7 @@ interface PublicCourse {
   totalLectures: number;
 }
 
-interface Review {
-  id: string;
-  rating: number;
-  comment: string | null;
-  createdAt: string;
-  student: { name: string; image: string | null };
-}
-
-interface ReviewsResponse {
-  items: Review[];
-  meta: { total: number; averageRating: number };
-}
+// Review types are imported from ReviewService
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -182,13 +173,22 @@ function CurriculumSection({ section, index, open, onToggle }: {
 
 // ─── Sticky Purchase Card ─────────────────────────────────────────────────────
 
-function PurchaseCard({ course, gradient }: { course: PublicCourse; gradient: string }) {
+function PurchaseCard({ course, gradient, currency, convertToNGN }: {
+  course: PublicCourse;
+  gradient: string;
+  currency: CurrencyCode;
+  convertToNGN: ((usdAmount: number) => number | null) | undefined;
+}) {
   const queryClient = useQueryClient();
   const [added, setAdded] = useState(false);
   const [cartError, setCartError] = useState<string | null>(null);
   const [wishlistError, setWishlistError] = useState<string | null>(null);
   const origPrice = Math.round(course.price * 1.4 * 100) / 100;
   const discount  = Math.round(((origPrice - course.price) / origPrice) * 100);
+
+  // Convert prices to user's currency
+  const displayPrice    = currency === 'NGN' && convertToNGN ? convertToNGN(course.price)   ?? course.price : course.price;
+  const displayOrigPrice = currency === 'NGN' && convertToNGN ? convertToNGN(origPrice)      ?? origPrice   : origPrice;
 
   const { data: wishlist } = useQuery({
     queryKey: ["wishlist"],
@@ -235,9 +235,9 @@ function PurchaseCard({ course, gradient }: { course: PublicCourse; gradient: st
       <div className="p-6 flex flex-col gap-5">
         {/* Price */}
         <div className="flex items-end gap-3">
-          <span className="text-4xl font-black text-gray-900 dark:text-white">${course.price.toFixed(2)}</span>
+          <span className="text-4xl font-black text-gray-900 dark:text-white">{formatCurrency(displayPrice, currency)}</span>
           <div className="flex flex-col pb-1">
-            <span className="text-sm text-gray-400 dark:text-gray-500 line-through">${origPrice.toFixed(2)}</span>
+            <span className="text-sm text-gray-400 dark:text-gray-500 line-through">{formatCurrency(displayOrigPrice, currency)}</span>
             <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{discount}% off</span>
           </div>
         </div>
@@ -364,6 +364,12 @@ export default function StudentSingleCourse() {
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
 
   const [openSections, setOpenSections] = useState<number[]>([0]);
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  const { convert: convertToNGN } = useCurrencyConverter();
+
+  useEffect(() => {
+    getCurrency().then(setCurrency);
+  }, []);
 
   const { data: course, isLoading, isError } = useQuery<PublicCourse>({
     queryKey: ["course-public", id],
@@ -371,9 +377,9 @@ export default function StudentSingleCourse() {
     enabled:  !!id,
   });
 
-  const { data: reviewsData } = useQuery<ReviewsResponse>({
+  const { data: reviewsData } = useQuery<CourseReviewsResponse>({
     queryKey: ["course-reviews", id],
-    queryFn:  () => ReviewService.getCourseReviews(id!, { limit: 5 }) as Promise<ReviewsResponse>,
+    queryFn:  () => ReviewService.getCourseReviews(id!, { limit: 5, sort: "newest" }),
     enabled:  !!id,
   });
 
@@ -408,7 +414,7 @@ export default function StudentSingleCourse() {
   }
 
   const gradient       = GRADIENTS[course.id.charCodeAt(0) % GRADIENTS.length];
-  const reviews        = reviewsData?.items ?? [];
+  const reviews        = reviewsData?.data ?? [];
   const sortedSections = [...course.sections].sort((a, b) => a.position - b.position);
   const totalLessons   = sortedSections.reduce((acc, s) => acc + s.lessons.length, 0);
 
@@ -613,11 +619,11 @@ export default function StudentSingleCourse() {
                     <motion.div key={review.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.3 + i * 0.08 }} className="flex gap-4">
                       <div className={`w-10 h-10 rounded-2xl text-sm font-black text-white flex items-center justify-center flex-shrink-0 ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`}>
-                        {initials(review.student.name)}
+                        {initials(review.student.user.name)}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-1">
-                          <span className="text-sm font-bold text-gray-900 dark:text-white">{review.student.name}</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">{review.student.user.name}</span>
                           <Stars rating={review.rating} size="sm" />
                           <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{fmtRelative(review.createdAt)}</span>
                         </div>
@@ -638,7 +644,7 @@ export default function StudentSingleCourse() {
           <div className="w-full lg:w-80 xl:w-96 flex-shrink-0">
             <div className="lg:sticky lg:top-8">
               <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                <PurchaseCard course={course} gradient={gradient} />
+                <PurchaseCard course={course} gradient={gradient} currency={currency} convertToNGN={convertToNGN} />
               </motion.div>
 
               {/* Tags */}

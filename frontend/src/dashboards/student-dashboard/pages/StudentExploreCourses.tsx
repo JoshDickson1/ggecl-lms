@@ -44,6 +44,7 @@ interface Course {
   };
   totalLectures?: number;
   totalDuration?: number;
+  instructorName: string;8
   instructor?: {
     id: string;
     department?: string | null;
@@ -66,7 +67,7 @@ function formatDuration(minutes?: number): string {
 
 // Helper to get instructor name
 function getInstructorName(course: Course): string {
-  return course.instructor?.user.name || "Instructor";
+  return course.instructorName || "Instructor";
 }
 
 // Helper to get instructor initials

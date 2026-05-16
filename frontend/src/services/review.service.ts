@@ -21,11 +21,11 @@ export interface UpdateReplyPayload {
   comment: string;
 }
 
-export interface ReviewQuery {
-  cursor?: string;
+export interface CourseReviewQuery {
+  page?: number;
   limit?: number;
-  sortBy?: "createdAt" | "rating";
-  sortOrder?: "asc" | "desc";
+  rating?: 1 | 2 | 3 | 4 | 5;
+  sort?: "newest" | "oldest" | "highest" | "lowest";
 }
 
 export interface ReviewResponse {
@@ -60,6 +60,25 @@ export interface ReviewResponse {
   updatedAt: string;
 }
 
+export interface CourseReviewsResponse {
+  data: ReviewResponse[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    averageRating: number;
+    ratingBreakdown: Record<string, number>;
+  };
+}
+
+/** @deprecated Use CourseReviewQuery */
+export interface ReviewQuery {
+  cursor?: string;
+  limit?: number;
+  sortBy?: "createdAt" | "rating";
+  sortOrder?: "asc" | "desc";
+}
+
 // ==================== SERVICE ====================
 
 export default class ReviewService {
@@ -67,15 +86,16 @@ export default class ReviewService {
 
   /**
    * Get paginated reviews for a course.
+   * Public endpoint — no auth required.
    * @param courseId - Course ID
-   * @param query    - Optional pagination and sort options
+   * @param query    - Optional pagination, filter and sort options
    */
   static async getCourseReviews(
     courseId: string,
-    query?: ReviewQuery
-  ): Promise<unknown> {
+    query?: CourseReviewQuery
+  ): Promise<CourseReviewsResponse> {
     const response = await APIConfig.fetch(
-      `/reviews/courses/${courseId}${this.toQueryString(query)}`
+      `/reviews/courses/${courseId}${this.toCourseReviewQueryString(query)}`
     );
     return response.json();
   }
@@ -203,6 +223,17 @@ export default class ReviewService {
   }
 
   // ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+  private static toCourseReviewQueryString(query?: CourseReviewQuery): string {
+    if (!query) return "";
+    const params = new URLSearchParams();
+    if (query.page  !== undefined) params.append("page",   String(query.page));
+    if (query.limit !== undefined) params.append("limit",  String(query.limit));
+    if (query.rating !== undefined) params.append("rating", String(query.rating));
+    if (query.sort)                params.append("sort",   query.sort);
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  }
 
   private static toQueryString(query?: ReviewQuery): string {
     if (!query) return "";
