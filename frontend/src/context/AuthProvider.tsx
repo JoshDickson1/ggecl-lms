@@ -15,7 +15,7 @@ const { useSession } = authClient;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type UserRole = "ADMIN" | "INSTRUCTOR" | "STUDENT";
+export type UserRole = "ADMIN" | "SUPER_ADMIN" | "INSTRUCTOR" | "STUDENT";
 
 export interface SessionUser {
   id: string;
@@ -30,7 +30,8 @@ interface AuthContextValue {
   isPending: boolean;
   isAuthenticated: boolean;
   /** Role helpers */
-  isAdmin: boolean;
+  isAdmin: boolean;       // true for both ADMIN and SUPER_ADMIN
+  isSuperAdmin: boolean;  // true only for SUPER_ADMIN
   isInstructor: boolean;
   isStudent: boolean;
   canEdit: (targetUserId: string) => boolean;
@@ -87,7 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // If we have a cached user, render immediately and re-validate silently.
   const isLoading = isPending && !cachedUser;
 
-  const isAdmin      = user?.role === "ADMIN";
+  // SUPER_ADMIN is a superset of ADMIN — both pass admin guards
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const isAdmin      = user?.role === "ADMIN" || isSuperAdmin;
   const isInstructor = user?.role === "INSTRUCTOR";
   const isStudent    = user?.role === "STUDENT";
 
@@ -102,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isPending,
         isAuthenticated: !!user,
         isAdmin,
+        isSuperAdmin,
         isInstructor,
         isStudent,
         canEdit,

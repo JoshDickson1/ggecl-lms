@@ -27,8 +27,8 @@ function fmtCurrency(n: number, currency = "USD") {
   }).format(n);
 }
 
-function fmtK(n: number, currency = "USD") {
-  const sym = currency === "NGN" ? "₦" : "$";
+function fmtK(n: number) {
+  const sym = "$";
   return n >= 1_000_000
     ? `${sym}${(n / 1_000_000).toFixed(1)}M`
     : n >= 1_000
@@ -217,22 +217,31 @@ export default function AdminTransactions() {
   const [search,        setSearch]        = useState("");
   const [filterStatus,  setFilterStatus]  = useState<OrderStatus | "all">("all");
   const [filterGateway, setFilterGateway] = useState<Gateway | "all">("all");
-  const [sortBy,        setSortBy]        = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
+  const [sortBy,        setSortBy]        = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc" | "status-asc" | "status-desc">("date-desc");
+  const [minAmount,     setMinAmount]     = useState<string>("");
+  const [maxAmount,     setMaxAmount]     = useState<string>("");
   const [page,          setPage]          = useState(1);
   const [selectedId,    setSelectedId]    = useState<string | null>(null);
 
   const sortMap = {
-    "date-desc":   { sortBy: "createdAt" as const, order: "desc" as const },
-    "date-asc":    { sortBy: "createdAt" as const, order: "asc"  as const },
-    "amount-desc": { sortBy: "total"     as const, order: "desc" as const },
-    "amount-asc":  { sortBy: "total"     as const, order: "asc"  as const },
+    "date-desc":    { sortBy: "createdAt" as const, order: "desc" as const },
+    "date-asc":     { sortBy: "createdAt" as const, order: "asc"  as const },
+    "amount-desc":  { sortBy: "total"     as const, order: "desc" as const },
+    "amount-asc":   { sortBy: "total"     as const, order: "asc"  as const },
+    "status-asc":   { sortBy: "status"    as const, order: "asc"  as const },
+    "status-desc":  { sortBy: "status"    as const, order: "desc" as const },
   };
+
+  const parsedMin = minAmount !== "" ? parseFloat(minAmount) : undefined;
+  const parsedMax = maxAmount !== "" ? parseFloat(maxAmount) : undefined;
 
   const query = {
     ...(search.trim()            && { search: search.trim()              }),
     ...(filterStatus !== "all"   && { status: filterStatus               }),
     ...(filterGateway !== "all"  && { gateway: filterGateway             }),
     ...sortMap[sortBy],
+    ...(parsedMin !== undefined && !isNaN(parsedMin) && { minAmount: parsedMin }),
+    ...(parsedMax !== undefined && !isNaN(parsedMax) && { maxAmount: parsedMax }),
     page,
     limit: PAGE_SIZE,
   };
@@ -254,9 +263,10 @@ export default function AdminTransactions() {
   const totalPages = list?.totalPages ?? 1;
   const totalCount = list?.total ?? 0;
 
-  const hasFilters = filterStatus !== "all" || filterGateway !== "all" || search.trim() !== "";
+  const hasFilters = filterStatus !== "all" || filterGateway !== "all" || search.trim() !== "" || minAmount !== "" || maxAmount !== "";
   const clearFilters = () => {
-    setSearch(""); setFilterStatus("all"); setFilterGateway("all"); setPage(1);
+    setSearch(""); setFilterStatus("all"); setFilterGateway("all");
+    setMinAmount(""); setMaxAmount(""); setPage(1);
   };
 
   const handleSearchChange = (v: string) => { setSearch(v); setPage(1); };
@@ -343,7 +353,7 @@ export default function AdminTransactions() {
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
             <input value={search} onChange={e => handleSearchChange(e.target.value)}
-              placeholder="Search student, order ID, course…"
+              placeholder="Search name, email, order ID, gateway ref…"
               className="w-full pl-9 pr-4 py-2 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-800 dark:text-white placeholder:text-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all" />
           </div>
 
@@ -380,8 +390,33 @@ export default function AdminTransactions() {
               <option value="date-asc">Oldest First</option>
               <option value="amount-desc">Highest Amount</option>
               <option value="amount-asc">Lowest Amount</option>
+              <option value="status-asc">Status A→Z</option>
+              <option value="status-desc">Status Z→A</option>
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* Amount range (USD total) */}
+          <div className="flex items-center gap-1.5">
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">$</span>
+              <input
+                type="number" min="0" placeholder="Min USD"
+                value={minAmount}
+                onChange={e => { setMinAmount(e.target.value); setPage(1); }}
+                className="pl-6 pr-3 py-2 w-24 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+            <span className="text-xs text-gray-400">–</span>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">$</span>
+              <input
+                type="number" min="0" placeholder="Max USD"
+                value={maxAmount}
+                onChange={e => { setMaxAmount(e.target.value); setPage(1); }}
+                className="pl-6 pr-3 py-2 w-24 rounded-xl text-sm bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
           </div>
 
           <AnimatePresence>
@@ -483,10 +518,10 @@ export default function AdminTransactions() {
                       {/* Amount */}
                       <div>
                         <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">
-                          {fmtCurrency(tx.total, tx.currency)}
+                          {fmtCurrency(tx.total, "USD")}
                         </p>
                         {tx.discountAmount > 0 && (
-                          <p className="text-[10px] text-gray-400 line-through">{fmtCurrency(tx.subtotal, tx.currency)}</p>
+                          <p className="text-[10px] text-gray-400 line-through">{fmtCurrency(tx.subtotal, "USD")}</p>
                         )}
                       </div>
 

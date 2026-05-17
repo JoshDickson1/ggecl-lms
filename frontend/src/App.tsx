@@ -115,6 +115,7 @@ import InstructorStudentSingle from "./dashboards/instructor-dashboard/pages/Ins
 import InstructorReviews from "./dashboards/instructor-dashboard/pages/InstructorReviews";
 import AdminAnalytics from "./dashboards/admin-dashboard/pages/AdminAnalytics";
 import AdminActivities from "./dashboards/admin-dashboard/pages/AdminActivities";
+import AdminExchangeRate from "./dashboards/admin-dashboard/pages/AdminExchangeRate";
 import Signup from "./auth/student_auth/Signup";
 import StudentLiveClass from "./dashboards/student-dashboard/pages/StudentLiveClass";
 import StudentLiveLobby from "./dashboards/student-dashboard/pages/StudentLiveLobby";
@@ -198,6 +199,7 @@ const router = createBrowserRouter([
           { path: "activities",                          element: <AdminActivities /> },
           { path: "live",                                element: <AdminLiveLobby /> },
           { path: "live/:id",                            element: <AdminLiveClass /> },
+          { path: "exchange-rate",                       element: <AdminExchangeRate /> },
         ],
       },
     ],

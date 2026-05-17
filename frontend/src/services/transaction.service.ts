@@ -29,7 +29,7 @@ export interface TransactionItem {
 export interface Transaction {
   orderId: string;
   status: OrderStatus;
-  currency: string;
+  currency: "USD";   // always USD per API spec
   gateway: Gateway;
   subtotal: number;
   discountAmount: number;

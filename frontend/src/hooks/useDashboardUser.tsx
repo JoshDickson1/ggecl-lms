@@ -9,7 +9,7 @@ import {
 
 const { useSession } = authClient;
 
-export type Role = "admin" | "student" | "instructor";
+export type Role = "admin" | "super_admin" | "student" | "instructor";
 
 export type DashboardUser = {
   id: string;
@@ -18,14 +18,15 @@ export type DashboardUser = {
   email: string;
   role: Role;
   avatarUrl?: string;
-  isSuperAdmin?: boolean;
+  isSuperAdmin: boolean;
 };
 
 type DashboardAuthCtx = {
   user: DashboardUser | null;
   role: Role | null;
   isLoading: boolean;
-  isAdmin: boolean;
+  isAdmin: boolean;      // true for both admin and super_admin
+  isSuperAdmin: boolean; // true only for super_admin
   isStudent: boolean;
   isInstructor: boolean;
   logout: () => void;
@@ -45,7 +46,10 @@ function rawToDashboardUser(raw: {
   const nameParts = (raw.name ?? "").trim().split(" ");
   const firstName = nameParts[0] ?? "";
   const lastName  = nameParts.slice(1).join(" ") || "";
-  const role      = (raw.role ?? "student").toLowerCase() as Role;
+  const rawRole   = (raw.role ?? "student").toLowerCase();
+  // SUPER_ADMIN maps to "super_admin"; treat it as admin-tier
+  const role      = rawRole as Role;
+  const isSuperAdmin = rawRole === "super_admin";
   return {
     id: raw.id,
     firstName,
@@ -53,6 +57,7 @@ function rawToDashboardUser(raw: {
     email:     raw.email,
     role,
     avatarUrl: raw.image ?? undefined,
+    isSuperAdmin,
   };
 }
 
@@ -108,13 +113,16 @@ export function DashboardAuthProvider({ children }: { children: ReactNode }) {
     authClient.signOut();
   };
 
+  const isSuperAdmin = user?.isSuperAdmin ?? false;
+
   return (
     <Ctx.Provider
       value={{
         user,
         role:         user?.role ?? null,
         isLoading,
-        isAdmin:      user?.role === "admin",
+        isAdmin:      user?.role === "admin" || isSuperAdmin,
+        isSuperAdmin,
         isStudent:    user?.role === "student",
         isInstructor: user?.role === "instructor",
         logout,
@@ -141,7 +149,8 @@ export function getInitials(user: DashboardUser | null): string {
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
-  admin:      "Admin",
-  instructor: "Instructor",
-  student:    "Student",
+  admin:       "Admin",
+  super_admin: "Super Admin",
+  instructor:  "Instructor",
+  student:     "Student",
 };

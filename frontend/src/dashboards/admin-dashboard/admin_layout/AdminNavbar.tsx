@@ -10,10 +10,12 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDashboardUser, getInitials } from "@/hooks/useDashboardUser";
 import { useAdminSidebar } from "./AdminSidebar";
 import { useTheme } from "@/hooks/useTheme";
 import { Sun, Moon } from "lucide-react";
+import ActivityService, { type ActivityItem } from "@/services/activity.service";
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -50,16 +52,42 @@ function Breadcrumb() {
   );
 }
 
-const NOTIFS = [
-  { id: 1, text: "New instructor application: David Okonkwo",  time: "5m ago",  unread: true  },
-  { id: 2, text: "Support ticket #91 requires attention",      time: "22m ago", unread: true  },
-  { id: 3, text: "Monthly revenue report is ready",            time: "1h ago",  unread: true  },
-  { id: 4, text: "System backup completed successfully",       time: "3h ago",  unread: false },
-];
+function fmtRelative(iso: string): string {
+  const diff  = Date.now() - new Date(iso).getTime();
+  const mins  = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days  = Math.floor(diff / 86_400_000);
+  if (mins  < 1)   return "just now";
+  if (mins  < 60)  return `${mins}m ago`;
+  if (hours < 24)  return `${hours}h ago`;
+  if (days  === 1) return "Yesterday";
+  if (days  < 7)   return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
 
 function NotificationBell() {
-  const navigate = useNavigate();
-  const unread = NOTIFS.filter(n => n.unread).length;
+  const navigate    = useNavigate();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin-activities-feed"],
+    queryFn:  () => ActivityService.getFeed({ limit: 5 }),
+    refetchInterval: 60_000,
+  });
+
+  const markAllRead = useMutation({
+    mutationFn: () => ActivityService.markAllAsRead(),
+    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ["admin-activities-feed"] }),
+  });
+
+  const markOneRead = useMutation({
+    mutationFn: (id: string) => ActivityService.markAsRead(id),
+    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ["admin-activities-feed"] }),
+  });
+
+  const notifications: ActivityItem[] = data?.data ?? [];
+  const unread = data?.meta.unreadCount ?? 0;
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -69,27 +97,76 @@ function NotificationBell() {
           border border-transparent hover:border-blue-200 dark:hover:border-blue-800/40
           transition-all duration-200">
           <Bell className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-          {unread > 0 && <span className="absolute top-0.5 right-0.5 w-[7px] h-[7px] rounded-full bg-blue-600 border-2 border-white dark:border-[#080d18]" />}
+          {unread > 0 && (
+            <span className="absolute top-0.5 right-0.5 w-[7px] h-[7px] rounded-full bg-blue-600 border-2 border-white dark:border-[#080d18]" />
+          )}
         </button>
       </PopoverTrigger>
+
       <PopoverContent align="end" className="w-72 p-0 rounded-[18px] border border-gray-100 dark:border-white/[0.07] shadow-[0_16px_48px_rgba(0,0,0,0.14)] bg-white dark:bg-[#0f1623]">
+        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/[0.06]">
           <p className="text-xs font-black text-gray-900 dark:text-white">Notifications</p>
-          {unread > 0 && <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">{unread} new</span>}
-        </div>
-        {NOTIFS.map(n => (
-          <div key={n.id} className={`flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-gray-50 dark:border-white/[0.03] last:border-0 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors ${n.unread ? "bg-blue-50/40 dark:bg-blue-950/10" : ""}`}>
-            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${n.unread ? "bg-blue-500" : "bg-transparent"}`} />
-            <div className="flex-1 min-w-0">
-              <p className="text-[11.5px] text-gray-700 dark:text-gray-300 leading-snug">{n.text}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{n.time}</p>
-            </div>
+          <div className="flex items-center gap-2">
+            {unread > 0 && (
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">{unread} new</span>
+            )}
+            {unread > 0 && (
+              <button
+                onClick={() => markAllRead.mutate()}
+                disabled={markAllRead.isPending}
+                className="text-[10px] font-bold text-gray-400 hover:text-blue-500 transition-colors disabled:opacity-50">
+                Mark all read
+              </button>
+            )}
           </div>
-        ))}
-        <div className="px-4 py-2.5">
+        </div>
+
+        {/* List */}
+        {isLoading ? (
+          <div className="px-4 py-6 space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex gap-3 animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-gray-200 dark:bg-white/10 mt-1.5 flex-shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 rounded-lg bg-gray-100 dark:bg-white/[0.06] w-full" />
+                  <div className="h-2.5 rounded-lg bg-gray-100 dark:bg-white/[0.06] w-1/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="px-4 py-8 flex flex-col items-center gap-2 text-gray-400">
+            <Bell className="w-6 h-6 opacity-30" />
+            <p className="text-xs">No notifications yet.</p>
+          </div>
+        ) : (
+          notifications.map(n => (
+            <div
+              key={n.id}
+              onClick={() => !n.isRead && markOneRead.mutate(n.id)}
+              className={`flex items-start gap-3 px-4 py-3 cursor-pointer
+                border-b border-gray-50 dark:border-white/[0.03] last:border-0
+                hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors
+                ${!n.isRead ? "bg-blue-50/40 dark:bg-blue-950/10" : ""}`}
+            >
+              <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${!n.isRead ? "bg-blue-500" : "bg-transparent"}`} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[11.5px] font-semibold text-gray-700 dark:text-gray-300 leading-snug">{n.title}</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mt-0.5">{n.message}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{fmtRelative(n.createdAt)}</p>
+              </div>
+            </div>
+          ))
+        )}
+
+        {/* Footer */}
+        <div className="px-4 py-2.5 border-t border-gray-100 dark:border-white/[0.06]">
           <button
-            onClick={()=> navigate("/admin/activities")}
-           className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">View all</button>
+            onClick={() => navigate("/admin/activities")}
+            className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
+            View all notifications
+          </button>
         </div>
       </PopoverContent>
     </Popover>
@@ -169,28 +246,28 @@ function ProfileDropdown() {
 }
 
 export function AdminNavbar() {
-   // search functionality to show what was searched in StudentSearch page
-    const navigate = useNavigate();
-      const searchRef = useRef<HTMLInputElement>(null);
-    useEffect(() => {
-        const handleKey = (e: KeyboardEvent) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-            e.preventDefault();
-            searchRef.current?.focus();
-          }
-          if (e.key === "Escape") { setMenuOpen(false); searchRef.current?.blur(); }
-        };
-        window.addEventListener("keydown", handleKey);
-        return () => window.removeEventListener("keydown", handleKey);
-      }, []);
-    const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === "Enter" && e.currentTarget.value.trim()) {
-          navigate("/admin/search?q=" + encodeURIComponent(e.currentTarget.value.trim()));
-          // closeMenu();
-        }
-      };
+  const navigate = useNavigate();
+  const searchRef = useRef<HTMLInputElement>(null);
   const { toggle } = useAdminSidebar();
   const [searchFocused, setSearchFocused] = useState(false);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (e.key === "Escape") searchRef.current?.blur();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
+  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && e.currentTarget.value.trim()) {
+      navigate("/admin/search?q=" + encodeURIComponent(e.currentTarget.value.trim()));
+    }
+  };
   return (
     <>
       <header className="hidden lg:flex sticky top-3 z-20 mx-3 mb-3 h-[58px] items-center justify-between px-4
@@ -240,6 +317,3 @@ export function AdminNavbar() {
   );
 }
 
-function setMenuOpen(_arg0: boolean) {
-  throw new Error("Function not implemented.");
-}

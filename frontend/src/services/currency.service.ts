@@ -1,5 +1,5 @@
 import { APIConfig } from "@/lib/api.config";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 // ==================== TYPES ====================
 
@@ -30,6 +30,19 @@ export default class CurrencyService {
    */
   static async getExchangeRate(): Promise<ExchangeRate> {
     const response = await APIConfig.fetch("/currency/rate");
+    return response.json();
+  }
+
+  /**
+   * Set USD → NGN exchange rate (Super Admin only)
+   * PUT /api/currency/rate
+   */
+  static async setExchangeRate(usdToNgn: number): Promise<ExchangeRate> {
+    const response = await APIConfig.fetch("/currency/rate", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usdToNgn }),
+    });
     return response.json();
   }
 
@@ -118,4 +131,18 @@ export function useCurrencyConverter() {
     isLoading,
     error,
   };
+}
+
+/**
+ * Hook to update the USD → NGN exchange rate (Super Admin only)
+ * Invalidates the exchange-rate cache on success so all consumers refresh.
+ */
+export function useSetExchangeRate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (usdToNgn: number) => CurrencyService.setExchangeRate(usdToNgn),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["exchange-rate"] });
+    },
+  });
 }

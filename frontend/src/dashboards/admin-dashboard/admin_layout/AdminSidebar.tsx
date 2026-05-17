@@ -86,6 +86,7 @@ function getNavItems(_isSuperAdmin: boolean): NavItemDef[] {
     children: [
       { to: "/admin/transactions", label: "All Transactions" },
       { to: "/admin/analytics", label: "Analytics" },
+      ...(_isSuperAdmin ? [{ to: "/admin/exchange-rate", label: "Exchange Rate" }] : []),
     ],
   },
 

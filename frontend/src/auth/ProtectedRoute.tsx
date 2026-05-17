@@ -13,9 +13,6 @@ export function ProtectedRoute({
   const { user, isLoading, isPending } = useAuth();
   const location = useLocation();
 
-  // Wait while the session is being verified — covers both:
-  // - First-ever load with no cache (isLoading)
-  // - Fresh login where cache was cleared and session is still resolving (isPending)
   if (isLoading || isPending) {
     return (
       <div
@@ -37,8 +34,15 @@ export function ProtectedRoute({
     return <Navigate to={redirectTo} state={{ from: location }} replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/403" replace />;
+  if (allowedRoles) {
+    // SUPER_ADMIN inherits all ADMIN permissions — if ADMIN is allowed, so is SUPER_ADMIN
+    const effectiveAllowed = allowedRoles.includes("ADMIN")
+      ? [...allowedRoles, "SUPER_ADMIN" as UserRole]
+      : allowedRoles;
+
+    if (!effectiveAllowed.includes(user.role)) {
+      return <Navigate to="/403" replace />;
+    }
   }
 
   return <Outlet />;
