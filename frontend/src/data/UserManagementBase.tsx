@@ -40,15 +40,6 @@ const ROLE_ENUM: Record<UserRole, ApiUserRole> = {
   admin:      ApiUserRole.ADMIN,
 };
 
-function generatePassword(): string {
-  const chars  = "abcdefghijklmnopqrstuvwxyz";
-  const upper  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const digits = "0123456789";
-  const sym    = "!@#$";
-  const rand   = (s: string) => s[Math.floor(Math.random() * s.length)];
-  return [rand(upper), rand(upper), rand(chars), rand(chars), rand(chars), rand(chars), rand(digits), rand(digits), rand(sym)].join("");
-}
-
 function normalizeGender(g: string | null | undefined): ManagedUser["gender"] {
   const v = (g ?? "").toLowerCase();
   if (v === "male")   return "Male";
@@ -275,18 +266,22 @@ export default function UserManagementBase({ role }: { role: UserRole }) {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const name     = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
-      const password = generatePassword();
-      await UserService.create({ name, email: form.email.trim(), password, role: ROLE_ENUM[role] });
-      return password;
+      const name = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
+      // Let the backend auto-generate the password — do not send one
+      await UserService.create({
+        name,
+        email: form.email.trim(),
+        role: ROLE_ENUM[role],
+        gender: form.gender.toUpperCase(), // API expects "MALE" | "FEMALE" | "OTHER"
+      });
     },
-    onSuccess: (password) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-users", role] });
       setForm({ firstName: "", lastName: "", email: "", gender: "" });
       setFormErrors({});
       setFormSuccess(true);
       setTimeout(() => setFormSuccess(false), 3000);
-      setToast({ msg: `${cfg.label} created! Temp password: ${password}`, type: "success" });
+      setToast({ msg: `${cfg.label} created! Login credentials will be emailed.`, type: "success" });
     },
     onError: (err: unknown) => {
       const raw = err instanceof Error ? err.message : "";

@@ -13,8 +13,9 @@ export enum UserRole {
 export interface CreateUserPayload {
   name: string;
   email: string;
-  password: string;
+  password?: string;
   role: UserRole;
+  gender?: string;
   /** Optional profile image URL */
   image?: string;
 }
