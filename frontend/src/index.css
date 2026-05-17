@@ -107,4 +107,27 @@
 @layer base {
   * { @apply border-[var(--border)] outline-[var(--ring)]/50; }
   body { @apply bg-[var(--background)] text-[var(--foreground)]; transition: background-color 0.35s ease, color 0.35s ease; }
+
+  /* ── Native select / option contrast fix ──────────────────────────────
+     Browsers render <select> dropdowns using OS defaults, ignoring CSS
+     variables. These rules force them to match the active theme so text
+     is always readable against the background in both light and dark mode. */
+  select {
+    background-color: var(--background);
+    color: var(--foreground);
+    border-color: var(--border);
+  }
+
+  select option,
+  select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
+  /* Focused / highlighted option (Chromium supports this) */
+  select option:checked,
+  select option:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
 }
