@@ -405,7 +405,7 @@ const Forgotten = () => {
         }
         setEmailErr("");
         setLoading(true);
-        const { error } = await authClient.forgetPassword({
+        const { error } = await authClient.requestPasswordReset({
             email,
             redirectTo: `${window.location.origin}/reset-password`,
         });
