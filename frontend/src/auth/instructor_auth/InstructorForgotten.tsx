@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Mail } from "lucide-react";
+import { Mail, CheckCircle2 } from "lucide-react";
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
+import { authClient } from "@/lib/auth-client";
 
 /* ── Keyframe animations injected once ──────────────────────── */
 const ANIM_CSS = `
@@ -204,27 +205,31 @@ function LeftPanel() {
 
 /* ── Main component ──────────────────────────────────────────── */
 const InstructorForgotten = () => {
-  const [isPending, setIsPending] = useState(false);
   const [email, setEmail] = useState("");
-  const [password, _setPassword] = useState("");
   const [emailErr, setEmailErr] = useState("");
-  const [_passwordErr, setPasswordErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [apiErr, setApiErr] = useState("");
 
-  const validate = () => {
-    let valid = true;
-    if (!email) { setEmailErr("Email is required"); valid = false; }
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setEmailErr("Invalid email address"); valid = false; }
-    else setEmailErr("");
-    if (!password) { setPasswordErr("Password is required"); valid = false; }
-    else setPasswordErr("");
-    return valid;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
-    setIsPending(true);
-    setTimeout(() => setIsPending(false), 2000); // Simulated pending
+    setApiErr("");
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailErr("Please enter a valid email address");
+      return;
+    }
+    setEmailErr("");
+    setLoading(true);
+    const { error } = await authClient.forgetPassword({
+      email,
+      redirectTo: `${window.location.origin}/instructor/reset-password`,
+    });
+    setLoading(false);
+    if (error) {
+      setApiErr(error.message ?? "Something went wrong. Please try again.");
+    } else {
+      setSent(true);
+    }
   };
 
   return (
@@ -277,59 +282,77 @@ const InstructorForgotten = () => {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-
-              {/* Email */}
-              <div className="il-2 flex flex-col gap-1.5">
-                <label className="text-[13px] font-medium text-gray-700">Email address</label>
-                <div className="relative">
-                  <Mail size={15} className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="il-input w-full py-[13px] pr-[14px] pl-[44px] rounded-xl border-[1.5px] border-black/10 bg-black/[0.025] text-[14px] dark:text-gray-300 text-slate-900 dark:placeholder:text-slate-400 placeholder:font-light transition-all duration-200"
-                    style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
-                  />
+            {sent ? (
+              <div className="flex flex-col items-center gap-3 p-7 rounded-2xl text-center"
+                style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)" }}>
+                <CheckCircle2 size={36} style={{ color: "#10b981" }} />
+                <p className="text-[15px] font-semibold" style={{ color: "#065f46", margin: 0 }}>Check your inbox</p>
+                <p className="text-[13px] font-light text-slate-500 leading-relaxed" style={{ margin: 0 }}>
+                  We sent a reset link to <strong>{email}</strong>. It expires in 1 hour.
+                </p>
+                <Link to="/instructor/login" className="text-[13px] font-medium text-amber-600 no-underline hover:underline">
+                  Back to login
+                </Link>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                {/* Email */}
+                <div className="il-2 flex flex-col gap-1.5">
+                  <label className="text-[13px] font-medium text-gray-700">Email address</label>
+                  <div className="relative">
+                    <Mail size={15} className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={e => { setEmail(e.target.value); setEmailErr(""); }}
+                      placeholder="you@example.com"
+                      className="il-input w-full py-[13px] pr-[14px] pl-[44px] rounded-xl border-[1.5px] border-black/10 bg-black/[0.025] text-[14px] dark:text-gray-300 text-slate-900 dark:placeholder:text-slate-400 placeholder:font-light transition-all duration-200"
+                      style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
+                    />
+                  </div>
+                  {emailErr && <p className="text-[12px] text-red-500">{emailErr}</p>}
                 </div>
-                {emailErr && <p className="text-[12px] text-red-500">{emailErr}</p>}
-              </div>
 
-              {/* Submit */}
-              <div className="il-5">
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="il-submit w-full flex items-center justify-center gap-[9px] px-6 py-[14px] rounded-xl border-none cursor-pointer text-[14.5px] font-semibold tracking-[-0.01em] text-white disabled:opacity-55 disabled:cursor-not-allowed transition-all duration-200"
-                  style={{
-                    fontFamily: "'DM Sans', system-ui, sans-serif",
-                    background: "linear-gradient(135deg,#f59e0b 0%,#b45309 100%)",
-                    boxShadow: "0 4px 20px rgba(245,158,11,0.38)",
-                  }}
-                >
-                  {isPending ? (
-                    <span className="flex items-center gap-2">
-                      <svg style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} fill="none" viewBox="0 0 24 24">
-                        <circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                      </svg>
-                      Signing in…
-                    </span>
-                  ) : (
-                    <>
-                      Sign in to Instructor Portal
-                      <span
-                        className="il-submit-arrow w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
-                        style={{ background: "rgba(255,255,255,0.20)" }}
-                      >
-                        <ArrowRight size={9} />
+                {apiErr && (
+                  <div className="px-4 py-3 rounded-xl text-[12.5px] text-red-600"
+                    style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)" }}>
+                    {apiErr}
+                  </div>
+                )}
+
+                {/* Submit */}
+                <div className="il-5">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="il-submit w-full flex items-center justify-center gap-[9px] px-6 py-[14px] rounded-xl border-none cursor-pointer text-[14.5px] font-semibold tracking-[-0.01em] text-white disabled:opacity-55 disabled:cursor-not-allowed transition-all duration-200"
+                    style={{
+                      fontFamily: "'DM Sans', system-ui, sans-serif",
+                      background: "linear-gradient(135deg,#f59e0b 0%,#b45309 100%)",
+                      boxShadow: "0 4px 20px rgba(245,158,11,0.38)",
+                    }}
+                  >
+                    {loading ? (
+                      <span className="flex items-center gap-2">
+                        <svg style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} fill="none" viewBox="0 0 24 24">
+                          <circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                        Sending…
                       </span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+                    ) : (
+                      <>
+                        Send reset link
+                        <span className="il-submit-arrow w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
+                          style={{ background: "rgba(255,255,255,0.20)" }}>
+                          <ArrowRight size={9} />
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
             {/* Student link */}
             <p className="il-8 text-center text-[13px] text-slate-500 mt-[22px]">
               Are you a student?{" "}

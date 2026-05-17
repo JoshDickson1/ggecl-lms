@@ -1,6 +1,8 @@
-import { Mail, ArrowRight } from "lucide-react";
-
+import { useState } from "react";
+import { Mail, ArrowRight, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { authClient } from "@/lib/auth-client";
+
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');`;
 
 const CSS = `
@@ -388,6 +390,32 @@ function LeftPanel() {
 
 
 const Forgotten = () => {
+    const [email, setEmail] = useState("");
+    const [emailErr, setEmailErr] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [sent, setSent] = useState(false);
+    const [apiErr, setApiErr] = useState("");
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setApiErr("");
+        if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
+            setEmailErr("Please enter a valid email address");
+            return;
+        }
+        setEmailErr("");
+        setLoading(true);
+        const { error } = await authClient.forgetPassword({
+            email,
+            redirectTo: `${window.location.origin}/reset-password`,
+        });
+        setLoading(false);
+        if (error) {
+            setApiErr(error.message ?? "Something went wrong. Please try again.");
+        } else {
+            setSent(true);
+        }
+    };
 
     return (
         <>
@@ -420,9 +448,23 @@ const Forgotten = () => {
                             </p>
                         </div>
 
-                        <>
-                            <form style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
+                        {sent ? (
+                            <div style={{
+                                display: "flex", flexDirection: "column", alignItems: "center",
+                                gap: 12, padding: "28px 20px", borderRadius: 16, textAlign: "center",
+                                background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)",
+                            }}>
+                                <CheckCircle2 size={36} style={{ color: "#10b981" }} />
+                                <p style={{ fontSize: 15, fontWeight: 600, color: "#065f46", margin: 0 }}>Check your inbox</p>
+                                <p style={{ fontSize: 13, fontWeight: 300, color: "#64748b", margin: 0, lineHeight: 1.6 }}>
+                                    We sent a reset link to <strong>{email}</strong>. It expires in 1 hour.
+                                </p>
+                                <Link to="/login" style={{ fontSize: 13, color: "#1a6ef7", fontWeight: 500, textDecoration: "none" }}>
+                                    Back to login
+                                </Link>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                 {/* Email */}
                                 <div className="lg-2">
                                     <label className="lg-label">Email address</label>
@@ -432,19 +474,40 @@ const Forgotten = () => {
                                             placeholder="you@example.com"
                                             className="lg-input"
                                             type="email"
+                                            value={email}
+                                            onChange={e => { setEmail(e.target.value); setEmailErr(""); }}
                                         />
                                     </div>
+                                    {emailErr && <p className="lg-err">{emailErr}</p>}
                                 </div>
+
+                                {apiErr && (
+                                    <div style={{
+                                        padding: "10px 14px", borderRadius: 10,
+                                        background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)",
+                                    }}>
+                                        <p style={{ fontSize: 12.5, color: "#dc2626", margin: 0 }}>{apiErr}</p>
+                                    </div>
+                                )}
 
                                 {/* Submit */}
                                 <div className="lg-5">
-                                    <button type="submit" className="lg-submit">
-                                        Send reset link
-                                        <span className="lg-submit-arrow"><ArrowRight size={9} /></span>
+                                    <button type="submit" className="lg-submit" disabled={loading}>
+                                        {loading ? (
+                                            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                <svg style={{ width: 15, height: 15, animation: "spin 1s linear infinite" }} fill="none" viewBox="0 0 24 24">
+                                                    <circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                    <path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                </svg>
+                                                Sending…
+                                            </span>
+                                        ) : (
+                                            <>Send reset link<span className="lg-submit-arrow"><ArrowRight size={9} /></span></>
+                                        )}
                                     </button>
                                 </div>
                             </form>
-                        </>
+                        )}
 
                         {/* Instructor link */}
                         <p className="il-8 text-center text-[13px] text-slate-500 mt-[22px]">

@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Eye, EyeOff, Lock } from "lucide-react";
+import { Eye, EyeOff, Lock, CheckCircle2 } from "lucide-react";
 import { ArrowRight } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { authClient } from "@/lib/auth-client";
 
 /* ── Keyframe animations injected once ──────────────────────── */
 const ANIM_CSS = `
@@ -203,27 +205,39 @@ function LeftPanel() {
 
 /* ── Main component ──────────────────────────────────────────── */
 const InstructorResetPassword = () => {
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") ?? "";
+
   const [showPassword, setShowPassword] = useState(false);
-  const [isPending, setIsPending] = useState(false);
-  const [email, _setEmail] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
   const [password, setPassword] = useState("");
-  const [_emailErr, setEmailErr] = useState("");
-  const [passwordErr, setPasswordErr] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
+  const [loading, setLoading] = useState(false);
+  const [apiErr, setApiErr] = useState("");
+  const [done, setDone] = useState(false);
 
   const validate = () => {
-    let valid = true;
-    if (!email) { setEmailErr("Email is required"); valid = false; }
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setEmailErr("Invalid email address"); valid = false; }
-    if (!password) { setPasswordErr("Password is required"); valid = false; }
-    else setPasswordErr("");
-    return valid;
+    const e: typeof errors = {};
+    if (password.length < 8) e.password = "Password must be at least 8 characters";
+    if (password !== confirm) e.confirm = "Passwords do not match";
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setApiErr("");
     if (!validate()) return;
-    setIsPending(true);
-    setTimeout(() => setIsPending(false), 2000); // Simulated pending
+    if (!token) { setApiErr("Invalid or expired reset link. Please request a new one."); return; }
+    setLoading(true);
+    const { error } = await authClient.resetPassword({ newPassword: password, token });
+    setLoading(false);
+    if (error) {
+      setApiErr(error.message ?? "Something went wrong. Please try again.");
+    } else {
+      setDone(true);
+    }
   };
 
   return (
@@ -276,96 +290,108 @@ const InstructorResetPassword = () => {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <div className="">
-                {/* Password */}
-              <div className="il-3 flex flex-col gap-1.5">
-                <label htmlFor="il-password" className="text-[13px] font-medium text-slate-700 dark:text-gray-300">
-                  New Password
-                </label>
-                <div className="relative">
-                  <Lock size={15} className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="il-input w-full py-[13px] pl-[44px] pr-[44px] rounded-xl border-[1.5px] border-black/10 bg-black/[0.025] text-[14px] dark:text-gray-300 text-slate-900 dark:placeholder:text-slate-400 placeholder:font-light transition-all duration-200"
-                    style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(p => !p)}
-                    className="absolute right-[13px] top-1/2 -translate-y-1/2 flex items-center bg-transparent border-none cursor-pointer p-[2px] text-slate-400 hover:text-slate-500 transition-colors duration-[180ms]"
-                  >
-                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
+            {done ? (
+              <div className="flex flex-col items-center gap-3 p-7 rounded-2xl text-center"
+                style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)" }}>
+                <CheckCircle2 size={36} style={{ color: "#10b981" }} />
+                <p className="text-[15px] font-semibold" style={{ color: "#065f46", margin: 0 }}>Password updated!</p>
+                <p className="text-[13px] font-light text-slate-500 leading-relaxed" style={{ margin: 0 }}>
+                  Your password has been reset. You can now sign in.
+                </p>
+                <Link to="/instructor/login" className="text-[13px] font-medium text-amber-600 no-underline hover:underline">
+                  Go to login
+                </Link>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                {!token && (
+                  <div className="px-4 py-3 rounded-xl text-[12.5px] text-red-600"
+                    style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)" }}>
+                    Invalid or expired reset link.{" "}
+                    <Link to="/instructor/forgotten-password" className="text-amber-600 underline">Request a new one.</Link>
+                  </div>
+                )}
+                {/* New password */}
+                <div className="il-3 flex flex-col gap-1.5">
+                  <label className="text-[13px] font-medium text-slate-700 dark:text-gray-300">New Password</label>
+                  <div className="relative">
+                    <Lock size={15} className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={e => { setPassword(e.target.value); setErrors(p => ({ ...p, password: undefined })); }}
+                      placeholder="••••••••"
+                      className="il-input w-full py-[13px] pl-[44px] pr-[44px] rounded-xl border-[1.5px] border-black/10 bg-black/[0.025] text-[14px] dark:text-gray-300 text-slate-900 dark:placeholder:text-slate-400 placeholder:font-light transition-all duration-200"
+                      style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
+                    />
+                    <button type="button" onClick={() => setShowPassword(p => !p)}
+                      className="absolute right-[13px] top-1/2 -translate-y-1/2 flex items-center bg-transparent border-none cursor-pointer p-[2px] text-slate-400 hover:text-slate-500 transition-colors duration-[180ms]">
+                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  {errors.password && <p className="text-[12px] text-red-500">{errors.password}</p>}
                 </div>
-                {passwordErr && <p className="text-[12px] text-red-500">{passwordErr}</p>}
-              </div>
-              </div>
-              <div className="">
-                {/* Password */}
-              <div className="il-3 flex flex-col gap-1.5">
-                <label htmlFor="il-password" className="text-[13px] font-medium text-slate-700 dark:text-gray-300">
-                    Confirm New Password
-                </label>
-                <div className="relative">
-                  <Lock size={15} className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="il-input w-full py-[13px] pl-[44px] pr-[44px] rounded-xl border-[1.5px] border-black/10 bg-black/[0.025] text-[14px] dark:text-gray-300 text-slate-900 dark:placeholder:text-slate-400 placeholder:font-light transition-all duration-200"
-                    style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(p => !p)}
-                    className="absolute right-[13px] top-1/2 -translate-y-1/2 flex items-center bg-transparent border-none cursor-pointer p-[2px] text-slate-400 hover:text-slate-500 transition-colors duration-[180ms]"
-                  >
-                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
+                {/* Confirm password */}
+                <div className="il-4 flex flex-col gap-1.5">
+                  <label className="text-[13px] font-medium text-slate-700 dark:text-gray-300">Confirm New Password</label>
+                  <div className="relative">
+                    <Lock size={15} className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                    <input
+                      type={showConfirm ? "text" : "password"}
+                      value={confirm}
+                      onChange={e => { setConfirm(e.target.value); setErrors(p => ({ ...p, confirm: undefined })); }}
+                      placeholder="••••••••"
+                      className="il-input w-full py-[13px] pl-[44px] pr-[44px] rounded-xl border-[1.5px] border-black/10 bg-black/[0.025] text-[14px] dark:text-gray-300 text-slate-900 dark:placeholder:text-slate-400 placeholder:font-light transition-all duration-200"
+                      style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}
+                    />
+                    <button type="button" onClick={() => setShowConfirm(p => !p)}
+                      className="absolute right-[13px] top-1/2 -translate-y-1/2 flex items-center bg-transparent border-none cursor-pointer p-[2px] text-slate-400 hover:text-slate-500 transition-colors duration-[180ms]">
+                      {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  {errors.confirm && <p className="text-[12px] text-red-500">{errors.confirm}</p>}
                 </div>
-                {passwordErr && <p className="text-[12px] text-red-500">{passwordErr}</p>}
-              </div>
-              </div>
 
-              {/* Submit */}
-              <div className="il-5">
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="il-submit w-full flex items-center justify-center gap-[9px] px-6 py-[14px] rounded-xl border-none cursor-pointer text-[14.5px] font-semibold tracking-[-0.01em] text-white disabled:opacity-55 disabled:cursor-not-allowed transition-all duration-200"
-                  style={{
-                    fontFamily: "'DM Sans', system-ui, sans-serif",
-                    background: "linear-gradient(135deg,#f59e0b 0%,#b45309 100%)",
-                    boxShadow: "0 4px 20px rgba(245,158,11,0.38)",
-                  }}
-                >
-                  {isPending ? (
-                    <span className="flex items-center gap-2">
-                      <svg style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} fill="none" viewBox="0 0 24 24">
-                        <circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                      </svg>
-                      Signing in…
-                    </span>
-                  ) : (
-                    <>
-                      Sign in to Instructor Portal
-                      <span
-                        className="il-submit-arrow w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
-                        style={{ background: "rgba(255,255,255,0.20)" }}
-                      >
-                        <ArrowRight size={9} />
+                {apiErr && (
+                  <div className="px-4 py-3 rounded-xl text-[12.5px] text-red-600"
+                    style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)" }}>
+                    {apiErr}
+                  </div>
+                )}
+
+                {/* Submit */}
+                <div className="il-5">
+                  <button
+                    type="submit"
+                    disabled={loading || !token}
+                    className="il-submit w-full flex items-center justify-center gap-[9px] px-6 py-[14px] rounded-xl border-none cursor-pointer text-[14.5px] font-semibold tracking-[-0.01em] text-white disabled:opacity-55 disabled:cursor-not-allowed transition-all duration-200"
+                    style={{
+                      fontFamily: "'DM Sans', system-ui, sans-serif",
+                      background: "linear-gradient(135deg,#f59e0b 0%,#b45309 100%)",
+                      boxShadow: "0 4px 20px rgba(245,158,11,0.38)",
+                    }}
+                  >
+                    {loading ? (
+                      <span className="flex items-center gap-2">
+                        <svg style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} fill="none" viewBox="0 0 24 24">
+                          <circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                        Resetting…
                       </span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+                    ) : (
+                      <>
+                        Reset Password
+                        <span className="il-submit-arrow w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
+                          style={{ background: "rgba(255,255,255,0.20)" }}>
+                          <ArrowRight size={9} />
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
             {/* Footer note */}
             <p className="text-[11.5px] text-slate-400 text-center leading-relaxed mt-4">
               By signing in you agree to GGECL's{" "}

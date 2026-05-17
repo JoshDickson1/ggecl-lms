@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Eye, EyeOff, Lock, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, Lock, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { authClient } from "@/lib/auth-client";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');`;
 
@@ -388,7 +390,40 @@ function LeftPanel() {
 
 
 const ResetPassword = () => {
+    const [searchParams] = useSearchParams();
+    const token = searchParams.get("token") ?? "";
+
     const [showPassword, setShowPassword] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
+    const [password, setPassword] = useState("");
+    const [confirm, setConfirm] = useState("");
+    const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
+    const [loading, setLoading] = useState(false);
+    const [apiErr, setApiErr] = useState("");
+    const [done, setDone] = useState(false);
+
+    const validate = () => {
+        const e: typeof errors = {};
+        if (password.length < 8) e.password = "Password must be at least 8 characters";
+        if (password !== confirm) e.confirm = "Passwords do not match";
+        setErrors(e);
+        return Object.keys(e).length === 0;
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setApiErr("");
+        if (!validate()) return;
+        if (!token) { setApiErr("Invalid or expired reset link. Please request a new one."); return; }
+        setLoading(true);
+        const { error } = await authClient.resetPassword({ newPassword: password, token });
+        setLoading(false);
+        if (error) {
+            setApiErr(error.message ?? "Something went wrong. Please try again.");
+        } else {
+            setDone(true);
+        }
+    };
 
     return (
         <>
@@ -421,62 +456,95 @@ const ResetPassword = () => {
                             </p>
                         </div>
 
-                        <>
-                            <form style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                                {/* Password */}
+                        {done ? (
+                            <div style={{
+                                display: "flex", flexDirection: "column", alignItems: "center",
+                                gap: 12, padding: "28px 20px", borderRadius: 16, textAlign: "center",
+                                background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)",
+                            }}>
+                                <CheckCircle2 size={36} style={{ color: "#10b981" }} />
+                                <p style={{ fontSize: 15, fontWeight: 600, color: "#065f46", margin: 0 }}>Password updated!</p>
+                                <p style={{ fontSize: 13, fontWeight: 300, color: "#64748b", margin: 0, lineHeight: 1.6 }}>
+                                    Your password has been reset. You can now sign in.
+                                </p>
+                                <Link to="/login" style={{ fontSize: 13, color: "#1a6ef7", fontWeight: 500, textDecoration: "none" }}>
+                                    Go to login
+                                </Link>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                                {!token && (
+                                    <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)" }}>
+                                        <p style={{ fontSize: 12.5, color: "#dc2626", margin: 0 }}>
+                                            Invalid or expired reset link. <Link to="/forgotten-password" style={{ color: "#1a6ef7" }}>Request a new one.</Link>
+                                        </p>
+                                    </div>
+                                )}
+                                {/* New password */}
                                 <div className="lg-3">
-                                    {/* label */}
-                                    <div className="">
-                                        <label htmlFor="password" className="lg-label">New Password</label>
+                                    <label htmlFor="password" className="lg-label">New Password</label>
                                     <div className="lg-input-wrap">
                                         <Lock className="lg-input-icon" size={15} />
                                         <input
+                                            id="password"
                                             type={showPassword ? "text" : "password"}
                                             placeholder="••••••••"
                                             className="lg-input"
+                                            value={password}
+                                            onChange={e => { setPassword(e.target.value); setErrors(p => ({ ...p, password: undefined })); }}
                                             style={{ paddingRight: 44 }}
                                         />
-                                        <button
-                                            type="button"
-                                            className="lg-eye"
-                                            onClick={() => setShowPassword(p => !p)}
-                                        >
+                                        <button type="button" className="lg-eye" onClick={() => setShowPassword(p => !p)}>
                                             {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                                         </button>
                                     </div>
-                                    </div>
-
-
-                                    <div className="mt-4">
-                                        <label htmlFor="password" className="lg-label">Confirm New Password</label>
-                                    <div className="lg-input-wrap">
-                                        <Lock className="lg-input-icon" size={15} />
-                                        <input
-                                            type={showPassword ? "text" : "password"}
-                                            placeholder="••••••••"
-                                            className="lg-input"
-                                            style={{ paddingRight: 44 }}
-                                        />
-                                        <button
-                                            type="button"
-                                            className="lg-eye"
-                                            onClick={() => setShowPassword(p => !p)}
-                                        >
-                                            {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                                        </button>
-                                    </div>
-                                    </div>
+                                    {errors.password && <p className="lg-err">{errors.password}</p>}
                                 </div>
+                                {/* Confirm password */}
+                                <div className="lg-4">
+                                    <label htmlFor="confirm" className="lg-label">Confirm New Password</label>
+                                    <div className="lg-input-wrap">
+                                        <Lock className="lg-input-icon" size={15} />
+                                        <input
+                                            id="confirm"
+                                            type={showConfirm ? "text" : "password"}
+                                            placeholder="••••••••"
+                                            className="lg-input"
+                                            value={confirm}
+                                            onChange={e => { setConfirm(e.target.value); setErrors(p => ({ ...p, confirm: undefined })); }}
+                                            style={{ paddingRight: 44 }}
+                                        />
+                                        <button type="button" className="lg-eye" onClick={() => setShowConfirm(p => !p)}>
+                                            {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                                        </button>
+                                    </div>
+                                    {errors.confirm && <p className="lg-err">{errors.confirm}</p>}
+                                </div>
+
+                                {apiErr && (
+                                    <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)" }}>
+                                        <p style={{ fontSize: 12.5, color: "#dc2626", margin: 0 }}>{apiErr}</p>
+                                    </div>
+                                )}
+
                                 {/* Submit */}
                                 <div className="lg-5">
-                                    <button type="submit" className="lg-submit">
-
-                                        Reset Password
-                                        <span className="lg-submit-arrow"><ArrowRight size={9} /></span>
+                                    <button type="submit" className="lg-submit" disabled={loading || !token}>
+                                        {loading ? (
+                                            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                <svg style={{ width: 15, height: 15, animation: "spin 1s linear infinite" }} fill="none" viewBox="0 0 24 24">
+                                                    <circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                    <path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                                </svg>
+                                                Resetting…
+                                            </span>
+                                        ) : (
+                                            <>Reset Password<span className="lg-submit-arrow"><ArrowRight size={9} /></span></>
+                                        )}
                                     </button>
                                 </div>
                             </form>
-                        </>
+                        )}
 
                         {/* Footer note */}
                         <p className="text-[11.5px] text-slate-400 text-center leading-relaxed mt-4">
