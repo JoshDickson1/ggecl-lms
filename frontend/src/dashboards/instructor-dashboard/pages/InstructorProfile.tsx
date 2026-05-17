@@ -283,7 +283,7 @@ export default function InstructorProfile() {
                 {me?.createdAt ? `Joined ${fmtDate(me.createdAt)}` : "—"}
               </span>
               {website && (
-                <a href={website} target="_blank" rel="noopener noreferrer"
+                <a href={/^https?:\/\//i.test(website) ? website : `https://${website}`} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1.5 hover:text-blue-500 transition-colors">
                   <Globe className="w-3.5 h-3.5 text-blue-500" />
                   {website.replace(/^https?:\/\//, "")}
@@ -307,8 +307,10 @@ export default function InstructorProfile() {
                   { url: linkedin, label: "LinkedIn" },
                   { url: youtube,  label: "YouTube"  },
                 ].filter(s => s.url).map(s => (
-                  <Link key={s.label} to={s.url ?? ''} target="_blank" rel="noopener noreferrer"
-  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
+                  <a key={s.label}
+                    href={/^https?:\/\//i.test(s.url ?? '') ? s.url ?? '' : `https://${s.url}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
     border border-gray-200 dark:border-white/[0.08]
     text-gray-600 dark:text-gray-400
     hover:border-blue-300 dark:hover:border-blue-700
@@ -317,7 +319,7 @@ export default function InstructorProfile() {
                     <Globe className="w-3.5 h-3.5" />
                     {s.label}
                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </Link>
+                  </a>
                 ))}
               </div>
             )}
